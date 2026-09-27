@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+<title>Verdikart</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f5f7fb;color:#111827;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+header{background:#111827;color:#fff;padding:22px 18px;border-radius:0 0 22px 22px}h1{margin:0;font-size:29px}header p{margin:5px 0 0;color:#cbd5e1}
+main{padding:16px;max-width:720px;margin:auto}.nav{display:flex;gap:8px;overflow:auto;padding:8px 0}.nav button{white-space:nowrap}
+button{border:0;border-radius:13px;padding:13px 16px;font-size:16px;font-weight:650}.primary{background:#111827;color:#fff}.secondary{background:#e5e7eb;color:#111827}
+.card{background:#fff;border-radius:18px;padding:16px;margin:12px 0;box-shadow:0 2px 12px #0000000b}
+input,select{width:100%;padding:12px;border:1px solid #d1d5db;border-radius:12px;font-size:16px;margin-top:6px}
+.preview{width:100%;max-height:330px;object-fit:contain;border-radius:14px;background:#eef2f7;margin-top:12px}.hidden{display:none}
+.muted{color:#64748b;font-size:14px}.result-title{font-size:23px;font-weight:800}.price{font-size:30px;font-weight:800}.loading{text-align:center;padding:20px}
+.item{display:flex;gap:12px;align-items:center}.thumb{width:68px;height:68px;object-fit:cover;border-radius:12px;background:#e5e7eb}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.stat{font-size:25px;font-weight:750}
+.note{padding:12px;border-radius:12px;background:#f1f5f9;margin-top:12px}
+</style>
+</head>
+<body>
+<header><h1>Verdikart</h1><p>Skann · Identifiser · Følg verdi · Finn kjøpere</p></header>
+<main>
+<div class="nav">
+<button class="primary" onclick="show('scan')">📷 Skann</button>
+<button class="secondary" onclick="show('collection')">📦 Min samling</button>
+<button class="secondary" onclick="show('wanted')">🔎 Ønsker å kjøpe</button>
+</div>
+
+<section id="scan">
+<div class="card">
+<h2>Skann en gjenstand</h2>
+<p class="muted">Ta bilde. Verdikart analyserer bildet og foreslår hva gjenstanden er.</p>
+<input id="photo" type="file" accept="image/jpeg,image/png,image/webp" capture="environment">
+<img id="preview" class="preview hidden">
+<div id="loading" class="loading hidden">🔍 Analyserer bildet …</div>
+<div id="result" class="hidden">
+<hr>
+<div class="result-title" id="rname"></div>
+<p id="rdesc"></p>
+<div class="price" id="rprice"></div>
+<p class="muted" id="rconfidence"></p>
+<div class="note">ℹ️ Første versjon bruker AI til identifisering. Markedsverdien er et foreløpig estimat. Neste steg er å koble på faktiske salg/prisdatakilder.</div>
+<button class="primary" style="margin-top:14px;width:100%" onclick="saveCurrent()">💾 Lagre i samlingen</button>
+</div>
+</div>
+</section>
+
+<section id="collection" class="hidden">
+<div class="card"><h2>Min samling</h2><div class="grid">
+<div><div class="stat" id="total">0 kr</div><div class="muted">Samlet verdi</div></div>
+<div><div class="stat" id="count">0</div><div class="muted">Gjenstander</div></div>
+</div></div><div id="items"></div>
+</section>
+
+<section id="wanted" class="hidden">
+<div class="card"><h2>🔎 Jeg ønsker å kjøpe</h2>
+<label>Hva leter du etter?<input id="wantName" placeholder="F.eks. Sony Walkman WM-3"></label>
+<label>Makspris<input id="wantPrice" type="number" placeholder="2500"></label>
+<label>Kommentar<input id="wantNote" placeholder="Helst komplett og fungerende"></label>
+<button class="primary" style="margin-top:14px;width:100%" onclick="saveWant()">🔔 Lagre kjøpsønske</button>
+</div><div id="wants"></div>
+</section>
+</main>
+<script>
+const items=JSON.parse(localStorage.getItem('vk_items')||'[]'); const wants=JSON.parse(localStorage.getItem('vk_wants')||'[]');
+let current=null;
+function show(id){['scan','collection','wanted'].forEach(x=>document.getElementById(x).classList.toggle('hidden',x!==id));if(id==='collection')renderItems();if(id==='wanted')renderWants();}
+document.getElementById('photo').addEventListener('change',async e=>{
+ const f=e.target.files[0]; if(!f)return;
+ const r=new FileReader();r.onload=ev=>{const p=document.getElementById('preview');p.src=ev.target.result;p.classList.remove('hidden');};r.readAsDataURL(f);
+ document.getElementById('result').classList.add('hidden');document.getElementById('loading').classList.remove('hidden');
+ try{
+  const dataUrl=await fileToDataURL(f);
+  const res=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image:dataUrl})});
+  const data=await res.json(); if(!res.ok)throw new Error(data.error||'Kunne ikke analysere bildet');
+  current={...data,img:document.getElementById('preview').src};
+  document.getElementById('rname').textContent=data.name||'Ukjent gjenstand';
+  document.getElementById('rdesc').textContent=data.description||'';
+  document.getElementById('rprice').textContent=data.estimated_value_nok?Number(data.estimated_value_nok).toLocaleString('no-NO')+' kr':'Verdi ikke fastslått';
+  document.getElementById('rconfidence').textContent='Identifiseringsikkerhet: '+(data.confidence||'ukjent');
+  document.getElementById('result').classList.remove('hidden');
+ }catch(err){alert(err.message)}finally{document.getElementById('loading').classList.add('hidden')}
+});
+function fileToDataURL(f){return new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=no;r.readAsDataURL(f)})}
+function saveCurrent(){if(!current)return;items.push({id:Date.now(),name:current.name,value:Number(current.estimated_value_nok)||0,condition:current.condition||'Ukjent',img:current.img,history:[{date:new Date().toLocaleDateString('no-NO'),value:Number(current.estimated_value_nok)||0}]});localStorage.setItem('vk_items',JSON.stringify(items));alert('Gjenstanden er lagret.');show('collection');}
+function renderItems(){document.getElementById('count').textContent=items.length;document.getElementById('total').textContent=items.reduce((s,x)=>s+x.value,0).toLocaleString('no-NO')+' kr';document.getElementById('items').innerHTML=items.length?items.map(x=>`<div class="card item"><img class="thumb" src="${x.img||''}"><div style="flex:1"><b>${esc(x.name)}</b><div class="price">${x.value.toLocaleString('no-NO')} kr</div><div class="muted">${esc(x.condition)} · ${x.history.at(-1).date}</div></div></div>`).join(''):'<div class="card"><p>Samlingen er tom.</p></div>'}
+function saveWant(){const name=document.getElementById('wantName').value.trim();if(!name)return alert('Skriv hva du ønsker å kjøpe.');wants.push({name,price:Number(document.getElementById('wantPrice').value)||0,note:document.getElementById('wantNote').value});localStorage.setItem('vk_wants',JSON.stringify(wants));document.getElementById('wantName').value='';document.getElementById('wantPrice').value='';document.getElementById('wantNote').value='';renderWants();}
+function renderWants(){document.getElementById('wants').innerHTML=wants.length?wants.map(w=>`<div class="card"><b>🔎 ${esc(w.name)}</b><div>Opptil ${w.price.toLocaleString('no-NO')} kr</div><div class="muted">${esc(w.note||'Ingen kommentar')}</div></div>`).join(''):'<div class="card"><p>Ingen kjøpsønsker ennå.</p></div>'}
+function esc(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+renderItems();
+</script>
+</body></html>
