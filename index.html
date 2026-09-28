@@ -324,7 +324,13 @@ hr{
     >
       🚪 Logg ut
     </button>
-
+<button
+  class="secondary"
+  style="margin-top:10px;width:100%;background:#fee2e2;color:#991b1b"
+  onclick="deleteAccount()"
+>
+  🗑️ Slett konto og alle data
+</button>
   </div>
 
 </section>
@@ -1002,7 +1008,103 @@ async function logout(){
 
 }
 
+/* ========================= */
+/* SLETT KONTO */
+/* ========================= */
 
+async function deleteAccount(){
+
+  if(!currentUser){
+    alert('Du må være logget inn.');
+    return;
+  }
+
+  const confirmed = confirm(
+    'Er du sikker på at du vil slette kontoen og alle dataene dine? Dette kan ikke angres.'
+  );
+
+  if(!confirmed){
+    return;
+  }
+
+  try{
+
+    const {
+      data: sessionData,
+      error: sessionError
+    } = await supabaseClient.auth.getSession();
+
+    if(sessionError){
+      throw sessionError;
+    }
+
+    const token =
+      sessionData?.session?.access_token;
+
+    if(!token){
+      throw new Error(
+        'Fant ikke gyldig innlogging.'
+      );
+    }
+
+    const response =
+      await fetch(
+        '/api/delete-account',
+        {
+          method:'POST',
+          headers:{
+            'Authorization':
+              `Bearer ${token}`
+          }
+        }
+      );
+
+    const result =
+      await response.json();
+
+    if(!response.ok){
+      throw new Error(
+        result.error ||
+        'Kunne ikke slette kontoen.'
+      );
+    }
+
+    localStorage.removeItem('vk_items');
+    localStorage.removeItem('vk_wants');
+
+    items = [];
+    wants = [];
+    current = null;
+    currentUser = null;
+    cloudLoaded = false;
+
+    await supabaseClient.auth.signOut();
+
+    renderItems();
+    renderWants();
+    updateAuthUI();
+    show('account');
+
+    alert(
+      'Kontoen og alle dataene dine er slettet.'
+    );
+
+  }
+  catch(error){
+
+    console.error(
+      'deleteAccount:',
+      error
+    );
+
+    alert(
+      error.message ||
+      'Kunne ikke slette kontoen.'
+    );
+
+  }
+
+}
 /* ========================= */
 /* AUTH STATE */
 /* ========================= */
