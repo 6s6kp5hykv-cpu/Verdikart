@@ -1,24 +1,56 @@
-const { createClient } = require('@supabase/supabase-js');
-
 const SUPABASE_URL = 'https://tiqwlxpclqqncykdwvjf.supabase.co';
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const SUPABASE_SERVICE_ROLE_KEY =
+  process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-function sendJson(res, status, body){
+function sendJson(res, status, body) {
   res.status(status).json(body);
 }
 
-module.exports = async function handler(req, res){
+async function supabaseRequest(path, options = {}) {
+  const response = await fetch(
+    SUPABASE_URL + path,
+    {
+      ...options,
+      headers: {
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+        Authorization:
+          'Bearer ' + SUPABASE_SERVICE_ROLE_KEY,
+        ...(options.headers || {})
+      }
+    }
+  );
 
-  if(req.method !== 'POST'){
+  const text = await response.text();
+
+  let data = null;
+
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch (_) {
+    data = null;
+  }
+
+  return {
+    response,
+    data,
+    text
+  };
+}
+
+module.exports = async function handler(req, res) {
+
+  if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
+
     return sendJson(res, 405, {
       error: 'Metoden er ikke tillatt.'
     });
   }
 
-  if(!SUPABASE_SERVICE_ROLE_KEY){
+  if (!SUPABASE_SERVICE_ROLE_KEY) {
     return sendJson(res, 500, {
-      error: 'Serveren mangler Supabase-konfigurasjon.'
+      error:
+        'Serveren mangler SUPABASE_SERVICE_ROLE_KEY i Vercel.'
     });
   }
 
@@ -28,7 +60,7 @@ module.exports = async function handler(req, res){
   const match =
     authorization.match(/^Bearer\s+(.+)$/i);
 
-  if(!match){
+  if (!match) {
     return sendJson(res, 401, {
       error: 'Mangler innloggingstoken.'
     });
@@ -36,70 +68,125 @@ module.exports = async function handler(req, res){
 
   const accessToken = match[1];
 
-  const supabase = createClient(
-    SUPABASE_URL,
-    SUPABASE_SERVICE_ROLE_KEY,
-    {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false
-      }
+  try {
+
+    // Finn brukeren fra innloggingstokenet
+    const userResponse =
+      await fetch(
+        SUPABASE_URL + '/auth/v1/user',
+        {
+          headers: {
+            apikey: SUPABASE_SERVICE_ROLE_KEY,
+            Authorization:
+              'Bearer ' + accessToken
+          }
+        }
+      );
+
+    const userText =
+      await userResponse.text();
+
+    let userData = null;
+
+    try {
+      userData =
+        userText
+          ? JSON.parse(userText)
+          : null;
+    } catch (_) {
+      userData = null;
     }
-  );
 
-  try{
-
-    const {
-      data: userData,
-      error: userError
-    } = await supabase.auth.getUser(accessToken);
-
-    if(userError || !userData?.user){
+    if (
+      !userResponse.ok ||
+      !userData?.id
+    ) {
       return sendJson(res, 401, {
-        error: 'Innloggingen er ikke gyldig.'
+        error:
+          'Innloggingen er ikke gyldig.'
       });
     }
 
-    const userId = userData.user.id;
+    const userId = userData.id;
 
-    const { error: collectionError } =
-      await supabase
-        .from('collection_items')
-        .delete()
-        .eq('user_id', userId);
+    // Slett samlingen
+    const collection =
+      await supabaseRequest(
+        '/rest/v1/collection_items?user_id=eq.' +
+        encodeURIComponent(userId),
+        {
+          method: 'DELETE',
+          headers: {
+            Prefer: 'return=minimal'
+          }
+        }
+      );
 
-    if(collectionError){
-      throw collectionError;
+    if (!collection.response.ok) {
+      throw new Error(
+        'collection_items: ' +
+        collection.response.status +
+        ' ' +
+        collection.text
+      );
     }
 
-    const { error: wantedError } =
-      await supabase
-        .from('wanted_items')
-        .delete()
-        .eq('user_id', userId);
+    // Slett kjøpsønskene
+    const wanted =
+      await supabaseRequest(
+        '/rest/v1/wanted_items?user_id=eq.' +
+        encodeURIComponent(userId),
+        {
+          method: 'DELETE',
+          headers: {
+            Prefer: 'return=minimal'
+          }
+        }
+      );
 
-    if(wantedError){
-      throw wantedError;
+    if (!wanted.response.ok) {
+      throw new Error(
+        'wanted_items: ' +
+        wanted.response.status +
+        ' ' +
+        wanted.text
+      );
     }
 
-    const { error: deleteUserError } =
-      await supabase.auth.admin.deleteUser(userId);
+    // Slett selve brukerkontoen
+    const deletedUser =
+      await supabaseRequest(
+        '/auth/v1/admin/users/' +
+        encodeURIComponent(userId),
+        {
+          method: 'DELETE'
+        }
+      );
 
-    if(deleteUserError){
-      throw deleteUserError;
+    if (!deletedUser.response.ok) {
+      throw new Error(
+        'auth user: ' +
+        deletedUser.response.status +
+        ' ' +
+        deletedUser.text
+      );
     }
 
     return sendJson(res, 200, {
       success: true
     });
 
-  }
-  catch(error){
+  } catch (error) {
 
-    console.error('delete-account:', error);
+    console.error(
+      'delete-account:',
+      error
+    );
 
     return sendJson(res, 500, {
-      error: 'Kunne ikke slette kontoen og alle dataene.'
+      error:
+        'Kunne ikke slette kontoen og alle dataene.',
+      detail: error.message
     });
   }
 };
