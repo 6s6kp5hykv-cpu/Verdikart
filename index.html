@@ -74,6 +74,11 @@ button:disabled{
   color:#111827
 }
 
+.danger{
+  background:#fee2e2;
+  color:#991b1b
+}
+
 .card{
   background:#fff;
   border-radius:18px;
@@ -324,13 +329,19 @@ hr{
     >
       🚪 Logg ut
     </button>
-<button
-  class="secondary"
-  style="margin-top:10px;width:100%;background:#fee2e2;color:#991b1b"
-  onclick="deleteAccount()"
->
-  🗑️ Slett konto og alle data
-</button>
+
+    <button
+      class="danger"
+      style="margin-top:10px;width:100%"
+      onclick="deleteAccount()"
+    >
+      🗑️ Slett konto og alle data
+    </button>
+
+    <p class="muted" style="margin-top:10px">
+      Dette sletter kontoen, samlingen og kjøpsønskene dine permanent.
+    </p>
+
   </div>
 
 </section>
@@ -1008,23 +1019,45 @@ async function logout(){
 
 }
 
+
 /* ========================= */
-/* SLETT KONTO */
+/* SLETT KONTO OG ALLE DATA */
 /* ========================= */
 
 async function deleteAccount(){
 
   if(!currentUser){
-    alert('Du må være logget inn.');
+
     return;
+
   }
 
-  const confirmed = confirm(
-    'Er du sikker på at du vil slette kontoen og alle dataene dine? Dette kan ikke angres.'
-  );
+  const email =
+    currentUser.email ||
+    'denne kontoen';
+
+  const confirmed =
+    confirm(
+      'Er du sikker på at du vil slette ' +
+      email +
+      '?\n\n' +
+      'Dette sletter permanent kontoen, alle gjenstander i samlingen og alle kjøpsønsker. Dette kan ikke angres.'
+    );
 
   if(!confirmed){
+
     return;
+
+  }
+
+  const button =
+    document.querySelector(
+      '[onclick="deleteAccount()"]'
+    );
+
+  if(button){
+    button.disabled = true;
+    button.textContent = '🗑️ Sletter konto …';
   }
 
   try{
@@ -1032,18 +1065,19 @@ async function deleteAccount(){
     const {
       data: sessionData,
       error: sessionError
-    } = await supabaseClient.auth.getSession();
+    } =
+      await supabaseClient.auth.getSession();
 
     if(sessionError){
       throw sessionError;
     }
 
-    const token =
+    const accessToken =
       sessionData?.session?.access_token;
 
-    if(!token){
+    if(!accessToken){
       throw new Error(
-        'Fant ikke gyldig innlogging.'
+        'Økten er utløpt. Logg inn på nytt og prøv igjen.'
       );
     }
 
@@ -1054,18 +1088,35 @@ async function deleteAccount(){
           method:'POST',
           headers:{
             'Authorization':
-              `Bearer ${token}`
+              'Bearer ' + accessToken,
+            'Content-Type':
+              'application/json'
           }
         }
       );
 
-    const result =
-      await response.json();
+    const responseText =
+      await response.text();
+
+    let data = {};
+
+    try{
+      data =
+        responseText
+          ? JSON.parse(responseText)
+          : {};
+    }
+    catch(_){
+      data = {};
+    }
 
     if(!response.ok){
       throw new Error(
-        result.error ||
-        'Kunne ikke slette kontoen.'
+        data.error ||
+        responseText ||
+        ('Kunne ikke slette kontoen (HTTP ' +
+          response.status +
+          ').')
       );
     }
 
@@ -1080,31 +1131,33 @@ async function deleteAccount(){
 
     await supabaseClient.auth.signOut();
 
-    renderItems();
-    renderWants();
-    updateAuthUI();
-    show('account');
-
     alert(
       'Kontoen og alle dataene dine er slettet.'
     );
 
-  }
-  catch(error){
+    updateAuthUI();
+    show('account');
 
-    console.error(
-      'deleteAccount:',
-      error
-    );
+  }
+  catch(err){
+
+    console.error(err);
 
     alert(
-      error.message ||
-      'Kunne ikke slette kontoen.'
+      err.message ||
+      'Det oppstod en feil under sletting av kontoen.'
     );
+
+    if(button){
+      button.disabled = false;
+      button.textContent = '🗑️ Slett konto og alle data';
+    }
 
   }
 
 }
+
+
 /* ========================= */
 /* AUTH STATE */
 /* ========================= */
