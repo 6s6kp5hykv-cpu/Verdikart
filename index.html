@@ -1,494 +1,206 @@
 <script>
-const items = JSON.parse(localStorage.getItem('vk_items') || '[]');
-const wants = JSON.parse(localStorage.getItem('vk_wants') || '[]');
+const items=JSON.parse(localStorage.getItem('vk_items')||'[]');
+const wants=JSON.parse(localStorage.getItem('vk_wants')||'[]');
+let current=null;
 
-let current = null;
-
-function show(id) {
-  ['scan', 'collection', 'wanted'].forEach(x => {
-    document.getElementById(x).classList.toggle('hidden', x !== id);
+function show(id){
+  ['scan','collection','wanted'].forEach(x=>{
+    document.getElementById(x).classList.toggle('hidden',x!==id);
   });
-
-  if (id === 'collection') renderItems();
-  if (id === 'wanted') renderWants();
+  if(id==='collection')renderItems();
+  if(id==='wanted')renderWants();
 }
 
+document.getElementById('photo').addEventListener('change',async e=>{
+  const f=e.target.files[0];
+  if(!f)return;
 
-/* =========================
-   BILDEANALYSE
-   ========================= */
-
-document.getElementById('photo').addEventListener('change', async e => {
-  const file = e.target.files[0];
-
-  if (!file) return;
-
-  const loading = document.getElementById('loading');
-  const result = document.getElementById('result');
-  const preview = document.getElementById('preview');
+  const preview=document.getElementById('preview');
+  const loading=document.getElementById('loading');
+  const result=document.getElementById('result');
 
   result.classList.add('hidden');
   loading.classList.remove('hidden');
 
-  try {
+  try{
+    const dataUrl=await fileToDataURL(f);
 
-    /*
-      Konverterer bildet til JPEG før det sendes til API-et.
-      Dette gjør appen mer robust mot HEIC/HEIF og andre
-      bildeformater fra iPhone.
-    */
-    const dataUrl = await fileToDataURL(file);
-
-    /*
-      Vis det konverterte bildet i appen.
-    */
-    preview.src = dataUrl;
+    preview.src=dataUrl;
     preview.classList.remove('hidden');
 
-    /*
-      Send bildet til Verdikart API.
-    */
-    const res = await fetch('/api/analyze', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        image: dataUrl
-      })
+    const res=await fetch('/api/analyze',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({image:dataUrl})
     });
 
-    const data = await res.json();
+    const data=await res.json();
 
-    if (!res.ok) {
-      throw new Error(
-        data.error || 'Kunne ikke analysere bildet'
-      );
-    }
+    if(!res.ok)throw new Error(data.error||'Kunne ikke analysere bildet');
 
-    /*
-      Lagre resultatet.
-    */
-    current = {
-      ...data,
-      img: dataUrl
-    };
+    current={...data,img:dataUrl};
 
-    /*
-      Vis navn.
-    */
-    document.getElementById('rname').textContent =
-      data.name || 'Ukjent gjenstand';
+    document.getElementById('rname').textContent=
+      data.name||'Ukjent gjenstand';
 
-    /*
-      Vis beskrivelse.
-    */
-    document.getElementById('rdesc').textContent =
-      data.description || '';
+    document.getElementById('rdesc').textContent=
+      data.description||'';
 
-    /*
-      Vis verdi.
-    */
-    if (
-      data.estimated_value_nok !== null &&
-      data.estimated_value_nok !== undefined &&
-      data.estimated_value_nok !== ''
-    ) {
-      const value = Number(data.estimated_value_nok);
+    const value=Number(data.estimated_value_nok);
 
-      if (!isNaN(value)) {
-        document.getElementById('rprice').textContent =
-          value.toLocaleString('no-NO') + ' kr';
-      } else {
-        document.getElementById('rprice').textContent =
-          'Verdi ikke fastslått';
-      }
-    } else {
-      document.getElementById('rprice').textContent =
-        'Verdi ikke fastslått';
-    }
+    document.getElementById('rprice').textContent=
+      !isNaN(value)&&data.estimated_value_nok!==null
+      ? value.toLocaleString('no-NO')+' kr'
+      : 'Verdi ikke fastslått';
 
-    /*
-      Vis sikkerhet.
-    */
-    document.getElementById('rconfidence').textContent =
-      'Identifiseringsikkerhet: ' +
-      (data.confidence || 'ukjent');
+    document.getElementById('rconfidence').textContent=
+      'Identifiseringsikkerhet: '+(data.confidence||'ukjent');
 
-    /*
-      Vis resultatkortet.
-    */
     result.classList.remove('hidden');
 
-  } catch (err) {
-
-    console.error('Verdikart-feil:', err);
-
-    alert(
-      err.message ||
-      'Det oppstod en feil under analysen.'
-    );
-
-  } finally {
-
+  }catch(err){
+    console.error(err);
+    alert(err.message||'Det oppstod en feil.');
+  }finally{
     loading.classList.add('hidden');
   }
 });
 
+function fileToDataURL(file){
+  return new Promise((resolve,reject)=>{
+    const url=URL.createObjectURL(file);
+    const img=new Image();
 
-/* =========================
-   KONVERTER BILDE TIL JPEG
-   ========================= */
+    img.onload=()=>{
+      try{
+        const max=1600;
+        let w=img.naturalWidth;
+        let h=img.naturalHeight;
 
-function fileToDataURL(file) {
-
-  return new Promise((resolve, reject) => {
-
-    const objectUrl = URL.createObjectURL(file);
-
-    const img = new Image();
-
-    img.onload = () => {
-
-      try {
-
-        /*
-          Maks størrelse.
-          Dette gjør bildene mindre og reduserer
-          belastningen på API-et.
-        */
-        const maxSize = 1600;
-
-        let width = img.naturalWidth;
-        let height = img.naturalHeight;
-
-        if (width > maxSize || height > maxSize) {
-
-          if (width > height) {
-
-            height = Math.round(
-              height * maxSize / width
-            );
-
-            width = maxSize;
-
-          } else {
-
-            width = Math.round(
-              width * maxSize / height
-            );
-
-            height = maxSize;
+        if(w>max||h>max){
+          if(w>h){
+            h=Math.round(h*max/w);
+            w=max;
+          }else{
+            w=Math.round(w*max/h);
+            h=max;
           }
         }
 
-        /*
-          Opprett canvas.
-        */
-        const canvas = document.createElement('canvas');
+        const canvas=document.createElement('canvas');
+        canvas.width=w;
+        canvas.height=h;
 
-        canvas.width = width;
-        canvas.height = height;
+        const ctx=canvas.getContext('2d');
+        ctx.drawImage(img,0,0,w,h);
 
-        const ctx = canvas.getContext('2d');
+        const data=canvas.toDataURL('image/jpeg',0.85);
 
-        if (!ctx) {
-          throw new Error(
-            'Nettleseren støtter ikke bildebehandling.'
-          );
-        }
-
-        /*
-          Tegn bildet på canvas.
-        */
-        ctx.drawImage(
-          img,
-          0,
-          0,
-          width,
-          height
-        );
-
-        /*
-          Konverter til JPEG.
-        */
-        const dataUrl = canvas.toDataURL(
-          'image/jpeg',
-          0.85
-        );
-
-        URL.revokeObjectURL(objectUrl);
-
-        resolve(dataUrl);
-
-      } catch (error) {
-
-        URL.revokeObjectURL(objectUrl);
-
-        reject(error);
+        URL.revokeObjectURL(url);
+        resolve(data);
+      }catch(err){
+        URL.revokeObjectURL(url);
+        reject(err);
       }
     };
 
-    img.onerror = () => {
-
-      URL.revokeObjectURL(objectUrl);
-
-      reject(
-        new Error(
-          'Kunne ikke lese bildet. Prøv et annet bilde.'
-        )
-      );
+    img.onerror=()=>{
+      URL.revokeObjectURL(url);
+      reject(new Error('Kunne ikke lese bildet.'));
     };
 
-    img.src = objectUrl;
+    img.src=url;
   });
 }
 
+function saveCurrent(){
+  if(!current)return;
 
-/* =========================
-   LAGRE GJENSTAND
-   ========================= */
-
-function saveCurrent() {
-
-  if (!current) return;
-
-  const value =
-    Number(current.estimated_value_nok) || 0;
+  const value=Number(current.estimated_value_nok)||0;
 
   items.push({
-
-    id: Date.now(),
-
-    name:
-      current.name ||
-      'Ukjent gjenstand',
-
-    value: value,
-
-    condition:
-      current.condition ||
-      'Ukjent',
-
-    img:
-      current.img || '',
-
-    history: [
-
-      {
-        date:
-          new Date().toLocaleDateString('no-NO'),
-
-        value: value
-      }
-
-    ]
+    id:Date.now(),
+    name:current.name||'Ukjent gjenstand',
+    value:value,
+    condition:current.condition||'Ukjent',
+    img:current.img||'',
+    history:[{
+      date:new Date().toLocaleDateString('no-NO'),
+      value:value
+    }]
   });
 
-  localStorage.setItem(
-    'vk_items',
-    JSON.stringify(items)
-  );
-
+  localStorage.setItem('vk_items',JSON.stringify(items));
   alert('Gjenstanden er lagret.');
-
   show('collection');
 }
 
+function renderItems(){
+  document.getElementById('count').textContent=items.length;
 
-/* =========================
-   VIS SAMLING
-   ========================= */
+  const total=items.reduce((s,x)=>s+(Number(x.value)||0),0);
 
-function renderItems() {
+  document.getElementById('total').textContent=
+    total.toLocaleString('no-NO')+' kr';
 
-  document.getElementById('count').textContent =
-    items.length;
-
-  const total =
-    items.reduce(
-      (sum, item) =>
-        sum + (Number(item.value) || 0),
-      0
-    );
-
-  document.getElementById('total').textContent =
-    total.toLocaleString('no-NO') + ' kr';
-
-
-  document.getElementById('items').innerHTML =
-    items.length
-
-      ? items.map(item => {
-
-          const lastHistory =
-            item.history &&
-            item.history.length
-              ? item.history[item.history.length - 1]
-              : null;
-
-          return `
-            <div class="card item">
-
-              <img
-                class="thumb"
-                src="${item.img || ''}"
-              >
-
-              <div style="flex:1">
-
-                <b>
-                  ${esc(item.name)}
-                </b>
-
-                <div class="price">
-                  ${(Number(item.value) || 0)
-                    .toLocaleString('no-NO')} kr
-                </div>
-
-                <div class="muted">
-                  ${esc(item.condition || 'Ukjent')}
-                  ${
-                    lastHistory
-                      ? ' · ' + lastHistory.date
-                      : ''
-                  }
-                </div>
-
-              </div>
-
-            </div>
-          `;
-
-        }).join('')
-
-      : `
-        <div class="card">
-          <p>Samlingen er tom.</p>
+  document.getElementById('items').innerHTML=items.length
+    ?items.map(x=>`
+      <div class="card item">
+        <img class="thumb" src="${x.img||''}">
+        <div style="flex:1">
+          <b>${esc(x.name)}</b>
+          <div class="price">${(Number(x.value)||0).toLocaleString('no-NO')} kr</div>
+          <div class="muted">${esc(x.condition||'Ukjent')}</div>
         </div>
-      `;
+      </div>
+    `).join('')
+    :'<div class="card"><p>Samlingen er tom.</p></div>';
 }
 
+function saveWant(){
+  const name=document.getElementById('wantName').value.trim();
 
-/* =========================
-   KJØPSØNSKER
-   ========================= */
-
-function saveWant() {
-
-  const name =
-    document.getElementById('wantName')
-      .value
-      .trim();
-
-  if (!name) {
-
-    alert(
-      'Skriv hva du ønsker å kjøpe.'
-    );
-
+  if(!name){
+    alert('Skriv hva du ønsker å kjøpe.');
     return;
   }
 
-  const price =
-    Number(
-      document.getElementById('wantPrice').value
-    ) || 0;
-
-  const note =
-    document.getElementById('wantNote').value;
-
   wants.push({
-
-    name: name,
-
-    price: price,
-
-    note: note
+    name:name,
+    price:Number(document.getElementById('wantPrice').value)||0,
+    note:document.getElementById('wantNote').value
   });
 
-  localStorage.setItem(
-    'vk_wants',
-    JSON.stringify(wants)
-  );
+  localStorage.setItem('vk_wants',JSON.stringify(wants));
 
-  document.getElementById('wantName').value = '';
-
-  document.getElementById('wantPrice').value = '';
-
-  document.getElementById('wantNote').value = '';
+  document.getElementById('wantName').value='';
+  document.getElementById('wantPrice').value='';
+  document.getElementById('wantNote').value='';
 
   renderWants();
 }
 
-
-/* =========================
-   VIS KJØPSØNSKER
-   ========================= */
-
-function renderWants() {
-
-  document.getElementById('wants').innerHTML =
-    wants.length
-
-      ? wants.map(want => `
-
-          <div class="card">
-
-            <b>
-              🔎 ${esc(want.name)}
-            </b>
-
-            <div>
-              Opptil
-              ${(Number(want.price) || 0)
-                .toLocaleString('no-NO')}
-              kr
-            </div>
-
-            <div class="muted">
-              ${esc(
-                want.note ||
-                'Ingen kommentar'
-              )}
-            </div>
-
-          </div>
-
-        `).join('')
-
-      : `
-        <div class="card">
-          <p>Ingen kjøpsønsker ennå.</p>
-        </div>
-      `;
+function renderWants(){
+  document.getElementById('wants').innerHTML=wants.length
+    ?wants.map(w=>`
+      <div class="card">
+        <b>🔎 ${esc(w.name)}</b>
+        <div>Opptil ${(Number(w.price)||0).toLocaleString('no-NO')} kr</div>
+        <div class="muted">${esc(w.note||'Ingen kommentar')}</div>
+      </div>
+    `).join('')
+    :'<div class="card"><p>Ingen kjøpsønsker ennå.</p></div>';
 }
 
-
-/* =========================
-   SIKKER TEKST
-   ========================= */
-
-function esc(value) {
-
-  return String(value || '')
-    .replace(
-      /[&<>"']/g,
-      char => ({
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&#39;'
-      }[char])
-    );
+function esc(s){
+  return String(s||'').replace(/[&<>"']/g,m=>({
+    '&':'&amp;',
+    '<':'&lt;',
+    '>':'&gt;',
+    '"':'&quot;',
+    "'":'&#39;'
+  }[m]));
 }
-
-
-/* =========================
-   START
-   ========================= */
 
 renderItems();
-
 </script>
