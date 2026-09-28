@@ -1,206 +1,869 @@
-<script>
-const items=JSON.parse(localStorage.getItem('vk_items')||'[]');
-const wants=JSON.parse(localStorage.getItem('vk_wants')||'[]');
-let current=null;
+<!doctype html>
+<html lang="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+<title>Verdikart</title>
 
-function show(id){
-  ['scan','collection','wanted'].forEach(x=>{
-    document.getElementById(x).classList.toggle('hidden',x!==id);
-  });
-  if(id==='collection')renderItems();
-  if(id==='wanted')renderWants();
+<style>
+*{box-sizing:border-box}
+
+body{
+  margin:0;
+  background:#f5f7fb;
+  color:#111827;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif
 }
 
-document.getElementById('photo').addEventListener('change',async e=>{
-  const f=e.target.files[0];
-  if(!f)return;
+header{
+  background:#111827;
+  color:#fff;
+  padding:22px 18px;
+  border-radius:0 0 22px 22px
+}
 
-  const preview=document.getElementById('preview');
-  const loading=document.getElementById('loading');
-  const result=document.getElementById('result');
+h1{margin:0;font-size:29px}
+
+header p{
+  margin:5px 0 0;
+  color:#cbd5e1
+}
+
+main{
+  padding:16px;
+  max-width:720px;
+  margin:auto
+}
+
+.nav{
+  display:flex;
+  gap:8px;
+  overflow:auto;
+  padding:8px 0
+}
+
+.nav button{
+  white-space:nowrap
+}
+
+button{
+  border:0;
+  border-radius:13px;
+  padding:13px 16px;
+  font-size:16px;
+  font-weight:650
+}
+
+.primary{
+  background:#111827;
+  color:#fff
+}
+
+.secondary{
+  background:#e5e7eb;
+  color:#111827
+}
+
+.card{
+  background:#fff;
+  border-radius:18px;
+  padding:16px;
+  margin:12px 0;
+  box-shadow:0 2px 12px #0000000b
+}
+
+input,select{
+  width:100%;
+  padding:12px;
+  border:1px solid #d1d5db;
+  border-radius:12px;
+  font-size:16px;
+  margin-top:6px
+}
+
+.preview{
+  width:100%;
+  max-height:330px;
+  object-fit:contain;
+  border-radius:14px;
+  background:#eef2f7;
+  margin-top:12px
+}
+
+.hidden{display:none}
+
+.muted{
+  color:#64748b;
+  font-size:14px
+}
+
+.result-title{
+  font-size:23px;
+  font-weight:800
+}
+
+.price{
+  font-size:30px;
+  font-weight:800
+}
+
+.loading{
+  text-align:center;
+  padding:20px
+}
+
+.item{
+  display:flex;
+  gap:12px;
+  align-items:center
+}
+
+.thumb{
+  width:68px;
+  height:68px;
+  object-fit:cover;
+  border-radius:12px;
+  background:#e5e7eb
+}
+
+.grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px
+}
+
+.stat{
+  font-size:25px;
+  font-weight:750
+}
+
+.note{
+  padding:12px;
+  border-radius:12px;
+  background:#f1f5f9;
+  margin-top:12px
+}
+</style>
+</head>
+
+<body>
+
+<header>
+  <h1>Verdikart</h1>
+  <p>Skann · Identifiser · Følg verdi · Finn kjøpere</p>
+</header>
+
+<main>
+
+<div class="nav">
+  <button class="primary" onclick="show('scan')">📷 Skann</button>
+  <button class="secondary" onclick="show('collection')">📦 Min samling</button>
+  <button class="secondary" onclick="show('wanted')">🔎 Ønsker å kjøpe</button>
+</div>
+
+<section id="scan">
+
+<div class="card">
+
+<h2>Skann en gjenstand</h2>
+
+<p class="muted">
+Ta bilde. Verdikart analyserer bildet og foreslår hva gjenstanden er.
+</p>
+
+<input
+  id="photo"
+  type="file"
+  accept="image/jpeg,image/png,image/webp"
+  capture="environment"
+>
+
+<img id="preview" class="preview hidden">
+
+<div id="loading" class="loading hidden">
+  🔍 Analyserer bildet …
+</div>
+
+<div id="result" class="hidden">
+
+<hr>
+
+<div class="result-title" id="rname"></div>
+
+<p id="rdesc"></p>
+
+<div class="price" id="rprice"></div>
+
+<p class="muted" id="rconfidence"></p>
+
+<div class="note">
+ℹ️ Verdikart bruker AI til identifisering.
+Markedsverdien er et foreløpig estimat.
+</div>
+
+<button
+  class="primary"
+  style="margin-top:14px;width:100%"
+  onclick="saveCurrent()"
+>
+💾 Lagre i samlingen
+</button>
+
+</div>
+
+</div>
+
+</section>
+
+
+<section id="collection" class="hidden">
+
+<div class="card">
+
+<h2>Min samling</h2>
+
+<div class="grid">
+
+<div>
+<div class="stat" id="total">0 kr</div>
+<div class="muted">Samlet verdi</div>
+</div>
+
+<div>
+<div class="stat" id="count">0</div>
+<div class="muted">Gjenstander</div>
+</div>
+
+</div>
+
+</div>
+
+<div id="items"></div>
+
+</section>
+
+
+<section id="wanted" class="hidden">
+
+<div class="card">
+
+<h2>🔎 Jeg ønsker å kjøpe</h2>
+
+<label>
+Hva leter du etter?
+<input
+  id="wantName"
+  placeholder="F.eks. Sony Walkman WM-3"
+>
+</label>
+
+<label>
+Makspris
+<input
+  id="wantPrice"
+  type="number"
+  placeholder="2500"
+>
+</label>
+
+<label>
+Kommentar
+<input
+  id="wantNote"
+  placeholder="Helst komplett og fungerende"
+>
+</label>
+
+<button
+  class="primary"
+  style="margin-top:14px;width:100%"
+  onclick="saveWant()"
+>
+🔔 Lagre kjøpsønske
+</button>
+
+</div>
+
+<div id="wants"></div>
+
+</section>
+
+</main>
+
+
+<script>
+
+const items =
+JSON.parse(localStorage.getItem('vk_items') || '[]');
+
+const wants =
+JSON.parse(localStorage.getItem('vk_wants') || '[]');
+
+let current = null;
+
+
+function show(id){
+
+  ['scan','collection','wanted'].forEach(x=>{
+
+    const element = document.getElementById(x);
+
+    if(element){
+      element.classList.toggle('hidden',x !== id);
+    }
+
+  });
+
+  if(id === 'collection'){
+    renderItems();
+  }
+
+  if(id === 'wanted'){
+    renderWants();
+  }
+
+}
+
+
+const photoInput =
+document.getElementById('photo');
+
+
+if(photoInput){
+
+photoInput.addEventListener('change',async e=>{
+
+  const f = e.target.files[0];
+
+  if(!f) return;
+
+  const preview =
+  document.getElementById('preview');
+
+  const loading =
+  document.getElementById('loading');
+
+  const result =
+  document.getElementById('result');
 
   result.classList.add('hidden');
+
   loading.classList.remove('hidden');
 
   try{
-    const dataUrl=await fileToDataURL(f);
 
-    preview.src=dataUrl;
+    const dataUrl =
+    await fileToDataURL(f);
+
+    preview.src = dataUrl;
+
     preview.classList.remove('hidden');
 
-    const res=await fetch('/api/analyze',{
+
+    const res =
+    await fetch('/api/analyze',{
       method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({image:dataUrl})
+      headers:{
+        'Content-Type':'application/json'
+      },
+      body:JSON.stringify({
+        image:dataUrl
+      })
     });
 
-    const data=await res.json();
 
-    if(!res.ok)throw new Error(data.error||'Kunne ikke analysere bildet');
+    const data =
+    await res.json();
 
-    current={...data,img:dataUrl};
 
-    document.getElementById('rname').textContent=
-      data.name||'Ukjent gjenstand';
+    if(!res.ok){
 
-    document.getElementById('rdesc').textContent=
-      data.description||'';
+      throw new Error(
+        data.error ||
+        'Kunne ikke analysere bildet'
+      );
 
-    const value=Number(data.estimated_value_nok);
+    }
 
-    document.getElementById('rprice').textContent=
-      !isNaN(value)&&data.estimated_value_nok!==null
-      ? value.toLocaleString('no-NO')+' kr'
-      : 'Verdi ikke fastslått';
 
-    document.getElementById('rconfidence').textContent=
-      'Identifiseringsikkerhet: '+(data.confidence||'ukjent');
+    current = {
+      ...data,
+      img:dataUrl
+    };
+
+
+    document.getElementById('rname').textContent =
+    data.name || 'Ukjent gjenstand';
+
+
+    document.getElementById('rdesc').textContent =
+    data.description || '';
+
+
+    const value =
+    Number(data.estimated_value_nok);
+
+
+    document.getElementById('rprice').textContent =
+    Number.isFinite(value) && value > 0
+    ? value.toLocaleString('no-NO') + ' kr'
+    : 'Verdi ikke fastslått';
+
+
+    document.getElementById('rconfidence').textContent =
+    'Identifiseringsikkerhet: ' +
+    (data.confidence || 'ukjent');
+
 
     result.classList.remove('hidden');
 
+
   }catch(err){
+
     console.error(err);
-    alert(err.message||'Det oppstod en feil.');
+
+    alert(
+      err.message ||
+      'Det oppstod en feil.'
+    );
+
   }finally{
+
     loading.classList.add('hidden');
+
   }
+
 });
 
+}
+
+
 function fileToDataURL(file){
+
   return new Promise((resolve,reject)=>{
-    const url=URL.createObjectURL(file);
-    const img=new Image();
 
-    img.onload=()=>{
+    const url =
+    URL.createObjectURL(file);
+
+    const img =
+    new Image();
+
+
+    img.onload = ()=>{
+
       try{
-        const max=1600;
-        let w=img.naturalWidth;
-        let h=img.naturalHeight;
 
-        if(w>max||h>max){
-          if(w>h){
-            h=Math.round(h*max/w);
-            w=max;
+        const max = 1600;
+
+        let w =
+        img.naturalWidth;
+
+        let h =
+        img.naturalHeight;
+
+
+        if(w > max || h > max){
+
+          if(w > h){
+
+            h =
+            Math.round(h * max / w);
+
+            w = max;
+
           }else{
-            w=Math.round(w*max/h);
-            h=max;
+
+            w =
+            Math.round(w * max / h);
+
+            h = max;
+
           }
+
         }
 
-        const canvas=document.createElement('canvas');
-        canvas.width=w;
-        canvas.height=h;
 
-        const ctx=canvas.getContext('2d');
-        ctx.drawImage(img,0,0,w,h);
+        const canvas =
+        document.createElement('canvas');
 
-        const data=canvas.toDataURL('image/jpeg',0.85);
+        canvas.width = w;
+        canvas.height = h;
+
+
+        const ctx =
+        canvas.getContext('2d');
+
+
+        ctx.drawImage(
+          img,
+          0,
+          0,
+          w,
+          h
+        );
+
+
+        const data =
+        canvas.toDataURL(
+          'image/jpeg',
+          0.85
+        );
+
 
         URL.revokeObjectURL(url);
+
         resolve(data);
+
+
       }catch(err){
+
         URL.revokeObjectURL(url);
+
         reject(err);
+
       }
+
     };
 
-    img.onerror=()=>{
+
+    img.onerror = ()=>{
+
       URL.revokeObjectURL(url);
-      reject(new Error('Kunne ikke lese bildet.'));
+
+      reject(
+        new Error('Kunne ikke lese bildet.')
+      );
+
     };
 
-    img.src=url;
+
+    img.src = url;
+
   });
+
 }
+
 
 function saveCurrent(){
-  if(!current)return;
 
-  const value=Number(current.estimated_value_nok)||0;
+  if(!current){
+
+    alert('Ingen gjenstand å lagre.');
+
+    return;
+
+  }
+
+
+  const value =
+  Number(current.estimated_value_nok) || 0;
+
 
   items.push({
+
     id:Date.now(),
-    name:current.name||'Ukjent gjenstand',
+
+    name:
+    current.name ||
+    'Ukjent gjenstand',
+
     value:value,
-    condition:current.condition||'Ukjent',
-    img:current.img||'',
+
+    condition:
+    current.condition ||
+    'Ukjent',
+
+    description:
+    current.description ||
+    '',
+
+    confidence:
+    current.confidence ||
+    '',
+
+    img:
+    current.img ||
+    '',
+
     history:[{
-      date:new Date().toLocaleDateString('no-NO'),
+
+      date:
+      new Date().toLocaleDateString(
+        'no-NO'
+      ),
+
       value:value
+
     }]
+
   });
 
-  localStorage.setItem('vk_items',JSON.stringify(items));
-  alert('Gjenstanden er lagret.');
+
+  localStorage.setItem(
+    'vk_items',
+    JSON.stringify(items)
+  );
+
+
+  alert(
+    'Gjenstanden er lagret.'
+  );
+
+
   show('collection');
+
 }
+
 
 function renderItems(){
-  document.getElementById('count').textContent=items.length;
 
-  const total=items.reduce((s,x)=>s+(Number(x.value)||0),0);
+  const count =
+  document.getElementById('count');
 
-  document.getElementById('total').textContent=
-    total.toLocaleString('no-NO')+' kr';
+  const total =
+  document.getElementById('total');
 
-  document.getElementById('items').innerHTML=items.length
-    ?items.map(x=>`
-      <div class="card item">
-        <img class="thumb" src="${x.img||''}">
-        <div style="flex:1">
-          <b>${esc(x.name)}</b>
-          <div class="price">${(Number(x.value)||0).toLocaleString('no-NO')} kr</div>
-          <div class="muted">${esc(x.condition||'Ukjent')}</div>
-        </div>
-      </div>
-    `).join('')
-    :'<div class="card"><p>Samlingen er tom.</p></div>';
-}
+  const container =
+  document.getElementById('items');
 
-function saveWant(){
-  const name=document.getElementById('wantName').value.trim();
 
-  if(!name){
-    alert('Skriv hva du ønsker å kjøpe.');
+  if(!count || !total || !container){
     return;
   }
 
+
+  count.textContent =
+  items.length;
+
+
+  const totalValue =
+  items.reduce(
+    (sum,item)=>
+    sum + (Number(item.value) || 0),
+    0
+  );
+
+
+  total.textContent =
+  totalValue.toLocaleString(
+    'no-NO'
+  ) + ' kr';
+
+
+  if(!items.length){
+
+    container.innerHTML =
+    '<div class="card">' +
+    '<p>Samlingen er tom.</p>' +
+    '</div>';
+
+    return;
+
+  }
+
+
+  container.innerHTML =
+  items.map(item=>{
+
+    const value =
+    Number(item.value) || 0;
+
+
+    const date =
+    item.history &&
+    item.history.length
+    ? item.history[item.history.length-1].date
+    : '';
+
+
+    return `
+
+    <div class="card item">
+
+      ${
+        item.img
+        ? `<img
+             class="thumb"
+             src="${item.img}"
+             alt=""
+           >`
+        : `<div class="thumb"></div>`
+      }
+
+      <div style="flex:1">
+
+        <b>
+          ${esc(item.name)}
+        </b>
+
+        <div class="price">
+          ${value.toLocaleString('no-NO')} kr
+        </div>
+
+        <div class="muted">
+          ${esc(item.condition || 'Ukjent')}
+          ${date ? ' · ' + esc(date) : ''}
+        </div>
+
+      </div>
+
+    </div>
+
+    `;
+
+  }).join('');
+
+}
+
+
+function saveWant(){
+
+  const name =
+  document
+  .getElementById('wantName')
+  .value
+  .trim();
+
+
+  if(!name){
+
+    alert(
+      'Skriv hva du ønsker å kjøpe.'
+    );
+
+    return;
+
+  }
+
+
+  const price =
+  Number(
+    document.getElementById(
+      'wantPrice'
+    ).value
+  ) || 0;
+
+
+  const note =
+  document.getElementById(
+    'wantNote'
+  ).value;
+
+
   wants.push({
+
+    id:Date.now(),
+
     name:name,
-    price:Number(document.getElementById('wantPrice').value)||0,
-    note:document.getElementById('wantNote').value
+
+    price:price,
+
+    note:note
+
   });
 
-  localStorage.setItem('vk_wants',JSON.stringify(wants));
 
-  document.getElementById('wantName').value='';
-  document.getElementById('wantPrice').value='';
-  document.getElementById('wantNote').value='';
+  localStorage.setItem(
+    'vk_wants',
+    JSON.stringify(wants)
+  );
+
+
+  document.getElementById(
+    'wantName'
+  ).value='';
+
+
+  document.getElementById(
+    'wantPrice'
+  ).value='';
+
+
+  document.getElementById(
+    'wantNote'
+  ).value='';
+
 
   renderWants();
+
 }
+
 
 function renderWants(){
-  document.getElementById('wants').innerHTML=wants.length
-    ?wants.map(w=>`
-      <div class="card">
-        <b>🔎 ${esc(w.name)}</b>
-        <div>Opptil ${(Number(w.price)||0).toLocaleString('no-NO')} kr</div>
-        <div class="muted">${esc(w.note||'Ingen kommentar')}</div>
+
+  const container =
+  document.getElementById('wants');
+
+
+  if(!container) return;
+
+
+  if(!wants.length){
+
+    container.innerHTML =
+    '<div class="card">' +
+    '<p>Ingen kjøpsønsker ennå.</p>' +
+    '</div>';
+
+    return;
+
+  }
+
+
+  container.innerHTML =
+  wants.map(w=>`
+
+    <div class="card">
+
+      <b>
+        🔎 ${esc(w.name)}
+      </b>
+
+      <div>
+        Opptil
+        ${(Number(w.price)||0)
+          .toLocaleString('no-NO')}
+        kr
       </div>
-    `).join('')
-    :'<div class="card"><p>Ingen kjøpsønsker ennå.</p></div>';
+
+      <div class="muted">
+        ${esc(
+          w.note ||
+          'Ingen kommentar'
+        )}
+      </div>
+
+    </div>
+
+  `).join('');
+
 }
 
-function esc(s){
-  return String(s||'').replace(/[&<>"']/g,m=>({
-    '&':'&amp;',
-    '<':'&lt;',
-    '>':'&gt;',
-    '"':'&quot;',
-    "'":'&#39;'
-  }[m]));
+
+function esc(value){
+
+  return String(
+    value || ''
+  ).replace(
+    /[&<>"']/g,
+    m=>({
+
+      '&':'&amp;',
+      '<':'&lt;',
+      '>':'&gt;',
+      '"':'&quot;',
+      "'":'&#39;'
+
+    }[m])
+  );
+
 }
+
 
 renderItems();
+
 </script>
+
+</body>
+</html>
