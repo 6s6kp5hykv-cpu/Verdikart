@@ -105,7 +105,8 @@ input,select{
 
 .price{
   font-size:30px;
-  font-weight:800
+  font-weight:800;
+  margin-top:8px
 }
 
 .loading{
@@ -169,7 +170,7 @@ input,select{
 <h2>Skann en gjenstand</h2>
 
 <p class="muted">
-Ta bilde. Verdikart analyserer bildet og foreslår hva gjenstanden er.
+Ta bilde. Verdikart analyserer bildet og foreslår hva gjenstanden er og hva den kan være verdt.
 </p>
 
 <input
@@ -198,8 +199,7 @@ Ta bilde. Verdikart analyserer bildet og foreslår hva gjenstanden er.
 <p class="muted" id="rconfidence"></p>
 
 <div class="note">
-ℹ️ Verdikart bruker AI til identifisering.
-Markedsverdien er et foreløpig estimat.
+ℹ️ Verdien er et foreløpig AI-estimat og kan avvike fra faktisk salgspris.
 </div>
 
 <button
@@ -307,10 +307,14 @@ function show(id){
 
   ['scan','collection','wanted'].forEach(x=>{
 
-    const element = document.getElementById(x);
+    const element =
+    document.getElementById(x);
 
     if(element){
-      element.classList.toggle('hidden',x !== id);
+      element.classList.toggle(
+        'hidden',
+        x !== id
+      );
     }
 
   });
@@ -332,11 +336,15 @@ document.getElementById('photo');
 
 if(photoInput){
 
-photoInput.addEventListener('change',async e=>{
+photoInput.addEventListener(
+'change',
+async e=>{
 
-  const f = e.target.files[0];
+  const f =
+  e.target.files[0];
 
   if(!f) return;
+
 
   const preview =
   document.getElementById('preview');
@@ -347,30 +355,40 @@ photoInput.addEventListener('change',async e=>{
   const result =
   document.getElementById('result');
 
+
   result.classList.add('hidden');
 
   loading.classList.remove('hidden');
+
 
   try{
 
     const dataUrl =
     await fileToDataURL(f);
 
-    preview.src = dataUrl;
+
+    preview.src =
+    dataUrl;
 
     preview.classList.remove('hidden');
 
 
     const res =
-    await fetch('/api/analyze',{
-      method:'POST',
-      headers:{
-        'Content-Type':'application/json'
-      },
-      body:JSON.stringify({
-        image:dataUrl
-      })
-    });
+    await fetch(
+      '/api/analyze',
+      {
+        method:'POST',
+
+        headers:{
+          'Content-Type':
+          'application/json'
+        },
+
+        body:JSON.stringify({
+          image:dataUrl
+        })
+      }
+    );
 
 
     const data =
@@ -393,30 +411,83 @@ photoInput.addEventListener('change',async e=>{
     };
 
 
-    document.getElementById('rname').textContent =
-    data.name || 'Ukjent gjenstand';
+    document.getElementById(
+      'rname'
+    ).textContent =
+    data.name ||
+    'Ukjent gjenstand';
 
 
-    document.getElementById('rdesc').textContent =
-    data.description || '';
+    document.getElementById(
+      'rdesc'
+    ).textContent =
+    data.description ||
+    '';
 
 
-    const value =
-    Number(data.estimated_value_nok);
+    /*
+      VERDIVISNING
+
+      Støtter både:
+
+      1500
+
+      "1500 kr"
+
+      "1 200–1 800 kr"
+
+      "1200 - 1800 kr"
+    */
+
+    const rawValue =
+    data.estimated_value_nok;
 
 
-    document.getElementById('rprice').textContent =
-    Number.isFinite(value) && value > 0
-    ? value.toLocaleString('no-NO') + ' kr'
-    : 'Verdi ikke fastslått';
+    let displayValue =
+    'Verdi ikke fastslått';
 
 
-    document.getElementById('rconfidence').textContent =
+    if(
+      typeof rawValue === 'number' &&
+      Number.isFinite(rawValue) &&
+      rawValue > 0
+    ){
+
+      displayValue =
+      rawValue.toLocaleString(
+        'no-NO'
+      ) + ' kr';
+
+    }else if(
+      typeof rawValue === 'string' &&
+      rawValue.trim()
+    ){
+
+      displayValue =
+      rawValue.trim();
+
+    }
+
+
+    document.getElementById(
+      'rprice'
+    ).textContent =
+    displayValue;
+
+
+    document.getElementById(
+      'rconfidence'
+    ).textContent =
     'Identifiseringsikkerhet: ' +
-    (data.confidence || 'ukjent');
+    (
+      data.confidence ||
+      'ukjent'
+    );
 
 
-    result.classList.remove('hidden');
+    result.classList.remove(
+      'hidden'
+    );
 
 
   }catch(err){
@@ -428,9 +499,12 @@ photoInput.addEventListener('change',async e=>{
       'Det oppstod en feil.'
     );
 
+
   }finally{
 
-    loading.classList.add('hidden');
+    loading.classList.add(
+      'hidden'
+    );
 
   }
 
@@ -441,106 +515,136 @@ photoInput.addEventListener('change',async e=>{
 
 function fileToDataURL(file){
 
-  return new Promise((resolve,reject)=>{
+  return new Promise(
+    (resolve,reject)=>{
 
-    const url =
-    URL.createObjectURL(file);
+      const url =
+      URL.createObjectURL(file);
 
-    const img =
-    new Image();
-
-
-    img.onload = ()=>{
-
-      try{
-
-        const max = 1600;
-
-        let w =
-        img.naturalWidth;
-
-        let h =
-        img.naturalHeight;
+      const img =
+      new Image();
 
 
-        if(w > max || h > max){
+      img.onload = ()=>{
 
-          if(w > h){
+        try{
 
-            h =
-            Math.round(h * max / w);
+          const max =
+          1600;
 
-            w = max;
 
-          }else{
+          let w =
+          img.naturalWidth;
 
-            w =
-            Math.round(w * max / h);
+          let h =
+          img.naturalHeight;
 
-            h = max;
+
+          if(
+            w > max ||
+            h > max
+          ){
+
+            if(w > h){
+
+              h =
+              Math.round(
+                h * max / w
+              );
+
+              w = max;
+
+            }else{
+
+              w =
+              Math.round(
+                w * max / h
+              );
+
+              h = max;
+
+            }
 
           }
 
+
+          const canvas =
+          document.createElement(
+            'canvas'
+          );
+
+
+          canvas.width =
+          w;
+
+          canvas.height =
+          h;
+
+
+          const ctx =
+          canvas.getContext(
+            '2d'
+          );
+
+
+          ctx.drawImage(
+            img,
+            0,
+            0,
+            w,
+            h
+          );
+
+
+          const data =
+          canvas.toDataURL(
+            'image/jpeg',
+            0.85
+          );
+
+
+          URL.revokeObjectURL(
+            url
+          );
+
+
+          resolve(data);
+
+
+        }catch(err){
+
+          URL.revokeObjectURL(
+            url
+          );
+
+          reject(err);
+
         }
 
-
-        const canvas =
-        document.createElement('canvas');
-
-        canvas.width = w;
-        canvas.height = h;
+      };
 
 
-        const ctx =
-        canvas.getContext('2d');
+      img.onerror = ()=>{
 
-
-        ctx.drawImage(
-          img,
-          0,
-          0,
-          w,
-          h
+        URL.revokeObjectURL(
+          url
         );
 
 
-        const data =
-        canvas.toDataURL(
-          'image/jpeg',
-          0.85
+        reject(
+          new Error(
+            'Kunne ikke lese bildet.'
+          )
         );
 
-
-        URL.revokeObjectURL(url);
-
-        resolve(data);
+      };
 
 
-      }catch(err){
+      img.src =
+      url;
 
-        URL.revokeObjectURL(url);
-
-        reject(err);
-
-      }
-
-    };
-
-
-    img.onerror = ()=>{
-
-      URL.revokeObjectURL(url);
-
-      reject(
-        new Error('Kunne ikke lese bildet.')
-      );
-
-    };
-
-
-    img.src = url;
-
-  });
+    }
+  );
 
 }
 
@@ -549,51 +653,71 @@ function saveCurrent(){
 
   if(!current){
 
-    alert('Ingen gjenstand å lagre.');
+    alert(
+      'Ingen gjenstand å lagre.'
+    );
 
     return;
 
   }
 
 
+  /*
+    Beholder verdien som tekst.
+    Dette gjør at også intervaller som
+    "1 200–1 800 kr" kan lagres.
+  */
+
   const value =
-  Number(current.estimated_value_nok) || 0;
+  current.estimated_value_nok;
 
 
   items.push({
 
-    id:Date.now(),
+    id:
+    Date.now(),
+
 
     name:
     current.name ||
     'Ukjent gjenstand',
 
-    value:value,
+
+    value:
+    value || 0,
+
 
     condition:
     current.condition ||
     'Ukjent',
 
+
     description:
     current.description ||
     '',
+
 
     confidence:
     current.confidence ||
     '',
 
+
     img:
     current.img ||
     '',
 
+
     history:[{
 
       date:
-      new Date().toLocaleDateString(
+      new Date()
+      .toLocaleDateString(
         'no-NO'
       ),
 
-      value:value
+
+      value:
+      value || 0
 
     }]
 
@@ -616,20 +740,93 @@ function saveCurrent(){
 }
 
 
+function numericValue(value){
+
+  if(
+    typeof value === 'number' &&
+    Number.isFinite(value)
+  ){
+
+    return value;
+
+  }
+
+
+  if(
+    typeof value !== 'string'
+  ){
+
+    return 0;
+
+  }
+
+
+  /*
+    Forsøker å hente første tallet
+    fra verdien.
+
+    Eksempel:
+    "1 200–1 800 kr"
+    blir 1200
+
+    Dette brukes bare til
+    samlet verdi.
+  */
+
+  const match =
+  value.match(
+    /\d[\d\s.]*/
+  );
+
+
+  if(!match){
+    return 0;
+  }
+
+
+  const number =
+  Number(
+    match[0]
+    .replace(/\s/g,'')
+    .replace(/\./g,'')
+  );
+
+
+  return Number.isFinite(number)
+    ? number
+    : 0;
+
+}
+
+
 function renderItems(){
 
   const count =
-  document.getElementById('count');
+  document.getElementById(
+    'count'
+  );
+
 
   const total =
-  document.getElementById('total');
+  document.getElementById(
+    'total'
+  );
+
 
   const container =
-  document.getElementById('items');
+  document.getElementById(
+    'items'
+  );
 
 
-  if(!count || !total || !container){
+  if(
+    !count ||
+    !total ||
+    !container
+  ){
+
     return;
+
   }
 
 
@@ -640,7 +837,8 @@ function renderItems(){
   const totalValue =
   items.reduce(
     (sum,item)=>
-    sum + (Number(item.value) || 0),
+    sum +
+    numericValue(item.value),
     0
   );
 
@@ -664,55 +862,75 @@ function renderItems(){
 
 
   container.innerHTML =
-  items.map(item=>{
+  items.map(
+    item=>{
 
-    const value =
-    Number(item.value) || 0;
-
-
-    const date =
-    item.history &&
-    item.history.length
-    ? item.history[item.history.length-1].date
-    : '';
+      const value =
+      item.value ||
+      'Verdi ikke fastslått';
 
 
-    return `
+      const date =
+      item.history &&
+      item.history.length
+      ? item.history[
+          item.history.length - 1
+        ].date
+      : '';
 
-    <div class="card item">
 
-      ${
-        item.img
-        ? `<img
-             class="thumb"
-             src="${item.img}"
-             alt=""
-           >`
-        : `<div class="thumb"></div>`
-      }
+      return `
 
-      <div style="flex:1">
+      <div class="card item">
 
-        <b>
-          ${esc(item.name)}
-        </b>
+        ${
+          item.img
+          ? `<img
+               class="thumb"
+               src="${item.img}"
+               alt=""
+             >`
+          : `<div class="thumb"></div>`
+        }
 
-        <div class="price">
-          ${value.toLocaleString('no-NO')} kr
-        </div>
 
-        <div class="muted">
-          ${esc(item.condition || 'Ukjent')}
-          ${date ? ' · ' + esc(date) : ''}
+        <div style="flex:1">
+
+          <b>
+            ${esc(item.name)}
+          </b>
+
+
+          <div class="price">
+            ${esc(
+              String(value)
+            )}
+          </div>
+
+
+          <div class="muted">
+
+            ${esc(
+              item.condition ||
+              'Ukjent'
+            )}
+
+            ${
+              date
+              ? ' · ' + esc(date)
+              : ''
+            }
+
+          </div>
+
         </div>
 
       </div>
 
-    </div>
+      `;
 
-    `;
-
-  }).join('');
+    }
+  ).join('');
 
 }
 
@@ -721,7 +939,9 @@ function saveWant(){
 
   const name =
   document
-  .getElementById('wantName')
+  .getElementById(
+    'wantName'
+  )
   .value
   .trim();
 
@@ -753,13 +973,20 @@ function saveWant(){
 
   wants.push({
 
-    id:Date.now(),
+    id:
+    Date.now(),
 
-    name:name,
 
-    price:price,
+    name:
+    name,
 
-    note:note
+
+    price:
+    price,
+
+
+    note:
+    note
 
   });
 
@@ -772,17 +999,20 @@ function saveWant(){
 
   document.getElementById(
     'wantName'
-  ).value='';
+  ).value =
+  '';
 
 
   document.getElementById(
     'wantPrice'
-  ).value='';
+  ).value =
+  '';
 
 
   document.getElementById(
     'wantNote'
-  ).value='';
+  ).value =
+  '';
 
 
   renderWants();
@@ -793,7 +1023,9 @@ function saveWant(){
 function renderWants(){
 
   const container =
-  document.getElementById('wants');
+  document.getElementById(
+    'wants'
+  );
 
 
   if(!container) return;
@@ -812,31 +1044,43 @@ function renderWants(){
 
 
   container.innerHTML =
-  wants.map(w=>`
+  wants.map(
+    w=>`
 
-    <div class="card">
+      <div class="card">
 
-      <b>
-        🔎 ${esc(w.name)}
-      </b>
+        <b>
+          🔎 ${esc(w.name)}
+        </b>
 
-      <div>
-        Opptil
-        ${(Number(w.price)||0)
-          .toLocaleString('no-NO')}
-        kr
+
+        <div>
+
+          Opptil
+          ${
+            (Number(w.price)||0)
+            .toLocaleString(
+              'no-NO'
+            )
+          }
+          kr
+
+        </div>
+
+
+        <div class="muted">
+
+          ${esc(
+            w.note ||
+            'Ingen kommentar'
+          )}
+
+        </div>
+
       </div>
 
-      <div class="muted">
-        ${esc(
-          w.note ||
-          'Ingen kommentar'
-        )}
-      </div>
-
-    </div>
-
-  `).join('');
+  `
+  ).join('');
 
 }
 
@@ -849,11 +1093,20 @@ function esc(value){
     /[&<>"']/g,
     m=>({
 
-      '&':'&amp;',
-      '<':'&lt;',
-      '>':'&gt;',
-      '"':'&quot;',
-      "'":'&#39;'
+      '&':
+      '&amp;',
+
+      '<':
+      '&lt;',
+
+      '>':
+      '&gt;',
+
+      '"':
+      '&quot;',
+
+      "'":
+      '&#39;'
 
     }[m])
   );
