@@ -184,6 +184,20 @@ label{
   margin-top:12px
 }
 
+.auth-message{
+  padding:11px 12px;
+  border-radius:12px;
+  background:#f1f5f9;
+  margin-top:12px;
+  line-height:1.45
+}
+
+.account-email{
+  font-size:19px;
+  font-weight:750;
+  word-break:break-word
+}
+
 hr{
   border:0;
   border-top:1px solid #e5e7eb;
@@ -203,28 +217,117 @@ hr{
 
 <div class="nav">
 
-  <button
-    class="primary"
-    onclick="show('scan')"
-  >
+  <button class="primary" onclick="show('scan')">
     📷 Skann
   </button>
 
-  <button
-    class="secondary"
-    onclick="show('collection')"
-  >
+  <button class="secondary" onclick="show('collection')">
     📦 Min samling
   </button>
 
-  <button
-    class="secondary"
-    onclick="show('wanted')"
-  >
+  <button class="secondary" onclick="show('wanted')">
     🔎 Ønsker å kjøpe
   </button>
 
+  <button class="secondary" onclick="show('account')">
+    👤 Min side
+  </button>
+
 </div>
+
+
+<!-- ========================= -->
+<!-- MIN SIDE -->
+<!-- ========================= -->
+
+<section id="account" class="hidden">
+
+  <div class="card" id="loggedOutCard">
+
+    <h2>👤 Min side</h2>
+
+    <p class="muted">
+      Logg inn for å lagre samlingen og kjøpsønskene dine på kontoen din.
+      Da kan du bruke Verdikart på flere enheter.
+    </p>
+
+    <label style="margin-top:14px">
+      E-post
+      <input
+        id="authEmail"
+        type="email"
+        autocomplete="email"
+        placeholder="din@email.no"
+      >
+    </label>
+
+    <label style="margin-top:12px">
+      Passord
+      <input
+        id="authPassword"
+        type="password"
+        autocomplete="current-password"
+        placeholder="Minst 6 tegn"
+      >
+    </label>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px">
+
+      <button
+        class="primary"
+        onclick="login()"
+      >
+        🔑 Logg inn
+      </button>
+
+      <button
+        class="secondary"
+        onclick="signup()"
+      >
+        ✉️ Opprett konto
+      </button>
+
+    </div>
+
+    <div
+      id="authMessage"
+      class="auth-message hidden"
+    ></div>
+
+  </div>
+
+
+  <div
+    class="card hidden"
+    id="loggedInCard"
+  >
+
+    <h2>👤 Min side</h2>
+
+    <p class="muted">
+      Du er logget inn som:
+    </p>
+
+    <div
+      id="accountEmail"
+      class="account-email"
+    ></div>
+
+    <div class="auth-message">
+      ☁️ Samlingen og kjøpsønskene dine lagres på kontoen din.
+    </div>
+
+    <button
+      class="secondary"
+      style="margin-top:14px;width:100%"
+      onclick="logout()"
+    >
+      🚪 Logg ut
+    </button>
+
+  </div>
+
+</section>
 
 
 <!-- ========================= -->
@@ -243,8 +346,6 @@ Verdikart bruker både bildet og informasjonen du skriver for å forsøke å ide
 </p>
 
 
-<!-- BILDE -->
-
 <label>
   📷 Velg bilde
 
@@ -257,16 +358,12 @@ Verdikart bruker både bildet og informasjonen du skriver for å forsøke å ide
 </label>
 
 
-<!-- FORHÅNDSVISNING -->
-
 <img
   id="preview"
   class="preview hidden"
   alt="Valgt bilde"
 >
 
-
-<!-- BESKRIVELSE -->
 
 <label style="margin-top:16px">
 
@@ -296,8 +393,6 @@ Du kan for eksempel skrive:
 </div>
 
 
-<!-- ANALYSER-KNAPP -->
-
 <button
   id="analyzeButton"
   class="primary analyze-button"
@@ -307,8 +402,6 @@ Du kan for eksempel skrive:
 </button>
 
 
-<!-- LASTING -->
-
 <div
   id="loading"
   class="loading hidden"
@@ -316,8 +409,6 @@ Du kan for eksempel skrive:
   🔍 Analyserer bilde og informasjon …
 </div>
 
-
-<!-- RESULTAT -->
 
 <div
   id="result"
@@ -378,6 +469,28 @@ Du kan for eksempel skrive:
   class="hidden"
 >
 
+<div
+  id="collectionLoginCard"
+  class="card hidden"
+>
+  <h2>📦 Min samling</h2>
+  <p>
+    Logg inn for å se og lagre din personlige samling.
+  </p>
+  <button
+    class="primary"
+    style="width:100%"
+    onclick="show('account')"
+  >
+    👤 Gå til Min side
+  </button>
+</div>
+
+<div
+  id="collectionContent"
+  class="hidden"
+>
+
 <div class="card">
 
 <h2>Min samling</h2>
@@ -422,6 +535,8 @@ Gjenstander
 
 <div id="items"></div>
 
+</div>
+
 </section>
 
 
@@ -431,6 +546,28 @@ Gjenstander
 
 <section
   id="wanted"
+  class="hidden"
+>
+
+<div
+  id="wantedLoginCard"
+  class="card hidden"
+>
+  <h2>🔎 Jeg ønsker å kjøpe</h2>
+  <p>
+    Logg inn for å lagre dine personlige kjøpsønsker.
+  </p>
+  <button
+    class="primary"
+    style="width:100%"
+    onclick="show('account')"
+  >
+    👤 Gå til Min side
+  </button>
+</div>
+
+<div
+  id="wantedContent"
   class="hidden"
 >
 
@@ -489,31 +626,52 @@ Kommentar
 
 <div id="wants"></div>
 
+</div>
+
 </section>
 
 </main>
 
 
+<!-- Supabase-klienten -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
 <script>
+
+/* ========================= */
+/* SUPABASE */
+/* ========================= */
+
+const SUPABASE_URL =
+  'https://tiqwlxpclqqncykdwvjf.supabase.co';
+
+const SUPABASE_PUBLISHABLE_KEY =
+  'sb_publishable_2lQgSsDQRbOO4DIg6pbDsg_5n1lfGKS';
+
+const supabaseClient =
+  window.supabase.createClient(
+    SUPABASE_URL,
+    SUPABASE_PUBLISHABLE_KEY
+  );
 
 
 /* ========================= */
 /* DATA */
 /* ========================= */
 
-const items =
-JSON.parse(
-  localStorage.getItem('vk_items') || '[]'
-);
+let items =
+  JSON.parse(
+    localStorage.getItem('vk_items') || '[]'
+  );
 
-
-const wants =
-JSON.parse(
-  localStorage.getItem('vk_wants') || '[]'
-);
-
+let wants =
+  JSON.parse(
+    localStorage.getItem('vk_wants') || '[]'
+  );
 
 let current = null;
+let currentUser = null;
+let cloudLoaded = false;
 
 
 /* ========================= */
@@ -525,35 +683,36 @@ function show(id){
   [
     'scan',
     'collection',
-    'wanted'
+    'wanted',
+    'account'
   ].forEach(x=>{
 
     const element =
-    document.getElementById(x);
+      document.getElementById(x);
 
     if(element){
-
       element.classList.toggle(
         'hidden',
         x !== id
       );
-
     }
 
   });
 
 
   if(id === 'collection'){
-
-    renderItems();
-
+    updatePrivateSections();
+    if(currentUser){
+      renderItems();
+    }
   }
 
 
   if(id === 'wanted'){
-
-    renderWants();
-
+    updatePrivateSections();
+    if(currentUser){
+      renderWants();
+    }
   }
 
 }
@@ -564,17 +723,588 @@ function show(id){
 /* ========================= */
 
 const photoInput =
-document.getElementById('photo');
-
+  document.getElementById('photo');
 
 const analyzeButton =
-document.getElementById('analyzeButton');
-
+  document.getElementById('analyzeButton');
 
 const itemDescription =
-document.getElementById(
-  'itemDescription'
+  document.getElementById('itemDescription');
+
+
+/* ========================= */
+/* AUTH UI */
+/* ========================= */
+
+function setAuthMessage(message){
+
+  const box =
+    document.getElementById('authMessage');
+
+  if(!box){
+    return;
+  }
+
+  box.textContent = message || '';
+
+  box.classList.toggle(
+    'hidden',
+    !message
+  );
+}
+
+
+function updateAuthUI(){
+
+  const loggedOutCard =
+    document.getElementById('loggedOutCard');
+
+  const loggedInCard =
+    document.getElementById('loggedInCard');
+
+  const email =
+    document.getElementById('accountEmail');
+
+  if(currentUser){
+
+    loggedOutCard.classList.add('hidden');
+    loggedInCard.classList.remove('hidden');
+
+    email.textContent =
+      currentUser.email || '';
+
+  }
+  else{
+
+    loggedOutCard.classList.remove('hidden');
+    loggedInCard.classList.add('hidden');
+
+    email.textContent = '';
+
+  }
+
+  updatePrivateSections();
+
+}
+
+
+function updatePrivateSections(){
+
+  const collectionLogin =
+    document.getElementById('collectionLoginCard');
+
+  const collectionContent =
+    document.getElementById('collectionContent');
+
+  const wantedLogin =
+    document.getElementById('wantedLoginCard');
+
+  const wantedContent =
+    document.getElementById('wantedContent');
+
+  if(currentUser){
+
+    collectionLogin.classList.add('hidden');
+    collectionContent.classList.remove('hidden');
+
+    wantedLogin.classList.add('hidden');
+    wantedContent.classList.remove('hidden');
+
+  }
+  else{
+
+    collectionLogin.classList.remove('hidden');
+    collectionContent.classList.add('hidden');
+
+    wantedLogin.classList.remove('hidden');
+    wantedContent.classList.add('hidden');
+
+  }
+
+}
+
+
+/* ========================= */
+/* OPPRETT KONTO */
+/* ========================= */
+
+async function signup(){
+
+  const email =
+    document.getElementById('authEmail')
+      .value
+      .trim();
+
+  const password =
+    document.getElementById('authPassword')
+      .value;
+
+  if(!email || !password){
+
+    setAuthMessage(
+      'Skriv inn e-post og passord.'
+    );
+
+    return;
+
+  }
+
+  if(password.length < 6){
+
+    setAuthMessage(
+      'Passordet må være minst 6 tegn.'
+    );
+
+    return;
+
+  }
+
+  setAuthMessage(
+    'Oppretter konto …'
+  );
+
+  try{
+
+    const { data, error } =
+      await supabaseClient.auth.signUp({
+
+        email,
+        password,
+
+        options:{
+          emailRedirectTo:
+            window.location.origin
+        }
+
+      });
+
+    if(error){
+      throw error;
+    }
+
+    if(data.session){
+
+      setAuthMessage(
+        'Kontoen er opprettet og du er logget inn.'
+      );
+
+    }
+    else{
+
+      setAuthMessage(
+        'Kontoen er opprettet. Sjekk e-posten din og bekreft e-postadressen før du logger inn.'
+      );
+
+    }
+
+  }
+  catch(err){
+
+    console.error(err);
+
+    setAuthMessage(
+      err.message ||
+      'Kunne ikke opprette konto.'
+    );
+
+  }
+
+}
+
+
+/* ========================= */
+/* LOGG INN */
+/* ========================= */
+
+async function login(){
+
+  const email =
+    document.getElementById('authEmail')
+      .value
+      .trim();
+
+  const password =
+    document.getElementById('authPassword')
+      .value;
+
+  if(!email || !password){
+
+    setAuthMessage(
+      'Skriv inn e-post og passord.'
+    );
+
+    return;
+
+  }
+
+  setAuthMessage(
+    'Logger inn …'
+  );
+
+  try{
+
+    const { error } =
+      await supabaseClient.auth
+        .signInWithPassword({
+          email,
+          password
+        });
+
+    if(error){
+      throw error;
+    }
+
+    setAuthMessage(
+      'Du er logget inn.'
+    );
+
+  }
+  catch(err){
+
+    console.error(err);
+
+    setAuthMessage(
+      err.message ||
+      'Kunne ikke logge inn.'
+    );
+
+  }
+
+}
+
+
+/* ========================= */
+/* LOGG UT */
+/* ========================= */
+
+async function logout(){
+
+  const { error } =
+    await supabaseClient.auth.signOut();
+
+  if(error){
+
+    alert(
+      error.message ||
+      'Kunne ikke logge ut.'
+    );
+
+    return;
+
+  }
+
+  currentUser = null;
+  cloudLoaded = false;
+
+  updateAuthUI();
+
+  show('account');
+
+}
+
+
+/* ========================= */
+/* AUTH STATE */
+/* ========================= */
+
+async function handleAuthSession(session){
+
+  currentUser =
+    session?.user || null;
+
+  updateAuthUI();
+
+  if(currentUser){
+
+    await loadCloudData();
+
+  }
+  else{
+
+    cloudLoaded = false;
+
+  }
+
+}
+
+
+supabaseClient.auth.onAuthStateChange(
+  (event, session)=>{
+
+    /*
+      Ikke gjør tunge Supabase-kall
+      direkte inne i callbacken.
+    */
+
+    setTimeout(
+      ()=>{
+        handleAuthSession(session);
+      },
+      0
+    );
+
+  }
 );
+
+
+/* ========================= */
+/* LASTE DATA FRA SUPABASE */
+/* ========================= */
+
+async function loadCloudData(){
+
+  if(!currentUser){
+    return;
+  }
+
+  try{
+
+    const collectionResult =
+      await supabaseClient
+        .from('collection_items')
+        .select('*')
+        .eq('user_id', currentUser.id)
+        .order('created_at', {
+          ascending:false
+        });
+
+    if(collectionResult.error){
+      throw collectionResult.error;
+    }
+
+
+    const wantedResult =
+      await supabaseClient
+        .from('wanted_items')
+        .select('*')
+        .eq('user_id', currentUser.id)
+        .order('created_at', {
+          ascending:false
+        });
+
+    if(wantedResult.error){
+      throw wantedResult.error;
+    }
+
+
+    /*
+      Første gang brukeren logger inn på denne
+      enheten: hvis kontoen er tom, flyttes
+      eksisterende lokale data til kontoen.
+    */
+
+    const localItems =
+      JSON.parse(
+        localStorage.getItem('vk_items') || '[]'
+      );
+
+    const localWants =
+      JSON.parse(
+        localStorage.getItem('vk_wants') || '[]'
+      );
+
+    const cloudIsEmpty =
+      (collectionResult.data || []).length === 0 &&
+      (wantedResult.data || []).length === 0;
+
+    const hasLocalData =
+      localItems.length > 0 ||
+      localWants.length > 0;
+
+    if(cloudIsEmpty && hasLocalData){
+
+      if(localItems.length){
+
+        const rows =
+          localItems.map(item=>({
+
+            user_id:
+              currentUser.id,
+
+            name:
+              item.name ||
+              'Ukjent gjenstand',
+
+            description:
+              item.description ||
+              '',
+
+            condition:
+              item.condition ||
+              'Ukjent',
+
+            confidence:
+              item.confidence ||
+              '',
+
+            estimated_value_nok:
+              item.value || 0,
+
+            image_url:
+              item.img || ''
+
+          }));
+
+        const { error } =
+          await supabaseClient
+            .from('collection_items')
+            .insert(rows);
+
+        if(error){
+          throw error;
+        }
+
+      }
+
+
+      if(localWants.length){
+
+        const rows =
+          localWants.map(item=>({
+
+            user_id:
+              currentUser.id,
+
+            name:
+              item.name,
+
+            target_price_nok:
+              item.price || 0,
+
+            description:
+              item.note || ''
+
+          }));
+
+        const { error } =
+          await supabaseClient
+            .from('wanted_items')
+            .insert(rows);
+
+        if(error){
+          throw error;
+        }
+
+      }
+
+
+      /*
+        Hent dataene på nytt etter migreringen.
+      */
+
+      return loadCloudData();
+
+    }
+
+
+    const cloudItems =
+      (collectionResult.data || [])
+        .map(row=>({
+
+          id:
+            row.id,
+
+          name:
+            row.name ||
+            'Ukjent gjenstand',
+
+          value:
+            row.estimated_value_nok ||
+            0,
+
+          condition:
+            row.condition ||
+            'Ukjent',
+
+          description:
+            row.description ||
+            '',
+
+          userDescription:
+            row.description ||
+            '',
+
+          confidence:
+            row.confidence ||
+            '',
+
+          img:
+            row.image_url ||
+            '',
+
+          history:[
+            {
+              date:
+                new Date(
+                  row.created_at
+                ).toLocaleDateString(
+                  'no-NO'
+                ),
+
+              value:
+                row.estimated_value_nok ||
+                0
+            }
+          ]
+
+        }));
+
+
+    const cloudWants =
+      (wantedResult.data || [])
+        .map(row=>({
+
+          id:
+            row.id,
+
+          name:
+            row.name,
+
+          price:
+            row.target_price_nok ||
+            0,
+
+          note:
+            row.description ||
+            ''
+
+        }));
+
+
+    items =
+      cloudItems;
+
+    wants =
+      cloudWants;
+
+    localStorage.setItem(
+      'vk_items',
+      JSON.stringify(items)
+    );
+
+    localStorage.setItem(
+      'vk_wants',
+      JSON.stringify(wants)
+    );
+
+    cloudLoaded = true;
+
+    renderItems();
+    renderWants();
+
+  }
+  catch(err){
+
+    console.error(err);
+
+    alert(
+      'Kunne ikke hente data fra kontoen. ' +
+      (err.message || '')
+    );
+
+  }
+
+}
 
 
 /* ========================= */
@@ -588,57 +1318,49 @@ if(photoInput){
     e=>{
 
       const f =
-      e.target.files[0];
+        e.target.files[0];
 
       if(!f){
 
         analyzeButton.disabled =
-        true;
+          true;
 
         return;
 
       }
 
-
       const preview =
-      document.getElementById(
-        'preview'
-      );
-
+        document.getElementById(
+          'preview'
+        );
 
       const result =
-      document.getElementById(
-        'result'
-      );
-
+        document.getElementById(
+          'result'
+        );
 
       const loading =
-      document.getElementById(
-        'loading'
-      );
-
+        document.getElementById(
+          'loading'
+        );
 
       preview.src =
-      URL.createObjectURL(f);
-
+        URL.createObjectURL(f);
 
       preview.classList.remove(
         'hidden'
       );
 
-
       result.classList.add(
         'hidden'
       );
-
 
       loading.classList.add(
         'hidden'
       );
 
-
       analyzeButton.disabled =
-      false;
+        false;
 
     }
   );
@@ -657,8 +1379,7 @@ if(analyzeButton){
     async ()=>{
 
       const f =
-      photoInput.files[0];
-
+        photoInput.files[0];
 
       if(!f){
 
@@ -670,90 +1391,69 @@ if(analyzeButton){
 
       }
 
-
       const description =
-      itemDescription.value.trim();
-
+        itemDescription.value.trim();
 
       const preview =
-      document.getElementById(
-        'preview'
-      );
-
+        document.getElementById(
+          'preview'
+        );
 
       const loading =
-      document.getElementById(
-        'loading'
-      );
-
+        document.getElementById(
+          'loading'
+        );
 
       const result =
-      document.getElementById(
-        'result'
-      );
-
+        document.getElementById(
+          'result'
+        );
 
       analyzeButton.disabled =
-      true;
-
+        true;
 
       loading.classList.remove(
         'hidden'
       );
 
-
       result.classList.add(
         'hidden'
       );
 
-
       try{
 
-        /*
-          Gjør bildet mindre før
-          det sendes til API-et.
-        */
-
         const dataUrl =
-        await fileToDataURL(f);
-
+          await fileToDataURL(f);
 
         preview.src =
-        dataUrl;
-
-
-        /*
-          Sender både bilde og
-          brukerens beskrivelse.
-        */
+          dataUrl;
 
         const res =
-        await fetch(
-          '/api/analyze',
-          {
-            method:'POST',
+          await fetch(
+            '/api/analyze',
+            {
+              method:'POST',
 
-            headers:{
-              'Content-Type':
-              'application/json'
-            },
+              headers:{
+                'Content-Type':
+                  'application/json'
+              },
 
-            body:JSON.stringify({
+              body:JSON.stringify({
 
-              image:dataUrl,
+                image:
+                  dataUrl,
 
-              description:
-              description
+                description:
+                  description
 
-            })
+              })
 
-          }
-        );
-
+            }
+          );
 
         const data =
-        await res.json();
-
+          await res.json();
 
         if(!res.ok){
 
@@ -764,61 +1464,40 @@ if(analyzeButton){
 
         }
 
-
-        /*
-          Lagre resultatet
-        */
-
         current = {
 
           ...data,
 
-          img:dataUrl,
+          img:
+            dataUrl,
 
           userDescription:
-          description
+            description
 
         };
-
-
-        /*
-          NAVN
-        */
 
         document.getElementById(
           'rname'
         ).textContent =
-        data.name ||
-        'Ukjent gjenstand';
-
-
-        /*
-          BESKRIVELSE
-        */
+          data.name ||
+          'Ukjent gjenstand';
 
         document.getElementById(
           'rdesc'
         ).textContent =
-        data.description ||
-        '';
-
-
-        /*
-          VERDI
-        */
+          data.description ||
+          '';
 
         const rawValue =
-        data.estimated_value_nok;
-
+          data.estimated_value_nok;
 
         let displayValue =
-        'Verdi ikke fastslått';
-
+          'Verdi ikke fastslått';
 
         if(
 
           typeof rawValue ===
-          'number'
+            'number'
 
           &&
 
@@ -833,17 +1512,15 @@ if(analyzeButton){
         ){
 
           displayValue =
-          rawValue.toLocaleString(
-            'no-NO'
-          ) + ' kr';
+            rawValue.toLocaleString(
+              'no-NO'
+            ) + ' kr';
 
         }
-
-
         else if(
 
           typeof rawValue ===
-          'string'
+            'string'
 
           &&
 
@@ -852,62 +1529,37 @@ if(analyzeButton){
         ){
 
           displayValue =
-          rawValue.trim();
+            rawValue.trim();
 
         }
-
 
         document.getElementById(
           'rprice'
         ).textContent =
-        displayValue;
-
-
-        /*
-          SIKKERHET
-        */
+          displayValue;
 
         document.getElementById(
           'rconfidence'
         ).textContent =
-        'Identifiseringsikkerhet: ' +
-
-        (
-
-          data.confidence ||
-
-          'ukjent'
-
-        );
-
-
-        /*
-          Vis resultat
-        */
+          'Identifiseringsikkerhet: ' +
+          (
+            data.confidence ||
+            'ukjent'
+          );
 
         result.classList.remove(
           'hidden'
         );
-
-
-        /*
-          Scroll rolig ned til
-          resultatet.
-        */
 
         result.scrollIntoView({
           behavior:'smooth',
           block:'start'
         });
 
-
       }
-
-
       catch(err){
 
         console.error(err);
-
 
         alert(
           err.message ||
@@ -915,17 +1567,14 @@ if(analyzeButton){
         );
 
       }
-
-
       finally{
 
         loading.classList.add(
           'hidden'
         );
 
-
         analyzeButton.disabled =
-        false;
+          false;
 
       }
 
@@ -945,83 +1594,69 @@ function fileToDataURL(file){
     (resolve,reject)=>{
 
       const url =
-      URL.createObjectURL(file);
-
+        URL.createObjectURL(file);
 
       const img =
-      new Image();
-
+        new Image();
 
       img.onload = ()=>{
 
         try{
 
           const max =
-          1600;
-
+            1600;
 
           let w =
-          img.naturalWidth;
-
+            img.naturalWidth;
 
           let h =
-          img.naturalHeight;
-
+            img.naturalHeight;
 
           if(
-
             w > max ||
-
             h > max
-
           ){
 
             if(w > h){
 
               h =
-              Math.round(
-                h * max / w
-              );
+                Math.round(
+                  h * max / w
+                );
 
               w =
-              max;
+                max;
 
             }
-
             else{
 
               w =
-              Math.round(
-                w * max / h
-              );
+                Math.round(
+                  w * max / h
+                );
 
               h =
-              max;
+                max;
 
             }
 
           }
 
-
           const canvas =
-          document.createElement(
-            'canvas'
-          );
-
+            document.createElement(
+              'canvas'
+            );
 
           canvas.width =
-          w;
-
+            w;
 
           canvas.height =
-          h;
-
+            h;
 
           const ctx =
-          canvas.getContext(
-            '2d'
-          );
-
+            canvas.getContext(
+              '2d'
+            );
 
           ctx.drawImage(
             img,
@@ -1031,30 +1666,24 @@ function fileToDataURL(file){
             h
           );
 
-
           const data =
-          canvas.toDataURL(
-            'image/jpeg',
-            0.85
-          );
-
+            canvas.toDataURL(
+              'image/jpeg',
+              0.85
+            );
 
           URL.revokeObjectURL(
             url
           );
 
-
           resolve(data);
 
         }
-
-
         catch(err){
 
           URL.revokeObjectURL(
             url
           );
-
 
           reject(err);
 
@@ -1062,13 +1691,11 @@ function fileToDataURL(file){
 
       };
 
-
       img.onerror = ()=>{
 
         URL.revokeObjectURL(
           url
         );
-
 
         reject(
           new Error(
@@ -1078,9 +1705,8 @@ function fileToDataURL(file){
 
       };
 
-
       img.src =
-      url;
+        url;
 
     }
   );
@@ -1092,7 +1718,7 @@ function fileToDataURL(file){
 /* LAGRE GJENSTAND */
 /* ========================= */
 
-function saveCurrent(){
+async function saveCurrent(){
 
   if(!current){
 
@@ -1104,80 +1730,140 @@ function saveCurrent(){
 
   }
 
+  if(!currentUser){
+
+    alert(
+      'Logg inn på Min side før du lagrer gjenstanden.'
+    );
+
+    show('account');
+
+    return;
+
+  }
 
   const value =
-  current.estimated_value_nok;
+    current.estimated_value_nok;
 
+  const row = {
 
-  items.push({
-
-    id:
-    Date.now(),
-
+    user_id:
+      currentUser.id,
 
     name:
-    current.name ||
-    'Ukjent gjenstand',
-
-
-    value:
-    value || 0,
-
-
-    condition:
-    current.condition ||
-    'Ukjent',
-
+      current.name ||
+      'Ukjent gjenstand',
 
     description:
-    current.description ||
-    '',
+      current.description ||
+      '',
 
-
-    userDescription:
-    current.userDescription ||
-    '',
-
+    condition:
+      current.condition ||
+      'Ukjent',
 
     confidence:
-    current.confidence ||
-    '',
+      current.confidence ||
+      '',
+
+    estimated_value_nok:
+      value || 0,
+
+    image_url:
+      current.img ||
+      ''
+
+  };
 
 
-    img:
-    current.img ||
-    '',
+  try{
+
+    const { data, error } =
+      await supabaseClient
+        .from('collection_items')
+        .insert(row)
+        .select()
+        .single();
+
+    if(error){
+      throw error;
+    }
 
 
-    history:[{
+    const savedItem = {
 
-      date:
-      new Date()
-      .toLocaleDateString(
-        'no-NO'
-      ),
+      id:
+        data.id,
 
+      name:
+        data.name,
 
       value:
-      value || 0
+        data.estimated_value_nok,
 
-    }]
+      condition:
+        data.condition,
 
-  });
+      description:
+        data.description,
+
+      userDescription:
+        current.userDescription ||
+        '',
+
+      confidence:
+        data.confidence,
+
+      img:
+        data.image_url,
+
+      history:[
+        {
+          date:
+            new Date(
+              data.created_at
+            ).toLocaleDateString(
+              'no-NO'
+            ),
+
+          value:
+            data.estimated_value_nok ||
+            0
+        }
+      ]
+
+    };
 
 
-  localStorage.setItem(
-    'vk_items',
-    JSON.stringify(items)
-  );
+    items.unshift(
+      savedItem
+    );
 
 
-  alert(
-    'Gjenstanden er lagret.'
-  );
+    localStorage.setItem(
+      'vk_items',
+      JSON.stringify(items)
+    );
 
 
-  show('collection');
+    alert(
+      'Gjenstanden er lagret på kontoen din.'
+    );
+
+
+    show('collection');
+
+  }
+  catch(err){
+
+    console.error(err);
+
+    alert(
+      'Kunne ikke lagre gjenstanden. ' +
+      (err.message || '')
+    );
+
+  }
 
 }
 
@@ -1189,36 +1875,31 @@ function saveCurrent(){
 function numericValue(value){
 
   if(
-
     typeof value ===
-    'number'
+      'number'
 
     &&
 
     Number.isFinite(value)
-
   ){
 
     return value;
 
   }
 
-
   if(
     typeof value !==
-    'string'
+      'string'
   ){
 
     return 0;
 
   }
 
-
   const match =
-  value.match(
-    /\d[\d\s.]*/
-  );
-
+    value.match(
+      /\d[\d\s.]*/
+    );
 
   if(!match){
 
@@ -1226,24 +1907,18 @@ function numericValue(value){
 
   }
 
-
   const number =
-  Number(
-
-    match[0]
-
-      .replace(
-        /\s/g,
-        ''
-      )
-
-      .replace(
-        /\./g,
-        ''
-      )
-
-  );
-
+    Number(
+      match[0]
+        .replace(
+          /\s/g,
+          ''
+        )
+        .replace(
+          /\./g,
+          ''
+        )
+    );
 
   return Number.isFinite(number)
     ? number
@@ -1259,31 +1934,24 @@ function numericValue(value){
 function renderItems(){
 
   const count =
-  document.getElementById(
-    'count'
-  );
-
+    document.getElementById(
+      'count'
+    );
 
   const total =
-  document.getElementById(
-    'total'
-  );
-
+    document.getElementById(
+      'total'
+    );
 
   const container =
-  document.getElementById(
-    'items'
-  );
-
+    document.getElementById(
+      'items'
+    );
 
   if(
-
     !count ||
-
     !total ||
-
     !container
-
   ){
 
     return;
@@ -1292,39 +1960,35 @@ function renderItems(){
 
 
   count.textContent =
-  items.length;
+    items.length;
 
 
   const totalValue =
-  items.reduce(
+    items.reduce(
 
-    (sum,item)=>
+      (sum,item)=>
+        sum +
+        numericValue(
+          item.value
+        ),
 
-      sum +
+      0
 
-      numericValue(
-        item.value
-      ),
-
-    0
-
-  );
+    );
 
 
   total.textContent =
-  totalValue.toLocaleString(
-    'no-NO'
-  ) + ' kr';
+    totalValue.toLocaleString(
+      'no-NO'
+    ) + ' kr';
 
 
   if(!items.length){
 
     container.innerHTML =
-    '<div class="card">' +
-
-    '<p>Samlingen er tom.</p>' +
-
-    '</div>';
+      '<div class="card">' +
+      '<p>Samlingen er tom.</p>' +
+      '</div>';
 
     return;
 
@@ -1332,91 +1996,84 @@ function renderItems(){
 
 
   container.innerHTML =
-  items.map(
-    item=>{
+    items.map(
+      item=>{
 
-      const value =
-      item.value ||
-
-      'Verdi ikke fastslått';
-
-
-      const date =
-
-        item.history &&
-
-        item.history.length
-
-        ?
-
-        item.history[
-          item.history.length - 1
-        ].date
-
-        :
-
-        '';
+        const value =
+          item.value ||
+          'Verdi ikke fastslått';
 
 
-      return `
-
-      <div class="card item">
-
-        ${
-          item.img
-
-          ?
-
-          `<img
-            class="thumb"
-            src="${item.img}"
-            alt=""
-          >`
-
-          :
-
-          `<div class="thumb"></div>`
-        }
+        const date =
+          item.history &&
+          item.history.length
+            ?
+              item.history[
+                item.history.length - 1
+              ].date
+            :
+              '';
 
 
-        <div style="flex:1">
+        return `
 
-          <b>
-            ${esc(item.name)}
-          </b>
-
-
-          <div class="price">
-            ${esc(
-              String(value)
-            )}
-          </div>
-
-
-          <div class="muted">
-
-            ${esc(
-              item.condition ||
-              'Ukjent'
-            )}
+          <div class="card item">
 
             ${
-              date
-              ? ' · ' + esc(date)
-              : ''
+              item.img
+
+              ?
+
+              `<img
+                class="thumb"
+                src="${item.img}"
+                alt=""
+              >`
+
+              :
+
+              `<div class="thumb"></div>`
             }
+
+
+            <div style="flex:1">
+
+              <b>
+                ${esc(item.name)}
+              </b>
+
+
+              <div class="price">
+                ${esc(
+                  String(value)
+                )}
+              </div>
+
+
+              <div class="muted">
+
+                ${esc(
+                  item.condition ||
+                  'Ukjent'
+                )}
+
+                ${
+                  date
+                    ? ' · ' + esc(date)
+                    : ''
+                }
+
+              </div>
+
+            </div>
 
           </div>
 
-        </div>
+        `;
 
-      </div>
+      }
 
-      `;
-
-    }
-
-  ).join('');
+    ).join('');
 
 }
 
@@ -1425,15 +2082,26 @@ function renderItems(){
 /* KJØPSØNSKE */
 /* ========================= */
 
-function saveWant(){
+async function saveWant(){
+
+  if(!currentUser){
+
+    alert(
+      'Logg inn på Min side før du lagrer et kjøpsønske.'
+    );
+
+    show('account');
+
+    return;
+
+  }
+
 
   const name =
-  document
-  .getElementById(
-    'wantName'
-  )
-  .value
-  .trim();
+    document
+      .getElementById('wantName')
+      .value
+      .trim();
 
 
   if(!name){
@@ -1448,64 +2116,102 @@ function saveWant(){
 
 
   const price =
-  Number(
-    document.getElementById(
-      'wantPrice'
-    ).value
-  ) || 0;
+    Number(
+      document.getElementById(
+        'wantPrice'
+      ).value
+    ) || 0;
 
 
   const note =
-  document.getElementById(
-    'wantNote'
-  ).value;
+    document.getElementById(
+      'wantNote'
+    ).value
+    .trim();
 
 
-  wants.push({
+  try{
 
-    id:
-    Date.now(),
+    const { data, error } =
+      await supabaseClient
+        .from('wanted_items')
+        .insert({
 
+          user_id:
+            currentUser.id,
 
-    name:
-    name,
+          name:
+            name,
 
+          target_price_nok:
+            price,
 
-    price:
-    price,
+          description:
+            note
 
+        })
+        .select()
+        .single();
 
-    note:
-    note
-
-  });
-
-
-  localStorage.setItem(
-    'vk_wants',
-    JSON.stringify(wants)
-  );
-
-
-  document.getElementById(
-    'wantName'
-  ).value =
-  '';
+    if(error){
+      throw error;
+    }
 
 
-  document.getElementById(
-    'wantPrice'
-  ).value =
-  '';
+    wants.unshift({
+
+      id:
+        data.id,
+
+      name:
+        data.name,
+
+      price:
+        data.target_price_nok ||
+        0,
+
+      note:
+        data.description ||
+        ''
+
+    });
 
 
-  document.getElementById(
-    'wantNote'
-  ).value =
-  '';
+    localStorage.setItem(
+      'vk_wants',
+      JSON.stringify(wants)
+    );
 
 
-  renderWants();
+    document.getElementById(
+      'wantName'
+    ).value =
+      '';
+
+    document.getElementById(
+      'wantPrice'
+    ).value =
+      '';
+
+    document.getElementById(
+      'wantNote'
+    ).value =
+      '';
+
+
+    renderWants();
+
+  }
+  catch(err){
+
+    console.error(err);
+
+    alert(
+      'Kunne ikke lagre kjøpsønsket. ' +
+      (err.message || '')
+    );
+
+  }
 
 }
 
@@ -1517,10 +2223,9 @@ function saveWant(){
 function renderWants(){
 
   const container =
-  document.getElementById(
-    'wants'
-  );
-
+    document.getElementById(
+      'wants'
+    );
 
   if(!container){
 
@@ -1532,11 +2237,9 @@ function renderWants(){
   if(!wants.length){
 
     container.innerHTML =
-    '<div class="card">' +
-
-    '<p>Ingen kjøpsønsker ennå.</p>' +
-
-    '</div>';
+      '<div class="card">' +
+      '<p>Ingen kjøpsønsker ennå.</p>' +
+      '</div>';
 
     return;
 
@@ -1544,45 +2247,45 @@ function renderWants(){
 
 
   container.innerHTML =
-  wants.map(
-    w=>`
+    wants.map(
+      w=>`
 
-      <div class="card">
+        <div class="card">
 
-        <b>
-          🔎 ${esc(w.name)}
-        </b>
+          <b>
+            🔎 ${esc(w.name)}
+          </b>
 
 
-        <div>
+          <div>
 
-          Opptil
+            Opptil
 
-          ${
-            (Number(w.price)||0)
-            .toLocaleString(
-              'no-NO'
-            )
-          }
+            ${
+              (Number(w.price)||0)
+                .toLocaleString(
+                  'no-NO'
+                )
+            }
 
-          kr
+            kr
+
+          </div>
+
+
+          <div class="muted">
+
+            ${esc(
+              w.note ||
+              'Ingen kommentar'
+            )}
+
+          </div>
 
         </div>
 
-
-        <div class="muted">
-
-          ${esc(
-            w.note ||
-            'Ingen kommentar'
-          )}
-
-        </div>
-
-      </div>
-
-  `
-  ).join('');
+      `
+    ).join('');
 
 }
 
@@ -1602,19 +2305,19 @@ function esc(value){
     m=>({
 
       '&':
-      '&amp;',
+        '&amp;',
 
       '<':
-      '&lt;',
+        '&lt;',
 
       '>':
-      '&gt;',
+        '&gt;',
 
       '"':
-      '&quot;',
+        '&quot;',
 
       "'":
-      '&#39;'
+        '&#39;'
 
     }[m])
 
@@ -1627,7 +2330,35 @@ function esc(value){
 /* START */
 /* ========================= */
 
-renderItems();
+async function start(){
+
+  updateAuthUI();
+
+  const {
+    data,
+    error
+  } =
+    await supabaseClient.auth
+      .getSession();
+
+  if(error){
+
+    console.error(error);
+
+    return;
+
+  }
+
+  await handleAuthSession(
+    data.session
+  );
+
+  show('scan');
+
+}
+
+
+start();
 
 </script>
 
