@@ -6,7 +6,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { image } = req.body || {};
+    const { image, description } = req.body || {};
 
     if (!image || typeof image !== "string") {
       return res.status(400).json({
@@ -19,6 +19,24 @@ export default async function handler(req, res) {
         error: "Ugyldig bildeformat"
       });
     }
+
+    const userDescription =
+      typeof description === "string"
+        ? description.trim()
+        : "";
+
+    const contextText = userDescription
+      ? `
+Brukeren har også skrevet følgende informasjon om gjenstanden:
+
+"${userDescription}"
+
+Bruk denne informasjonen som ekstra hjelp til identifisering og verdivurdering.
+Hvis informasjonen brukeren har skrevet virker feil eller motsier det som kan sees på bildet, skal du ikke blindt stole på den.
+`
+      : `
+Brukeren har ikke gitt noen ekstra informasjon om gjenstanden.
+`;
 
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
@@ -34,17 +52,40 @@ export default async function handler(req, res) {
             content: [
               {
                 type: "input_text",
-                text: `Identifiser gjenstanden på bildet så presist som mulig.
+                text: `Du er ekspert på identifisering og verdivurdering av gjenstander.
 
-Returner kun JSON med disse feltene:
+Identifiser gjenstanden på bildet så presist som mulig.
+
+${contextText}
+
+Vurder spesielt:
+- merke
+- modell
+- produsent
+- type gjenstand
+- alder eller produksjonsperiode
+- materiale
+- spesielle kjennetegn
+- eventuell samlerverdi
+- tilstand dersom dette kan vurderes fra bildet
+
+Gi et forsiktig og realistisk verdiestimat i norske kroner.
+
+Ikke finn på detaljer som ikke kan underbygges av bildet eller brukerens informasjon.
+
+Hvis flere identifikasjoner er mulige, velg den mest sannsynlige og forklar usikkerheten kort.
+
+Returner KUN gyldig JSON med disse feltene:
+
 {
   "name": "navn på gjenstanden",
-  "description": "kort beskrivelse",
+  "description": "kort beskrivelse av gjenstanden og hvorfor den er identifisert slik",
   "estimated_value_nok": "anslått verdi i norske kroner",
-  "confidence": "lav, middels eller høy"
+  "confidence": "lav, middels eller høy",
+  "condition": "kort vurdering av tilstanden"
 }
 
-Hvis du ikke kan identifisere gjenstanden sikkert, si det tydelig og gi et forsiktig verdiestimat.`
+Hvis du ikke kan identifisere gjenstanden sikkert, si det tydelig og bruk et forsiktig verdiestimat.`
               },
               {
                 type: "input_image",
@@ -87,7 +128,8 @@ Hvis du ikke kan identifisere gjenstanden sikkert, si det tydelig og gi et forsi
         name: "Ukjent",
         description: text,
         estimated_value_nok: null,
-        confidence: "lav"
+        confidence: "lav",
+        condition: ""
       };
     }
 
