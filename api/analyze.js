@@ -48,7 +48,12 @@ export default async function handler(req, res) {
       });
     }
 
-    const txt = data.output_text || "";
+    const txt =
+  data.output
+    ?.find(item => item.type === "message")
+    ?.content
+    ?.find(item => item.type === "output_text")
+    ?.text || "";
     const parsed = JSON.parse(txt);
 
     return res.status(200).json(parsed);
