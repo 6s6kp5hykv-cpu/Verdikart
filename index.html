@@ -23,7 +23,10 @@ header{
   border-radius:0 0 22px 22px
 }
 
-h1{margin:0;font-size:29px}
+h1{
+  margin:0;
+  font-size:29px
+}
 
 header p{
   margin:5px 0 0;
@@ -52,7 +55,13 @@ button{
   border-radius:13px;
   padding:13px 16px;
   font-size:16px;
-  font-weight:650
+  font-weight:650;
+  cursor:pointer
+}
+
+button:disabled{
+  opacity:.5;
+  cursor:not-allowed
 }
 
 .primary{
@@ -73,13 +82,25 @@ button{
   box-shadow:0 2px 12px #0000000b
 }
 
-input,select{
+input,
+select,
+textarea{
   width:100%;
   padding:12px;
   border:1px solid #d1d5db;
   border-radius:12px;
   font-size:16px;
-  margin-top:6px
+  margin-top:6px;
+  font-family:inherit
+}
+
+textarea{
+  min-height:110px;
+  resize:vertical
+}
+
+label{
+  display:block
 }
 
 .preview{
@@ -91,7 +112,9 @@ input,select{
   margin-top:12px
 }
 
-.hidden{display:none}
+.hidden{
+  display:none
+}
 
 .muted{
   color:#64748b;
@@ -145,6 +168,27 @@ input,select{
   background:#f1f5f9;
   margin-top:12px
 }
+
+.helper{
+  padding:11px 12px;
+  border-radius:12px;
+  background:#f8fafc;
+  color:#64748b;
+  font-size:14px;
+  line-height:1.45;
+  margin-top:8px
+}
+
+.analyze-button{
+  width:100%;
+  margin-top:12px
+}
+
+hr{
+  border:0;
+  border-top:1px solid #e5e7eb;
+  margin:18px 0
+}
 </style>
 </head>
 
@@ -158,10 +202,34 @@ input,select{
 <main>
 
 <div class="nav">
-  <button class="primary" onclick="show('scan')">📷 Skann</button>
-  <button class="secondary" onclick="show('collection')">📦 Min samling</button>
-  <button class="secondary" onclick="show('wanted')">🔎 Ønsker å kjøpe</button>
+
+  <button
+    class="primary"
+    onclick="show('scan')"
+  >
+    📷 Skann
+  </button>
+
+  <button
+    class="secondary"
+    onclick="show('collection')"
+  >
+    📦 Min samling
+  </button>
+
+  <button
+    class="secondary"
+    onclick="show('wanted')"
+  >
+    🔎 Ønsker å kjøpe
+  </button>
+
 </div>
+
+
+<!-- ========================= -->
+<!-- SKANN -->
+<!-- ========================= -->
 
 <section id="scan">
 
@@ -170,37 +238,121 @@ input,select{
 <h2>Skann en gjenstand</h2>
 
 <p class="muted">
-Ta bilde. Verdikart analyserer bildet og foreslår hva gjenstanden er og hva den kan være verdt.
+Ta bilde av gjenstanden og fortell gjerne litt om den.
+Verdikart bruker både bildet og informasjonen du skriver for å forsøke å identifisere riktig gjenstand og beregne verdi.
 </p>
 
-<input
-  id="photo"
-  type="file"
-  accept="image/jpeg,image/png,image/webp"
-  capture="environment"
+
+<!-- BILDE -->
+
+<label>
+  📷 Velg bilde
+
+  <input
+    id="photo"
+    type="file"
+    accept="image/jpeg,image/png,image/webp"
+    capture="environment"
+  >
+</label>
+
+
+<!-- FORHÅNDSVISNING -->
+
+<img
+  id="preview"
+  class="preview hidden"
+  alt="Valgt bilde"
 >
 
-<img id="preview" class="preview hidden">
 
-<div id="loading" class="loading hidden">
-  🔍 Analyserer bildet …
+<!-- BESKRIVELSE -->
+
+<label style="margin-top:16px">
+
+  📝 Beskriv gjenstanden
+  <span class="muted">
+    (valgfritt)
+  </span>
+
+  <textarea
+    id="itemDescription"
+    placeholder="Skriv det du vet om gjenstanden. F.eks. merke, modell, alder, materiale, mål, hvor den kommer fra eller andre kjennetegn."
+  ></textarea>
+
+</label>
+
+
+<div class="helper">
+
+💡 <strong>Tips:</strong>
+Jo mer informasjon du gir, desto lettere kan Verdikart skille mellom lignende modeller og gjenstander.
+
+<br><br>
+
+Du kan for eksempel skrive:
+<strong>merke, modell, alder, mål, materiale, serienummer, tekst på gjenstanden eller hvor den kommer fra.</strong>
+
 </div>
 
-<div id="result" class="hidden">
+
+<!-- ANALYSER-KNAPP -->
+
+<button
+  id="analyzeButton"
+  class="primary analyze-button"
+  disabled
+>
+  🔍 Analyser gjenstanden
+</button>
+
+
+<!-- LASTING -->
+
+<div
+  id="loading"
+  class="loading hidden"
+>
+  🔍 Analyserer bilde og informasjon …
+</div>
+
+
+<!-- RESULTAT -->
+
+<div
+  id="result"
+  class="hidden"
+>
 
 <hr>
 
-<div class="result-title" id="rname"></div>
+<div
+  class="result-title"
+  id="rname"
+></div>
+
 
 <p id="rdesc"></p>
 
-<div class="price" id="rprice"></div>
 
-<p class="muted" id="rconfidence"></p>
+<div
+  class="price"
+  id="rprice"
+></div>
+
+
+<p
+  class="muted"
+  id="rconfidence"
+></p>
+
 
 <div class="note">
+
 ℹ️ Verdien er et foreløpig AI-estimat og kan avvike fra faktisk salgspris.
+
 </div>
+
 
 <button
   class="primary"
@@ -217,7 +369,14 @@ Ta bilde. Verdikart analyserer bildet og foreslår hva gjenstanden er og hva den
 </section>
 
 
-<section id="collection" class="hidden">
+<!-- ========================= -->
+<!-- SAMLING -->
+<!-- ========================= -->
+
+<section
+  id="collection"
+  class="hidden"
+>
 
 <div class="card">
 
@@ -226,54 +385,96 @@ Ta bilde. Verdikart analyserer bildet og foreslår hva gjenstanden er og hva den
 <div class="grid">
 
 <div>
-<div class="stat" id="total">0 kr</div>
-<div class="muted">Samlet verdi</div>
+
+<div
+  class="stat"
+  id="total"
+>
+0 kr
 </div>
+
+<div class="muted">
+Samlet verdi
+</div>
+
+</div>
+
 
 <div>
-<div class="stat" id="count">0</div>
-<div class="muted">Gjenstander</div>
+
+<div
+  class="stat"
+  id="count"
+>
+0
+</div>
+
+<div class="muted">
+Gjenstander
 </div>
 
 </div>
 
 </div>
+
+</div>
+
 
 <div id="items"></div>
 
 </section>
 
 
-<section id="wanted" class="hidden">
+<!-- ========================= -->
+<!-- KJØPSØNSKER -->
+<!-- ========================= -->
+
+<section
+  id="wanted"
+  class="hidden"
+>
 
 <div class="card">
 
 <h2>🔎 Jeg ønsker å kjøpe</h2>
 
+
 <label>
+
 Hva leter du etter?
+
 <input
   id="wantName"
   placeholder="F.eks. Sony Walkman WM-3"
 >
+
 </label>
 
-<label>
+
+<label style="margin-top:12px">
+
 Makspris
+
 <input
   id="wantPrice"
   type="number"
   placeholder="2500"
 >
+
 </label>
 
-<label>
+
+<label style="margin-top:12px">
+
 Kommentar
+
 <input
   id="wantNote"
   placeholder="Helst komplett og fungerende"
 >
+
 </label>
+
 
 <button
   class="primary"
@@ -285,6 +486,7 @@ Kommentar
 
 </div>
 
+
 <div id="wants"></div>
 
 </section>
@@ -294,224 +496,448 @@ Kommentar
 
 <script>
 
+
+/* ========================= */
+/* DATA */
+/* ========================= */
+
 const items =
-JSON.parse(localStorage.getItem('vk_items') || '[]');
+JSON.parse(
+  localStorage.getItem('vk_items') || '[]'
+);
+
 
 const wants =
-JSON.parse(localStorage.getItem('vk_wants') || '[]');
+JSON.parse(
+  localStorage.getItem('vk_wants') || '[]'
+);
+
 
 let current = null;
 
 
+/* ========================= */
+/* NAVIGASJON */
+/* ========================= */
+
 function show(id){
 
-  ['scan','collection','wanted'].forEach(x=>{
+  [
+    'scan',
+    'collection',
+    'wanted'
+  ].forEach(x=>{
 
     const element =
     document.getElementById(x);
 
     if(element){
+
       element.classList.toggle(
         'hidden',
         x !== id
       );
+
     }
 
   });
 
+
   if(id === 'collection'){
+
     renderItems();
+
   }
 
+
   if(id === 'wanted'){
+
     renderWants();
+
   }
 
 }
 
+
+/* ========================= */
+/* ELEMENTER */
+/* ========================= */
 
 const photoInput =
 document.getElementById('photo');
 
 
+const analyzeButton =
+document.getElementById('analyzeButton');
+
+
+const itemDescription =
+document.getElementById(
+  'itemDescription'
+);
+
+
+/* ========================= */
+/* BILDE VALGT */
+/* ========================= */
+
 if(photoInput){
 
-photoInput.addEventListener(
-'change',
-async e=>{
+  photoInput.addEventListener(
+    'change',
+    e=>{
 
-  const f =
-  e.target.files[0];
+      const f =
+      e.target.files[0];
 
-  if(!f) return;
+      if(!f){
 
+        analyzeButton.disabled =
+        true;
 
-  const preview =
-  document.getElementById('preview');
+        return;
 
-  const loading =
-  document.getElementById('loading');
-
-  const result =
-  document.getElementById('result');
-
-
-  result.classList.add('hidden');
-
-  loading.classList.remove('hidden');
-
-
-  try{
-
-    const dataUrl =
-    await fileToDataURL(f);
-
-
-    preview.src =
-    dataUrl;
-
-    preview.classList.remove('hidden');
-
-
-    const res =
-    await fetch(
-      '/api/analyze',
-      {
-        method:'POST',
-
-        headers:{
-          'Content-Type':
-          'application/json'
-        },
-
-        body:JSON.stringify({
-          image:dataUrl
-        })
       }
-    );
 
 
-    const data =
-    await res.json();
-
-
-    if(!res.ok){
-
-      throw new Error(
-        data.error ||
-        'Kunne ikke analysere bildet'
+      const preview =
+      document.getElementById(
+        'preview'
       );
 
-    }
+
+      const result =
+      document.getElementById(
+        'result'
+      );
 
 
-    current = {
-      ...data,
-      img:dataUrl
-    };
+      const loading =
+      document.getElementById(
+        'loading'
+      );
 
 
-    document.getElementById(
-      'rname'
-    ).textContent =
-    data.name ||
-    'Ukjent gjenstand';
+      preview.src =
+      URL.createObjectURL(f);
 
 
-    document.getElementById(
-      'rdesc'
-    ).textContent =
-    data.description ||
-    '';
+      preview.classList.remove(
+        'hidden'
+      );
 
 
-    /*
-      VERDIVISNING
-
-      Støtter både:
-
-      1500
-
-      "1500 kr"
-
-      "1 200–1 800 kr"
-
-      "1200 - 1800 kr"
-    */
-
-    const rawValue =
-    data.estimated_value_nok;
+      result.classList.add(
+        'hidden'
+      );
 
 
-    let displayValue =
-    'Verdi ikke fastslått';
+      loading.classList.add(
+        'hidden'
+      );
 
 
-    if(
-      typeof rawValue === 'number' &&
-      Number.isFinite(rawValue) &&
-      rawValue > 0
-    ){
-
-      displayValue =
-      rawValue.toLocaleString(
-        'no-NO'
-      ) + ' kr';
-
-    }else if(
-      typeof rawValue === 'string' &&
-      rawValue.trim()
-    ){
-
-      displayValue =
-      rawValue.trim();
+      analyzeButton.disabled =
+      false;
 
     }
-
-
-    document.getElementById(
-      'rprice'
-    ).textContent =
-    displayValue;
-
-
-    document.getElementById(
-      'rconfidence'
-    ).textContent =
-    'Identifiseringsikkerhet: ' +
-    (
-      data.confidence ||
-      'ukjent'
-    );
-
-
-    result.classList.remove(
-      'hidden'
-    );
-
-
-  }catch(err){
-
-    console.error(err);
-
-    alert(
-      err.message ||
-      'Det oppstod en feil.'
-    );
-
-
-  }finally{
-
-    loading.classList.add(
-      'hidden'
-    );
-
-  }
-
-});
+  );
 
 }
 
+
+/* ========================= */
+/* ANALYSER */
+/* ========================= */
+
+if(analyzeButton){
+
+  analyzeButton.addEventListener(
+    'click',
+    async ()=>{
+
+      const f =
+      photoInput.files[0];
+
+
+      if(!f){
+
+        alert(
+          'Velg et bilde først.'
+        );
+
+        return;
+
+      }
+
+
+      const description =
+      itemDescription.value.trim();
+
+
+      const preview =
+      document.getElementById(
+        'preview'
+      );
+
+
+      const loading =
+      document.getElementById(
+        'loading'
+      );
+
+
+      const result =
+      document.getElementById(
+        'result'
+      );
+
+
+      analyzeButton.disabled =
+      true;
+
+
+      loading.classList.remove(
+        'hidden'
+      );
+
+
+      result.classList.add(
+        'hidden'
+      );
+
+
+      try{
+
+        /*
+          Gjør bildet mindre før
+          det sendes til API-et.
+        */
+
+        const dataUrl =
+        await fileToDataURL(f);
+
+
+        preview.src =
+        dataUrl;
+
+
+        /*
+          Sender både bilde og
+          brukerens beskrivelse.
+        */
+
+        const res =
+        await fetch(
+          '/api/analyze',
+          {
+            method:'POST',
+
+            headers:{
+              'Content-Type':
+              'application/json'
+            },
+
+            body:JSON.stringify({
+
+              image:dataUrl,
+
+              description:
+              description
+
+            })
+
+          }
+        );
+
+
+        const data =
+        await res.json();
+
+
+        if(!res.ok){
+
+          throw new Error(
+            data.error ||
+            'Kunne ikke analysere gjenstanden.'
+          );
+
+        }
+
+
+        /*
+          Lagre resultatet
+        */
+
+        current = {
+
+          ...data,
+
+          img:dataUrl,
+
+          userDescription:
+          description
+
+        };
+
+
+        /*
+          NAVN
+        */
+
+        document.getElementById(
+          'rname'
+        ).textContent =
+        data.name ||
+        'Ukjent gjenstand';
+
+
+        /*
+          BESKRIVELSE
+        */
+
+        document.getElementById(
+          'rdesc'
+        ).textContent =
+        data.description ||
+        '';
+
+
+        /*
+          VERDI
+        */
+
+        const rawValue =
+        data.estimated_value_nok;
+
+
+        let displayValue =
+        'Verdi ikke fastslått';
+
+
+        if(
+
+          typeof rawValue ===
+          'number'
+
+          &&
+
+          Number.isFinite(
+            rawValue
+          )
+
+          &&
+
+          rawValue > 0
+
+        ){
+
+          displayValue =
+          rawValue.toLocaleString(
+            'no-NO'
+          ) + ' kr';
+
+        }
+
+
+        else if(
+
+          typeof rawValue ===
+          'string'
+
+          &&
+
+          rawValue.trim()
+
+        ){
+
+          displayValue =
+          rawValue.trim();
+
+        }
+
+
+        document.getElementById(
+          'rprice'
+        ).textContent =
+        displayValue;
+
+
+        /*
+          SIKKERHET
+        */
+
+        document.getElementById(
+          'rconfidence'
+        ).textContent =
+        'Identifiseringsikkerhet: ' +
+
+        (
+
+          data.confidence ||
+
+          'ukjent'
+
+        );
+
+
+        /*
+          Vis resultat
+        */
+
+        result.classList.remove(
+          'hidden'
+        );
+
+
+        /*
+          Scroll rolig ned til
+          resultatet.
+        */
+
+        result.scrollIntoView({
+          behavior:'smooth',
+          block:'start'
+        });
+
+
+      }
+
+
+      catch(err){
+
+        console.error(err);
+
+
+        alert(
+          err.message ||
+          'Det oppstod en feil.'
+        );
+
+      }
+
+
+      finally{
+
+        loading.classList.add(
+          'hidden'
+        );
+
+
+        analyzeButton.disabled =
+        false;
+
+      }
+
+    }
+  );
+
+}
+
+
+/* ========================= */
+/* BILDEBEHANDLING */
+/* ========================= */
 
 function fileToDataURL(file){
 
@@ -520,6 +946,7 @@ function fileToDataURL(file){
 
       const url =
       URL.createObjectURL(file);
+
 
       const img =
       new Image();
@@ -536,13 +963,17 @@ function fileToDataURL(file){
           let w =
           img.naturalWidth;
 
+
           let h =
           img.naturalHeight;
 
 
           if(
+
             w > max ||
+
             h > max
+
           ){
 
             if(w > h){
@@ -552,16 +983,20 @@ function fileToDataURL(file){
                 h * max / w
               );
 
-              w = max;
+              w =
+              max;
 
-            }else{
+            }
+
+            else{
 
               w =
               Math.round(
                 w * max / h
               );
 
-              h = max;
+              h =
+              max;
 
             }
 
@@ -576,6 +1011,7 @@ function fileToDataURL(file){
 
           canvas.width =
           w;
+
 
           canvas.height =
           h;
@@ -610,12 +1046,15 @@ function fileToDataURL(file){
 
           resolve(data);
 
+        }
 
-        }catch(err){
+
+        catch(err){
 
           URL.revokeObjectURL(
             url
           );
+
 
           reject(err);
 
@@ -649,6 +1088,10 @@ function fileToDataURL(file){
 }
 
 
+/* ========================= */
+/* LAGRE GJENSTAND */
+/* ========================= */
+
 function saveCurrent(){
 
   if(!current){
@@ -661,12 +1104,6 @@ function saveCurrent(){
 
   }
 
-
-  /*
-    Beholder verdien som tekst.
-    Dette gjør at også intervaller som
-    "1 200–1 800 kr" kan lagres.
-  */
 
   const value =
   current.estimated_value_nok;
@@ -694,6 +1131,11 @@ function saveCurrent(){
 
     description:
     current.description ||
+    '',
+
+
+    userDescription:
+    current.userDescription ||
     '',
 
 
@@ -740,11 +1182,21 @@ function saveCurrent(){
 }
 
 
+/* ========================= */
+/* NUMERISK VERDI */
+/* ========================= */
+
 function numericValue(value){
 
   if(
-    typeof value === 'number' &&
+
+    typeof value ===
+    'number'
+
+    &&
+
     Number.isFinite(value)
+
   ){
 
     return value;
@@ -753,25 +1205,14 @@ function numericValue(value){
 
 
   if(
-    typeof value !== 'string'
+    typeof value !==
+    'string'
   ){
 
     return 0;
 
   }
 
-
-  /*
-    Forsøker å hente første tallet
-    fra verdien.
-
-    Eksempel:
-    "1 200–1 800 kr"
-    blir 1200
-
-    Dette brukes bare til
-    samlet verdi.
-  */
 
   const match =
   value.match(
@@ -780,15 +1221,27 @@ function numericValue(value){
 
 
   if(!match){
+
     return 0;
+
   }
 
 
   const number =
   Number(
+
     match[0]
-    .replace(/\s/g,'')
-    .replace(/\./g,'')
+
+      .replace(
+        /\s/g,
+        ''
+      )
+
+      .replace(
+        /\./g,
+        ''
+      )
+
   );
 
 
@@ -798,6 +1251,10 @@ function numericValue(value){
 
 }
 
+
+/* ========================= */
+/* VIS SAMLING */
+/* ========================= */
 
 function renderItems(){
 
@@ -820,9 +1277,13 @@ function renderItems(){
 
 
   if(
+
     !count ||
+
     !total ||
+
     !container
+
   ){
 
     return;
@@ -836,10 +1297,17 @@ function renderItems(){
 
   const totalValue =
   items.reduce(
+
     (sum,item)=>
-    sum +
-    numericValue(item.value),
+
+      sum +
+
+      numericValue(
+        item.value
+      ),
+
     0
+
   );
 
 
@@ -853,7 +1321,9 @@ function renderItems(){
 
     container.innerHTML =
     '<div class="card">' +
+
     '<p>Samlingen er tom.</p>' +
+
     '</div>';
 
     return;
@@ -867,16 +1337,25 @@ function renderItems(){
 
       const value =
       item.value ||
+
       'Verdi ikke fastslått';
 
 
       const date =
-      item.history &&
-      item.history.length
-      ? item.history[
+
+        item.history &&
+
+        item.history.length
+
+        ?
+
+        item.history[
           item.history.length - 1
         ].date
-      : '';
+
+        :
+
+        '';
 
 
       return `
@@ -885,12 +1364,18 @@ function renderItems(){
 
         ${
           item.img
-          ? `<img
-               class="thumb"
-               src="${item.img}"
-               alt=""
-             >`
-          : `<div class="thumb"></div>`
+
+          ?
+
+          `<img
+            class="thumb"
+            src="${item.img}"
+            alt=""
+          >`
+
+          :
+
+          `<div class="thumb"></div>`
         }
 
 
@@ -930,10 +1415,15 @@ function renderItems(){
       `;
 
     }
+
   ).join('');
 
 }
 
+
+/* ========================= */
+/* KJØPSØNSKE */
+/* ========================= */
 
 function saveWant(){
 
@@ -1020,6 +1510,10 @@ function saveWant(){
 }
 
 
+/* ========================= */
+/* VIS KJØPSØNSKER */
+/* ========================= */
+
 function renderWants(){
 
   const container =
@@ -1028,14 +1522,20 @@ function renderWants(){
   );
 
 
-  if(!container) return;
+  if(!container){
+
+    return;
+
+  }
 
 
   if(!wants.length){
 
     container.innerHTML =
     '<div class="card">' +
+
     '<p>Ingen kjøpsønsker ennå.</p>' +
+
     '</div>';
 
     return;
@@ -1057,12 +1557,14 @@ function renderWants(){
         <div>
 
           Opptil
+
           ${
             (Number(w.price)||0)
             .toLocaleString(
               'no-NO'
             )
           }
+
           kr
 
         </div>
@@ -1085,12 +1587,18 @@ function renderWants(){
 }
 
 
+/* ========================= */
+/* SIKKER TEKST */
+/* ========================= */
+
 function esc(value){
 
   return String(
     value || ''
   ).replace(
+
     /[&<>"']/g,
+
     m=>({
 
       '&':
@@ -1109,10 +1617,15 @@ function esc(value){
       '&#39;'
 
     }[m])
+
   );
 
 }
 
+
+/* ========================= */
+/* START */
+/* ========================= */
 
 renderItems();
 
