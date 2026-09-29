@@ -3,9 +3,6 @@ const { createClient } = require('@supabase/supabase-js');
 const SUPABASE_URL =
   'https://tiqwlxpclqqncykdwvjf.supabase.co';
 
-const SUPABASE_PUBLISHABLE_KEY =
-  'sb_publishable_2lQgSsDQRbOO4DIg6pbDsg_5n1lfGKS';
-
 const SUPABASE_SECRET_KEY =
   process.env.SUPABASE_SECRET_KEY ||
   process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -47,18 +44,21 @@ module.exports = async function handler(req, res){
   try{
 
     /*
-     * FEILSØKING:
-     * Valider brukerens access-token direkte mot Supabase Auth.
-     * Vi returnerer den faktiske Supabase-feilen midlertidig,
-     * slik at vi kan se nøyaktig hvorfor tokenet blir avvist.
+     * Valider brukerens access-token mot Supabase Auth.
+     *
+     * Viktig:
+     * Secret Key brukes som API-nøkkel i "apikey".
+     * Brukerens access-token brukes separat i
+     * "Authorization: Bearer ...".
      */
+
     const authResponse =
       await fetch(
         SUPABASE_URL + '/auth/v1/user',
         {
           method: 'GET',
           headers: {
-            'apikey': SUPABASE_PUBLISHABLE_KEY,
+            'apikey': SUPABASE_SECRET_KEY,
             'Authorization': 'Bearer ' + accessToken
           }
         }
@@ -82,7 +82,7 @@ module.exports = async function handler(req, res){
       );
 
       return sendJson(res, 401, {
-        error: 'Supabase avviste innloggingen.',
+        error: 'Innloggingen kunne ikke godkjennes.',
         status: authResponse.status,
         supabase_error:
           authError?.message ||
@@ -101,6 +101,11 @@ module.exports = async function handler(req, res){
     }
 
     const userId = user.id;
+
+    /*
+     * Admin-klient.
+     * Secret Key skal kun brukes på serveren.
+     */
 
     const adminClient =
       createClient(
