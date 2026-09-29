@@ -227,7 +227,7 @@ Du kan for eksempel skrive:
 </label>
 
 <div class="helper">
-💡 Skriv navnet på gjenstanden. Verdikart søker automatisk etter bilder når du har skrevet minst 3 tegn.
+💡 Skriv navnet på gjenstanden. Trykk «Søk bilder» når du ønsker å finne et bilde.
 </div>
 
 <div class="image-actions">
@@ -300,7 +300,6 @@ let wants =
 let current = null;
 let currentUser = null;
 let cloudLoaded = false;
-let wantImageSearchTimer = null;
 let selectedWantImage = '';
 
 /* ========================= */
@@ -1123,33 +1122,6 @@ if(wantImageInput){
 /* ========================= */
 /* SØK BILDER FRA WIKIMEDIA */
 /* ========================= */
-
-function scheduleWantedImageSearch(){
-
-  clearTimeout(wantImageSearchTimer);
-
-  const query =
-    wantNameInput.value.trim();
-
-  if(query.length < 3){
-
-    document.getElementById('imageSearchStatus').textContent = '';
-    document.getElementById('wantedImageResults').innerHTML = '';
-    return;
-  }
-
-  wantImageSearchTimer =
-    setTimeout(()=>{
-      searchWantedImages();
-    },800);
-}
-
-if(wantNameInput){
-  wantNameInput.addEventListener(
-    'input',
-    scheduleWantedImageSearch
-  );
-}
 
 async function searchWantedImages(){
 
