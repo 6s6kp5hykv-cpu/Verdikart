@@ -42,7 +42,7 @@ label{display:block}
 hr{border:0;border-top:1px solid #e5e7eb;margin:18px 0}
 
 .image-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
-.image-search-status{margin-top:10px;font-size:14px;color:#64748b}
+.image-search-status{margin-top:10px;font-size:14px;color:#64748b}.image-search-status a{color:#2563eb}
 .image-results{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
 .image-choice{border:2px solid transparent;border-radius:12px;overflow:hidden;background:#f1f5f9;padding:0}
 .image-choice.selected{border-color:#111827}
@@ -227,7 +227,7 @@ Du kan for eksempel skrive:
 </label>
 
 <div class="helper">
-💡 Skriv navnet på gjenstanden. Trykk «Søk bilder» når du ønsker å finne et bilde.
+💡 Skriv så nøyaktig navn og modell som mulig. Trykk «Søk bilder» når du ønsker å finne et bilde.
 </div>
 
 <div class="image-actions">
@@ -1134,10 +1134,10 @@ async function searchWantedImages(){
   const status =
     document.getElementById('imageSearchStatus');
 
-  if(query.length < 3){
+  if(query.length < 2){
 
     status.textContent =
-      'Skriv minst 3 tegn for å søke etter bilder.';
+      'Skriv minst 2 tegn for å søke etter bilder.';
 
     results.innerHTML = '';
 
@@ -1145,76 +1145,195 @@ async function searchWantedImages(){
   }
 
   status.textContent =
-    '🔎 Søker etter bilder …';
+    '🔎 Finner relevante bilder …';
 
   results.innerHTML = '';
 
   try{
 
-    const url =
-      'https://commons.wikimedia.org/w/api.php?' +
+    /*
+      Openverse prioriterer treff der søkeordene
+      finnes i bildets tittel. Vi prøver først
+      eksakt frase og deretter vanlig søk dersom
+      vi får for få brukbare treff.
+    */
+
+    const exactQuery =
+      '"' + query.replace(/"/g,'') + '"';
+
+    const exactUrl =
+      'https://api.openverse.org/v1/images/?' +
       new URLSearchParams({
-        action:'query',
-        generator:'search',
-        gsrsearch:query,
-        gsrnamespace:'6',
-        gsrlimit:'9',
-        prop:'imageinfo',
-        iiprop:'url',
-        iiurlwidth:'400',
-        format:'json',
-        origin:'*'
+        q: exactQuery,
+        page_size:'30'
       });
 
-    const response =
-      await fetch(url);
+    const exactResponse =
+      await fetch(exactUrl);
 
-    if(!response.ok){
+    if(!exactResponse.ok){
       throw new Error('Bildesøket svarte ikke.');
     }
 
-    const data =
-      await response.json();
+    const exactData =
+      await exactResponse.json();
 
-    const pages =
-      Object.values(
-        data?.query?.pages || {}
-      );
+    let imageResults =
+      Array.isArray(exactData.results)
+        ? exactData.results
+        : [];
 
-    if(!pages.length){
+    /*
+      Hvis eksakt søk ikke gir nok gode treff,
+      søker vi bredere.
+    */
+    if(imageResults.length < 6){
+
+      const broadUrl =
+        'https://api.openverse.org/v1/images/?' +
+        new URLSearchParams({
+          q:query,
+          page_size:'30'
+        });
+
+      const broadResponse =
+        await fetch(broadUrl);
+
+      if(broadResponse.ok){
+
+        const broadData =
+          await broadResponse.json();
+
+        imageResults =
+          imageResults.concat(
+            Array.isArray(broadData.results)
+              ? broadData.results
+              : []
+          );
+      }
+    }
+
+    /*
+      Fjern duplikater og bilder som er lite egnet
+      som produktreferanse.
+    */
+    const seen = new Set();
+
+    const blockedWords = [
+      'screenshot',
+      'screen shot',
+      'repair',
+      'teardown',
+      'replacement part',
+      'replacement screen',
+      'lcd',
+      'display assembly',
+      'motherboard',
+      'component',
+      'schematic',
+      'manual',
+      'logo',
+      'icon',
+      'case only',
+      'mockup'
+    ];
+
+    const cleaned =
+      imageResults
+        .filter(item=>{
+
+          const imageUrl =
+            item.thumbnail ||
+            item.url ||
+            '';
+
+          const title =
+            String(item.title || '');
+
+          const text =
+            (
+              title + ' ' +
+              String(item.tags || '')
+            ).toLowerCase();
+
+          if(!imageUrl) return false;
+
+          if(seen.has(imageUrl)) return false;
+
+          seen.add(imageUrl);
+
+          /*
+            Unngå svært små bilder og ekstreme
+            formater som ofte er logoer/utklipp.
+          */
+          const width =
+            Number(item.width) || 0;
+
+          const height =
+            Number(item.height) || 0;
+
+          if(width && height){
+
+            if(width < 250 || height < 250){
+              return false;
+            }
+
+            const ratio =
+              width / height;
+
+            if(ratio > 4 || ratio < 0.25){
+              return false;
+            }
+          }
+
+          if(
+            blockedWords.some(word=>
+              text.includes(word)
+            )
+          ){
+            return false;
+          }
+
+          return true;
+
+        })
+        .slice(0,9);
+
+    if(!cleaned.length){
 
       status.textContent =
-        'Fant ingen bilder. Prøv et mer presist navn.';
+        'Fant ingen gode bilder. Prøv et mer presist navn eller last opp eget bilde.';
 
       return;
     }
 
     status.textContent =
-      'Trykk på et bilde for å bruke det.';
+      'Velg bildet som passer best.';
 
     results.innerHTML =
-      pages.map(page=>{
-
-        const info =
-          page.imageinfo?.[0];
+      cleaned.map((item,index)=>{
 
         const imageUrl =
-          info?.thumburl ||
-          info?.url ||
+          item.thumbnail ||
+          item.url ||
           '';
 
-        if(!imageUrl) return '';
+        const title =
+          item.title ||
+          query;
 
         return `
           <button
             type="button"
             class="image-choice"
-            onclick="chooseWantedSearchImage('${escAttr(imageUrl)}')"
-            title="Bruk dette bildet"
+            data-image-url="${escAttr(imageUrl)}"
+            data-source-url="${escAttr(item.foreign_landing_url || item.url || '')}"
+            onclick="chooseWantedSearchImage(this)"
+            title="${escAttr(title)}"
           >
             <img
               src="${escAttr(imageUrl)}"
-              alt=""
+              alt="${escAttr(title)}"
               loading="lazy"
             >
           </button>
@@ -1233,32 +1352,46 @@ async function searchWantedImages(){
   }
 }
 
-function chooseWantedSearchImage(url){
+function chooseWantedSearchImage(button){
+
+  if(!button) return;
+
+  const url =
+    button.dataset.imageUrl || '';
+
+  const sourceUrl =
+    button.dataset.sourceUrl || '';
+
+  if(!url) return;
 
   setSelectedWantImage(url);
 
   document
     .querySelectorAll('.image-choice')
-    .forEach(button=>{
-      button.classList.remove('selected');
-
-      const buttonImg =
-        button.querySelector('img');
-
-      if(
-        buttonImg &&
-        buttonImg.src === url
-      ){
-        button.classList.add('selected');
-      }
+    .forEach(item=>{
+      item.classList.remove('selected');
     });
 
-  document.getElementById('imageSearchStatus').textContent =
-    'Bilde valgt.';
+  button.classList.add('selected');
+
+  const status =
+    document.getElementById('imageSearchStatus');
+
+  status.innerHTML =
+    'Bilde valgt.' +
+    (
+      sourceUrl
+        ? ' <a href="' +
+          escAttr(sourceUrl) +
+          '" target="_blank" rel="noopener">Se kilde</a>'
+        : ''
+    );
 }
 
 /* ========================= */
 /* LAGRE GJENSTAND */
+
+ */
 /* ========================= */
 
 async function saveCurrent(){
