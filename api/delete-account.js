@@ -1,192 +1,113 @@
-const { createClient } = require('@supabase/supabase-js');
-
-const SUPABASE_URL =
-  'https://tiqwlxpclqqncykdwvjf.supabase.co';
-
-const SUPABASE_SECRET_KEY =
-  process.env.SUPABASE_SECRET_KEY ||
-  process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-function sendJson(res, status, body){
-  return res.status(status).json(body);
-}
-
-module.exports = async function handler(req, res){
-
-  if(req.method !== 'POST'){
-    res.setHeader('Allow', 'POST');
-
-    return sendJson(res, 405, {
-      error: 'Metoden er ikke tillatt.'
-    });
+export default async function handler(req, res) {
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
   }
 
-  if(!SUPABASE_SECRET_KEY){
-    return sendJson(res, 500, {
-      error: 'Serveren mangler Supabase Secret Key.'
-    });
-  }
+  try {
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const secretKey =
+      process.env.SUPABASE_SECRET_KEY ||
+      process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  const authorization =
-    req.headers.authorization || '';
+    if (!supabaseUrl || !secretKey) {
+      return res.status(500).json({
+        error: "Supabase environment variables are missing."
+      });
+    }
 
-  const match =
-    authorization.match(/^Bearer\s+(.+)$/i);
+    const authHeader = req.headers.authorization || "";
+    const accessToken = authHeader.startsWith("Bearer ")
+      ? authHeader.slice(7)
+      : "";
 
-  if(!match){
-    return sendJson(res, 401, {
-      error: 'Mangler innloggingstoken.'
-    });
-  }
+    if (!accessToken) {
+      return res.status(401).json({
+        error: "Innloggingen er ikke gyldig."
+      });
+    }
 
-  const accessToken = match[1];
-
-  try{
-
-    /*
-     * Valider brukerens access-token mot Supabase Auth.
-     *
-     * Viktig:
-     * Secret Key brukes som API-nøkkel i "apikey".
-     * Brukerens access-token brukes separat i
-     * "Authorization: Bearer ...".
-     */
-
-    const authResponse =
-      await fetch(
-        SUPABASE_URL + '/auth/v1/user',
-        {
-          method: 'GET',
-          headers: {
-            'apikey': SUPABASE_SECRET_KEY,
-            'Authorization': 'Bearer ' + accessToken
-          }
+    // Verify the currently logged-in user directly through Supabase Auth.
+    const userResponse = await fetch(
+      `${supabaseUrl}/auth/v1/user`,
+      {
+        method: "GET",
+        headers: {
+          apikey: secretKey,
+          Authorization: `Bearer ${accessToken}`
         }
-      );
-
-    if(!authResponse.ok){
-
-      let authError = {};
-
-      try{
-        authError = await authResponse.json();
       }
-      catch(_){
-        authError = {};
-      }
-
-      console.error(
-        'Supabase Auth validation failed:',
-        authResponse.status,
-        authError
-      );
-
-      return sendJson(res, 401, {
-        error: 'Innloggingen kunne ikke godkjennes.',
-        status: authResponse.status,
-        supabase_error:
-          authError?.message ||
-          authError?.error_description ||
-          authError?.error ||
-          'Ukjent Supabase-feil.'
-      });
-    }
-
-    const user = await authResponse.json();
-
-    if(!user || !user.id){
-      return sendJson(res, 401, {
-        error: 'Supabase returnerte ingen gyldig bruker.'
-      });
-    }
-
-    const userId = user.id;
-
-    /*
-     * Admin-klient.
-     * Secret Key skal kun brukes på serveren.
-     */
-
-    const adminClient =
-      createClient(
-        SUPABASE_URL,
-        SUPABASE_SECRET_KEY,
-        {
-          auth: {
-            autoRefreshToken: false,
-            persistSession: false,
-            detectSessionInUrl: false
-          }
-        }
-      );
-
-    const { error: collectionError } =
-      await adminClient
-        .from('collection_items')
-        .delete()
-        .eq('user_id', userId);
-
-    if(collectionError){
-      console.error(
-        'collection_items delete:',
-        collectionError
-      );
-
-      return sendJson(res, 500, {
-        error: 'Kunne ikke slette samlingen.',
-        details: collectionError.message
-      });
-    }
-
-    const { error: wantedError } =
-      await adminClient
-        .from('wanted_items')
-        .delete()
-        .eq('user_id', userId);
-
-    if(wantedError){
-      console.error(
-        'wanted_items delete:',
-        wantedError
-      );
-
-      return sendJson(res, 500, {
-        error: 'Kunne ikke slette kjøpsønskene.',
-        details: wantedError.message
-      });
-    }
-
-    const { error: deleteUserError } =
-      await adminClient.auth.admin.deleteUser(userId);
-
-    if(deleteUserError){
-      console.error(
-        'auth.admin.deleteUser:',
-        deleteUserError
-      );
-
-      return sendJson(res, 500, {
-        error:
-          'Dataene ble behandlet, men selve kontoen kunne ikke slettes.',
-        details: deleteUserError.message
-      });
-    }
-
-    return sendJson(res, 200, {
-      success: true
-    });
-
-  }
-  catch(error){
-
-    console.error(
-      'delete-account:',
-      error
     );
 
-    return sendJson(res, 500, {
-      error: 'Serverfeil ved sletting av kontoen.',
-      details: error?.message || String(error)
+    const userData = await userResponse.json();
+
+    if (!userResponse.ok || !userData.id) {
+      console.error("Auth verification failed:", userData);
+
+      return res.status(401).json({
+        error: "Innloggingen er ikke gyldig."
+      });
+    }
+
+    const userId = userData.id;
+
+    // Delete the user's application data first.
+    const tables = ["collection", "wants"];
+
+    for (const table of tables) {
+      const deleteResponse = await fetch(
+        `${supabaseUrl}/rest/v1/${table}?user_id=eq.${encodeURIComponent(userId)}`,
+        {
+          method: "DELETE",
+          headers: {
+            apikey: secretKey,
+            Authorization: `Bearer ${secretKey}`,
+            Prefer: "return=minimal"
+          }
+        }
+      );
+
+      if (!deleteResponse.ok) {
+        const errorText = await deleteResponse.text();
+        console.error(`Delete ${table} failed:`, errorText);
+
+        // Continue so an absent/non-existing table does not prevent
+        // the account deletion itself.
+      }
+    }
+
+    // Delete the Supabase Auth account.
+    const deleteUserResponse = await fetch(
+      `${supabaseUrl}/auth/v1/admin/users/${encodeURIComponent(userId)}`,
+      {
+        method: "DELETE",
+        headers: {
+          apikey: secretKey,
+          Authorization: `Bearer ${secretKey}`
+        }
+      }
+    );
+
+    if (!deleteUserResponse.ok) {
+      const errorText = await deleteUserResponse.text();
+
+      console.error("Auth account deletion failed:", errorText);
+
+      return res.status(500).json({
+        error: "Kunne ikke slette brukerkontoen.",
+        details: errorText
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Kontoen er slettet."
+    });
+  } catch (error) {
+    console.error("Delete account error:", error);
+
+    return res.status(500).json({
+      error: "Serverfeil ved sletting av konto.",
+      details: error.message
     });
   }
-};
+}
