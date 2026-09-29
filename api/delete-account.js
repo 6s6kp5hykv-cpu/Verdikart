@@ -6,149 +6,74 @@ const SUPABASE_URL =
 const SUPABASE_PUBLISHABLE_KEY =
   'sb_publishable_2lQgSsDQRbOO4DIg6pbDsg_5n1lfGKS';
 
-/*
-  Vercel-variabelen heter foreløpig
-  SUPABASE_SERVICE_ROLE_KEY.
-
-  Vi støtter også SUPABASE_SECRET_KEY hvis
-  du senere velger å gi den det navnet.
-*/
 const SUPABASE_SECRET_KEY =
   process.env.SUPABASE_SECRET_KEY ||
   process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-
 function sendJson(res, status, body){
-
-  return res
-    .status(status)
-    .json(body);
-
+  return res.status(status).json(body);
 }
-
 
 module.exports = async function handler(req, res){
 
-  /*
-    Bare POST er tillatt.
-  */
   if(req.method !== 'POST'){
+    res.setHeader('Allow', 'POST');
 
-    res.setHeader(
-      'Allow',
-      'POST'
-    );
-
-    return sendJson(
-      res,
-      405,
-      {
-        error:
-          'Metoden er ikke tillatt.'
-      }
-    );
-
+    return sendJson(res, 405, {
+      error: 'Metoden er ikke tillatt.'
+    });
   }
 
-
-  /*
-    Kontroller at serveren har
-    Supabase Secret Key.
-  */
   if(!SUPABASE_SECRET_KEY){
-
-    return sendJson(
-      res,
-      500,
-      {
-        error:
-          'Serveren mangler Supabase Secret Key.'
-      }
-    );
-
+    return sendJson(res, 500, {
+      error: 'Serveren mangler Supabase Secret Key.'
+    });
   }
 
-
-  /*
-    Hent brukerens access-token
-    fra Authorization-headeren.
-  */
   const authorization =
     req.headers.authorization || '';
 
   const match =
-    authorization.match(
-      /^Bearer\s+(.+)$/i
-    );
-
+    authorization.match(/^Bearer\s+(.+)$/i);
 
   if(!match){
-
-    return sendJson(
-      res,
-      401,
-      {
-        error:
-          'Mangler innloggingstoken.'
-      }
-    );
-
+    return sendJson(res, 401, {
+      error: 'Mangler innloggingstoken.'
+    });
   }
 
-
-  const accessToken =
-    match[1];
-
+  const accessToken = match[1];
 
   try{
 
     /*
-      VIKTIG:
-
-      Brukerens JWT valideres direkte mot
-      Supabase Auth.
-
-      Publishable key brukes som API-key.
-      Brukerens access-token brukes som
-      Authorization Bearer-token.
-
-      Dette skiller brukerinnloggingen fra
-      den administrative Secret Key-en.
-    */
+     * FEILSØKING:
+     * Valider brukerens access-token direkte mot Supabase Auth.
+     * Vi returnerer den faktiske Supabase-feilen midlertidig,
+     * slik at vi kan se nøyaktig hvorfor tokenet blir avvist.
+     */
     const authResponse =
       await fetch(
-        SUPABASE_URL +
-        '/auth/v1/user',
+        SUPABASE_URL + '/auth/v1/user',
         {
           method: 'GET',
-
           headers: {
-            'apikey':
-              SUPABASE_PUBLISHABLE_KEY,
-
-            'Authorization':
-              'Bearer ' + accessToken
+            'apikey': SUPABASE_PUBLISHABLE_KEY,
+            'Authorization': 'Bearer ' + accessToken
           }
         }
       );
-
 
     if(!authResponse.ok){
 
       let authError = {};
 
       try{
-
-        authError =
-          await authResponse.json();
-
+        authError = await authResponse.json();
       }
       catch(_){
-
         authError = {};
-
       }
-
 
       console.error(
         'Supabase Auth validation failed:',
@@ -156,47 +81,27 @@ module.exports = async function handler(req, res){
         authError
       );
 
-
-      return sendJson(
-        res,
-        401,
-        {
-          error:
-            'Innloggingen er ikke gyldig.'
-        }
-      );
-
+      return sendJson(res, 401, {
+        error: 'Supabase avviste innloggingen.',
+        status: authResponse.status,
+        supabase_error:
+          authError?.message ||
+          authError?.error_description ||
+          authError?.error ||
+          'Ukjent Supabase-feil.'
+      });
     }
 
-
-    const user =
-      await authResponse.json();
-
+    const user = await authResponse.json();
 
     if(!user || !user.id){
-
-      return sendJson(
-        res,
-        401,
-        {
-          error:
-            'Innloggingen er ikke gyldig.'
-        }
-      );
-
+      return sendJson(res, 401, {
+        error: 'Supabase returnerte ingen gyldig bruker.'
+      });
     }
 
+    const userId = user.id;
 
-    const userId =
-      user.id;
-
-
-    /*
-      Opprett en separat admin-klient.
-
-      Secret Key brukes KUN på serveren
-      og aldri i nettleseren.
-    */
     const adminClient =
       createClient(
         SUPABASE_URL,
@@ -210,121 +115,61 @@ module.exports = async function handler(req, res){
         }
       );
 
-
-    /*
-      Slett alle gjenstander
-      tilhørende brukeren.
-    */
-    const {
-      error: collectionError
-    } =
+    const { error: collectionError } =
       await adminClient
         .from('collection_items')
         .delete()
-        .eq(
-          'user_id',
-          userId
-        );
-
+        .eq('user_id', userId);
 
     if(collectionError){
-
       console.error(
         'collection_items delete:',
         collectionError
       );
 
-      return sendJson(
-        res,
-        500,
-        {
-          error:
-            'Kunne ikke slette samlingen.'
-        }
-      );
-
+      return sendJson(res, 500, {
+        error: 'Kunne ikke slette samlingen.',
+        details: collectionError.message
+      });
     }
 
-
-    /*
-      Slett alle kjøpsønsker
-      tilhørende brukeren.
-    */
-    const {
-      error: wantedError
-    } =
+    const { error: wantedError } =
       await adminClient
         .from('wanted_items')
         .delete()
-        .eq(
-          'user_id',
-          userId
-        );
-
+        .eq('user_id', userId);
 
     if(wantedError){
-
       console.error(
         'wanted_items delete:',
         wantedError
       );
 
-      return sendJson(
-        res,
-        500,
-        {
-          error:
-            'Kunne ikke slette kjøpsønskene.'
-        }
-      );
-
+      return sendJson(res, 500, {
+        error: 'Kunne ikke slette kjøpsønskene.',
+        details: wantedError.message
+      });
     }
 
-
-    /*
-      Til slutt slettes selve
-      Supabase Auth-kontoen.
-    */
-    const {
-      error: deleteUserError
-    } =
-      await adminClient
-        .auth
-        .admin
-        .deleteUser(
-          userId
-        );
-
+    const { error: deleteUserError } =
+      await adminClient.auth.admin.deleteUser(userId);
 
     if(deleteUserError){
-
       console.error(
         'auth.admin.deleteUser:',
         deleteUserError
       );
 
-      return sendJson(
-        res,
-        500,
-        {
-          error:
-            'Dataene ble behandlet, men selve kontoen kunne ikke slettes.'
-        }
-      );
-
+      return sendJson(res, 500, {
+        error:
+          'Dataene ble behandlet, men selve kontoen kunne ikke slettes.',
+        details: deleteUserError.message
+      });
     }
 
-
-    /*
-      Alt OK.
-    */
-    return sendJson(
-      res,
-      200,
-      {
-        success: true
-      }
-    );
+    return sendJson(res, 200, {
+      success: true
+    });
 
   }
   catch(error){
@@ -334,15 +179,9 @@ module.exports = async function handler(req, res){
       error
     );
 
-    return sendJson(
-      res,
-      500,
-      {
-        error:
-          'Kunne ikke slette kontoen og alle dataene.'
-      }
-    );
-
+    return sendJson(res, 500, {
+      error: 'Serverfeil ved sletting av kontoen.',
+      details: error?.message || String(error)
+    });
   }
-
 };
