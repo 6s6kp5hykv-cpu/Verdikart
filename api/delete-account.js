@@ -9,7 +9,7 @@ const SUPABASE_SERVICE_ROLE_KEY =
 /* JSON-SVAR */
 /* ========================= */
 
-function sendJson(res, status, body){
+function sendJson(res, status, body) {
   return res.status(status).json(body);
 }
 
@@ -18,16 +18,14 @@ function sendJson(res, status, body){
 /* SUPABASE REQUEST */
 /* ========================= */
 
-async function supabaseRequest(path, options = {}){
+async function supabaseRequest(path, options = {}) {
 
   const response = await fetch(
     SUPABASE_URL + path,
     {
       ...options,
 
-      headers:{
-        ...(options.headers || {}),
-
+      headers: {
         apikey:
           SUPABASE_SERVICE_ROLE_KEY,
 
@@ -36,7 +34,15 @@ async function supabaseRequest(path, options = {}){
           SUPABASE_SERVICE_ROLE_KEY,
 
         'Content-Type':
-          'application/json'
+          'application/json',
+
+        /*
+         * Viktig:
+         * Eventuelle headers sendt inn til funksjonen
+         * skal komme SIST, slik at brukerens access token
+         * kan overstyre service-role-tokenet.
+         */
+        ...(options.headers || {})
       }
     }
   );
@@ -46,12 +52,12 @@ async function supabaseRequest(path, options = {}){
 
   let data = null;
 
-  try{
+  try {
     data = text
       ? JSON.parse(text)
       : null;
   }
-  catch(_){
+  catch (error) {
     data = text;
   }
 
@@ -66,10 +72,13 @@ async function supabaseRequest(path, options = {}){
 /* DELETE ACCOUNT */
 /* ========================= */
 
-module.exports = async function handler(req, res){
+module.exports = async function handler(req, res) {
 
-  /* Kun POST */
-  if(req.method !== 'POST'){
+  /* ========================= */
+  /* KUN POST */
+  /* ========================= */
+
+  if (req.method !== 'POST') {
 
     res.setHeader(
       'Allow',
@@ -87,9 +96,11 @@ module.exports = async function handler(req, res){
   }
 
 
-  /* Kontroller servernøkkel */
+  /* ========================= */
+  /* KONTROLLER SERVICE KEY */
+  /* ========================= */
 
-  if(!SUPABASE_SERVICE_ROLE_KEY){
+  if (!SUPABASE_SERVICE_ROLE_KEY) {
 
     return sendJson(
       res,
@@ -102,7 +113,9 @@ module.exports = async function handler(req, res){
   }
 
 
-  /* Hent brukerens token */
+  /* ========================= */
+  /* HENT BRUKERENS TOKEN */
+  /* ========================= */
 
   const authorization =
     req.headers.authorization || '';
@@ -113,7 +126,7 @@ module.exports = async function handler(req, res){
     );
 
 
-  if(!match){
+  if (!match) {
 
     return sendJson(
       res,
@@ -130,7 +143,7 @@ module.exports = async function handler(req, res){
     match[1];
 
 
-  try{
+  try {
 
     /* ========================= */
     /* 1. KONTROLLER INNLOGGING */
@@ -140,9 +153,9 @@ module.exports = async function handler(req, res){
       await supabaseRequest(
         '/auth/v1/user',
         {
-          method:'GET',
+          method: 'GET',
 
-          headers:{
+          headers: {
             Authorization:
               'Bearer ' +
               accessToken
@@ -151,11 +164,16 @@ module.exports = async function handler(req, res){
       );
 
 
-    if(
+    if (
       !userResult.response.ok ||
       !userResult.data ||
       !userResult.data.id
-    ){
+    ) {
+
+      console.error(
+        'Auth error:',
+        userResult.data
+      );
 
       return sendJson(
         res,
@@ -181,9 +199,9 @@ module.exports = async function handler(req, res){
         '/rest/v1/collection_items?user_id=eq.' +
         encodeURIComponent(userId),
         {
-          method:'DELETE',
+          method: 'DELETE',
 
-          headers:{
+          headers: {
             Prefer:
               'return=minimal'
           }
@@ -191,10 +209,10 @@ module.exports = async function handler(req, res){
       );
 
 
-    if(!collectionResult.response.ok){
+    if (!collectionResult.response.ok) {
 
       console.error(
-        'collection_items:',
+        'collection_items error:',
         collectionResult.data
       );
 
@@ -218,9 +236,9 @@ module.exports = async function handler(req, res){
         '/rest/v1/wanted_items?user_id=eq.' +
         encodeURIComponent(userId),
         {
-          method:'DELETE',
+          method: 'DELETE',
 
-          headers:{
+          headers: {
             Prefer:
               'return=minimal'
           }
@@ -228,10 +246,10 @@ module.exports = async function handler(req, res){
       );
 
 
-    if(!wantedResult.response.ok){
+    if (!wantedResult.response.ok) {
 
       console.error(
-        'wanted_items:',
+        'wanted_items error:',
         wantedResult.data
       );
 
@@ -255,15 +273,15 @@ module.exports = async function handler(req, res){
         '/auth/v1/admin/users/' +
         encodeURIComponent(userId),
         {
-          method:'DELETE'
+          method: 'DELETE'
         }
       );
 
 
-    if(!deleteUserResult.response.ok){
+    if (!deleteUserResult.response.ok) {
 
       console.error(
-        'delete user:',
+        'delete user error:',
         deleteUserResult.data
       );
 
@@ -286,18 +304,18 @@ module.exports = async function handler(req, res){
       res,
       200,
       {
-        success:true,
+        success: true,
+
         message:
           'Kontoen og alle dataene er slettet.'
       }
     );
 
-
   }
-  catch(error){
+  catch (error) {
 
     console.error(
-      'delete-account:',
+      'delete-account error:',
       error
     );
 
