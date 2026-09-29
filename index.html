@@ -1027,9 +1027,8 @@ async function logout(){
 async function deleteAccount(){
 
   if(!currentUser){
-
+    alert('Du må være logget inn for å slette kontoen.');
     return;
-
   }
 
   const email =
@@ -1045,9 +1044,7 @@ async function deleteAccount(){
     );
 
   if(!confirmed){
-
     return;
-
   }
 
   const button =
@@ -1062,31 +1059,41 @@ async function deleteAccount(){
 
   try{
 
+    /*
+      FORNY INNLOGGINGEN FØRST.
+      Dette sørger for at serveren får et ferskt access-token.
+    */
     const {
-      data: sessionData,
-      error: sessionError
+      data: refreshData,
+      error: refreshError
     } =
-      await supabaseClient.auth.getSession();
+      await supabaseClient.auth.refreshSession();
 
-    if(sessionError){
-      throw sessionError;
-    }
-
-    const accessToken =
-      sessionData?.session?.access_token;
-
-    if(!accessToken){
+    if(refreshError){
       throw new Error(
-        'Økten er utløpt. Logg inn på nytt og prøv igjen.'
+        refreshError.message ||
+        'Kunne ikke fornye innloggingen.'
       );
     }
 
+    const accessToken =
+      refreshData?.session?.access_token;
+
+    if(!accessToken){
+      throw new Error(
+        'Kunne ikke fornye innloggingen. Logg inn på nytt og prøv igjen.'
+      );
+    }
+
+    /*
+      SEND DET NYE ACCESS-TOKENET TIL SERVEREN.
+    */
     const response =
       await fetch(
         '/api/delete-account',
         {
-          method:'POST',
-          headers:{
+          method: 'POST',
+          headers: {
             'Authorization':
               'Bearer ' + accessToken,
             'Content-Type':
@@ -1120,6 +1127,7 @@ async function deleteAccount(){
       );
     }
 
+    /* RYDD LOKAL DATA */
     localStorage.removeItem('vk_items');
     localStorage.removeItem('vk_wants');
 
@@ -1129,6 +1137,7 @@ async function deleteAccount(){
     currentUser = null;
     cloudLoaded = false;
 
+    /* LOGG UT LOKAL SUPABASE-ØKT */
     await supabaseClient.auth.signOut();
 
     alert(
@@ -1141,7 +1150,10 @@ async function deleteAccount(){
   }
   catch(err){
 
-    console.error(err);
+    console.error(
+      'Feil ved sletting av konto:',
+      err
+    );
 
     alert(
       err.message ||
@@ -1150,12 +1162,14 @@ async function deleteAccount(){
 
     if(button){
       button.disabled = false;
-      button.textContent = '🗑️ Slett konto og alle data';
+      button.textContent =
+        '🗑️ Slett konto og alle data';
     }
 
   }
 
 }
+
 
 
 /* ========================= */
