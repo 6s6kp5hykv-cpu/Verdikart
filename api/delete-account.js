@@ -1,84 +1,38 @@
+const { createClient } = require('@supabase/supabase-js');
+
 const SUPABASE_URL =
   'https://tiqwlxpclqqncykdwvjf.supabase.co';
 
-const SUPABASE_SERVICE_ROLE_KEY =
+const SUPABASE_PUBLISHABLE_KEY =
+  'sb_publishable_2lQgSsDQRbOO4DIg6pbDsg_5n1lfGKS';
+
+/*
+  Vercel-variabelen heter foreløpig
+  SUPABASE_SERVICE_ROLE_KEY.
+
+  Vi støtter også SUPABASE_SECRET_KEY hvis
+  du senere velger å gi den det navnet.
+*/
+const SUPABASE_SECRET_KEY =
+  process.env.SUPABASE_SECRET_KEY ||
   process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 
-/* ========================= */
-/* JSON-SVAR */
-/* ========================= */
+function sendJson(res, status, body){
 
-function sendJson(res, status, body) {
-  return res.status(status).json(body);
+  return res
+    .status(status)
+    .json(body);
+
 }
 
 
-/* ========================= */
-/* SUPABASE REQUEST */
-/* ========================= */
+module.exports = async function handler(req, res){
 
-async function supabaseRequest(path, options = {}) {
-
-  const response = await fetch(
-    SUPABASE_URL + path,
-    {
-      ...options,
-
-      headers: {
-        apikey:
-          SUPABASE_SERVICE_ROLE_KEY,
-
-        Authorization:
-          'Bearer ' +
-          SUPABASE_SERVICE_ROLE_KEY,
-
-        'Content-Type':
-          'application/json',
-
-        /*
-         * Viktig:
-         * Eventuelle headers sendt inn til funksjonen
-         * skal komme SIST, slik at brukerens access token
-         * kan overstyre service-role-tokenet.
-         */
-        ...(options.headers || {})
-      }
-    }
-  );
-
-  const text =
-    await response.text();
-
-  let data = null;
-
-  try {
-    data = text
-      ? JSON.parse(text)
-      : null;
-  }
-  catch (error) {
-    data = text;
-  }
-
-  return {
-    response,
-    data
-  };
-}
-
-
-/* ========================= */
-/* DELETE ACCOUNT */
-/* ========================= */
-
-module.exports = async function handler(req, res) {
-
-  /* ========================= */
-  /* KUN POST */
-  /* ========================= */
-
-  if (req.method !== 'POST') {
+  /*
+    Bare POST er tillatt.
+  */
+  if(req.method !== 'POST'){
 
     res.setHeader(
       'Allow',
@@ -93,30 +47,32 @@ module.exports = async function handler(req, res) {
           'Metoden er ikke tillatt.'
       }
     );
+
   }
 
 
-  /* ========================= */
-  /* KONTROLLER SERVICE KEY */
-  /* ========================= */
-
-  if (!SUPABASE_SERVICE_ROLE_KEY) {
+  /*
+    Kontroller at serveren har
+    Supabase Secret Key.
+  */
+  if(!SUPABASE_SECRET_KEY){
 
     return sendJson(
       res,
       500,
       {
         error:
-          'Serveren mangler SUPABASE_SERVICE_ROLE_KEY.'
+          'Serveren mangler Supabase Secret Key.'
       }
     );
+
   }
 
 
-  /* ========================= */
-  /* HENT BRUKERENS TOKEN */
-  /* ========================= */
-
+  /*
+    Hent brukerens access-token
+    fra Authorization-headeren.
+  */
   const authorization =
     req.headers.authorization || '';
 
@@ -126,7 +82,7 @@ module.exports = async function handler(req, res) {
     );
 
 
-  if (!match) {
+  if(!match){
 
     return sendJson(
       res,
@@ -136,6 +92,7 @@ module.exports = async function handler(req, res) {
           'Mangler innloggingstoken.'
       }
     );
+
   }
 
 
@@ -143,37 +100,62 @@ module.exports = async function handler(req, res) {
     match[1];
 
 
-  try {
+  try{
 
-    /* ========================= */
-    /* 1. KONTROLLER INNLOGGING */
-    /* ========================= */
+    /*
+      VIKTIG:
 
-    const userResult =
-      await supabaseRequest(
+      Brukerens JWT valideres direkte mot
+      Supabase Auth.
+
+      Publishable key brukes som API-key.
+      Brukerens access-token brukes som
+      Authorization Bearer-token.
+
+      Dette skiller brukerinnloggingen fra
+      den administrative Secret Key-en.
+    */
+    const authResponse =
+      await fetch(
+        SUPABASE_URL +
         '/auth/v1/user',
         {
           method: 'GET',
 
           headers: {
-            Authorization:
-              'Bearer ' +
-              accessToken
+            'apikey':
+              SUPABASE_PUBLISHABLE_KEY,
+
+            'Authorization':
+              'Bearer ' + accessToken
           }
         }
       );
 
 
-    if (
-      !userResult.response.ok ||
-      !userResult.data ||
-      !userResult.data.id
-    ) {
+    if(!authResponse.ok){
+
+      let authError = {};
+
+      try{
+
+        authError =
+          await authResponse.json();
+
+      }
+      catch(_){
+
+        authError = {};
+
+      }
+
 
       console.error(
-        'Auth error:',
-        userResult.data
+        'Supabase Auth validation failed:',
+        authResponse.status,
+        authError
       );
+
 
       return sendJson(
         res,
@@ -183,37 +165,73 @@ module.exports = async function handler(req, res) {
             'Innloggingen er ikke gyldig.'
         }
       );
+
+    }
+
+
+    const user =
+      await authResponse.json();
+
+
+    if(!user || !user.id){
+
+      return sendJson(
+        res,
+        401,
+        {
+          error:
+            'Innloggingen er ikke gyldig.'
+        }
+      );
+
     }
 
 
     const userId =
-      userResult.data.id;
+      user.id;
 
 
-    /* ========================= */
-    /* 2. SLETT SAMLING */
-    /* ========================= */
+    /*
+      Opprett en separat admin-klient.
 
-    const collectionResult =
-      await supabaseRequest(
-        '/rest/v1/collection_items?user_id=eq.' +
-        encodeURIComponent(userId),
+      Secret Key brukes KUN på serveren
+      og aldri i nettleseren.
+    */
+    const adminClient =
+      createClient(
+        SUPABASE_URL,
+        SUPABASE_SECRET_KEY,
         {
-          method: 'DELETE',
-
-          headers: {
-            Prefer:
-              'return=minimal'
+          auth: {
+            autoRefreshToken: false,
+            persistSession: false,
+            detectSessionInUrl: false
           }
         }
       );
 
 
-    if (!collectionResult.response.ok) {
+    /*
+      Slett alle gjenstander
+      tilhørende brukeren.
+    */
+    const {
+      error: collectionError
+    } =
+      await adminClient
+        .from('collection_items')
+        .delete()
+        .eq(
+          'user_id',
+          userId
+        );
+
+
+    if(collectionError){
 
       console.error(
-        'collection_items error:',
-        collectionResult.data
+        'collection_items delete:',
+        collectionError
       );
 
       return sendJson(
@@ -224,33 +242,31 @@ module.exports = async function handler(req, res) {
             'Kunne ikke slette samlingen.'
         }
       );
+
     }
 
 
-    /* ========================= */
-    /* 3. SLETT KJØPSØNSKER */
-    /* ========================= */
-
-    const wantedResult =
-      await supabaseRequest(
-        '/rest/v1/wanted_items?user_id=eq.' +
-        encodeURIComponent(userId),
-        {
-          method: 'DELETE',
-
-          headers: {
-            Prefer:
-              'return=minimal'
-          }
-        }
-      );
+    /*
+      Slett alle kjøpsønsker
+      tilhørende brukeren.
+    */
+    const {
+      error: wantedError
+    } =
+      await adminClient
+        .from('wanted_items')
+        .delete()
+        .eq(
+          'user_id',
+          userId
+        );
 
 
-    if (!wantedResult.response.ok) {
+    if(wantedError){
 
       console.error(
-        'wanted_items error:',
-        wantedResult.data
+        'wanted_items delete:',
+        wantedError
       );
 
       return sendJson(
@@ -261,28 +277,30 @@ module.exports = async function handler(req, res) {
             'Kunne ikke slette kjøpsønskene.'
         }
       );
+
     }
 
 
-    /* ========================= */
-    /* 4. SLETT BRUKERKONTO */
-    /* ========================= */
+    /*
+      Til slutt slettes selve
+      Supabase Auth-kontoen.
+    */
+    const {
+      error: deleteUserError
+    } =
+      await adminClient
+        .auth
+        .admin
+        .deleteUser(
+          userId
+        );
 
-    const deleteUserResult =
-      await supabaseRequest(
-        '/auth/v1/admin/users/' +
-        encodeURIComponent(userId),
-        {
-          method: 'DELETE'
-        }
-      );
 
-
-    if (!deleteUserResult.response.ok) {
+    if(deleteUserError){
 
       console.error(
-        'delete user error:',
-        deleteUserResult.data
+        'auth.admin.deleteUser:',
+        deleteUserError
       );
 
       return sendJson(
@@ -290,32 +308,29 @@ module.exports = async function handler(req, res) {
         500,
         {
           error:
-            'Kunne ikke slette brukerkontoen.'
+            'Dataene ble behandlet, men selve kontoen kunne ikke slettes.'
         }
       );
+
     }
 
 
-    /* ========================= */
-    /* FERDIG */
-    /* ========================= */
-
+    /*
+      Alt OK.
+    */
     return sendJson(
       res,
       200,
       {
-        success: true,
-
-        message:
-          'Kontoen og alle dataene er slettet.'
+        success: true
       }
     );
 
   }
-  catch (error) {
+  catch(error){
 
     console.error(
-      'delete-account error:',
+      'delete-account:',
       error
     );
 
@@ -324,9 +339,10 @@ module.exports = async function handler(req, res) {
       500,
       {
         error:
-          'Det oppstod en feil under sletting av kontoen.'
+          'Kunne ikke slette kontoen og alle dataene.'
       }
     );
+
   }
 
 };
