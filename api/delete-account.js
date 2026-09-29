@@ -4,14 +4,18 @@ export default async function handler(req, res) {
   }
 
   try {
-    const supabaseUrl = process.env.SUPABASE_URL;
+    // This is the public Supabase project URL.
+    const supabaseUrl =
+      "https://tiqwlxpclqqncykdwvjf.supabase.co";
+
+    // Keep the Secret Key only in Vercel Environment Variables.
     const secretKey =
       process.env.SUPABASE_SECRET_KEY ||
       process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-    if (!supabaseUrl || !secretKey) {
+    if (!secretKey) {
       return res.status(500).json({
-        error: "Supabase environment variables are missing."
+        error: "Supabase Secret Key is missing in Vercel."
       });
     }
 
@@ -26,7 +30,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // Verify the currently logged-in user directly through Supabase Auth.
+    // Verify the logged-in user directly through Supabase Auth.
     const userResponse = await fetch(
       `${supabaseUrl}/auth/v1/user`,
       {
@@ -50,10 +54,9 @@ export default async function handler(req, res) {
 
     const userId = userData.id;
 
-    // Delete the user's application data first.
-    const tables = ["collection", "wants"];
-
-    for (const table of tables) {
+    // Delete application data belonging to this user.
+    // If a table does not exist, continue to account deletion.
+    for (const table of ["collection", "wants"]) {
       const deleteResponse = await fetch(
         `${supabaseUrl}/rest/v1/${table}?user_id=eq.${encodeURIComponent(userId)}`,
         {
@@ -69,9 +72,6 @@ export default async function handler(req, res) {
       if (!deleteResponse.ok) {
         const errorText = await deleteResponse.text();
         console.error(`Delete ${table} failed:`, errorText);
-
-        // Continue so an absent/non-existing table does not prevent
-        // the account deletion itself.
       }
     }
 
