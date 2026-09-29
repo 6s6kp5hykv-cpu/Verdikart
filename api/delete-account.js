@@ -1,192 +1,314 @@
-const SUPABASE_URL = 'https://tiqwlxpclqqncykdwvjf.supabase.co';
+const SUPABASE_URL =
+  'https://tiqwlxpclqqncykdwvjf.supabase.co';
+
 const SUPABASE_SERVICE_ROLE_KEY =
   process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-function sendJson(res, status, body) {
-  res.status(status).json(body);
+
+/* ========================= */
+/* JSON-SVAR */
+/* ========================= */
+
+function sendJson(res, status, body){
+  return res.status(status).json(body);
 }
 
-async function supabaseRequest(path, options = {}) {
+
+/* ========================= */
+/* SUPABASE REQUEST */
+/* ========================= */
+
+async function supabaseRequest(path, options = {}){
+
   const response = await fetch(
     SUPABASE_URL + path,
     {
       ...options,
-      headers: {
-        apikey: SUPABASE_SERVICE_ROLE_KEY,
+
+      headers:{
+        ...(options.headers || {}),
+
+        apikey:
+          SUPABASE_SERVICE_ROLE_KEY,
+
         Authorization:
-          'Bearer ' + SUPABASE_SERVICE_ROLE_KEY,
-        ...(options.headers || {})
+          'Bearer ' +
+          SUPABASE_SERVICE_ROLE_KEY,
+
+        'Content-Type':
+          'application/json'
       }
     }
   );
 
-  const text = await response.text();
+  const text =
+    await response.text();
 
   let data = null;
 
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch (_) {
-    data = null;
+  try{
+    data = text
+      ? JSON.parse(text)
+      : null;
+  }
+  catch(_){
+    data = text;
   }
 
   return {
     response,
-    data,
-    text
+    data
   };
 }
 
-module.exports = async function handler(req, res) {
 
-  if (req.method !== 'POST') {
-    res.setHeader('Allow', 'POST');
+/* ========================= */
+/* DELETE ACCOUNT */
+/* ========================= */
 
-    return sendJson(res, 405, {
-      error: 'Metoden er ikke tillatt.'
-    });
+module.exports = async function handler(req, res){
+
+  /* Kun POST */
+  if(req.method !== 'POST'){
+
+    res.setHeader(
+      'Allow',
+      'POST'
+    );
+
+    return sendJson(
+      res,
+      405,
+      {
+        error:
+          'Metoden er ikke tillatt.'
+      }
+    );
   }
 
-  if (!SUPABASE_SERVICE_ROLE_KEY) {
-    return sendJson(res, 500, {
-      error:
-        'Serveren mangler SUPABASE_SERVICE_ROLE_KEY i Vercel.'
-    });
+
+  /* Kontroller servernøkkel */
+
+  if(!SUPABASE_SERVICE_ROLE_KEY){
+
+    return sendJson(
+      res,
+      500,
+      {
+        error:
+          'Serveren mangler SUPABASE_SERVICE_ROLE_KEY.'
+      }
+    );
   }
+
+
+  /* Hent brukerens token */
 
   const authorization =
     req.headers.authorization || '';
 
   const match =
-    authorization.match(/^Bearer\s+(.+)$/i);
+    authorization.match(
+      /^Bearer\s+(.+)$/i
+    );
 
-  if (!match) {
-    return sendJson(res, 401, {
-      error: 'Mangler innloggingstoken.'
-    });
+
+  if(!match){
+
+    return sendJson(
+      res,
+      401,
+      {
+        error:
+          'Mangler innloggingstoken.'
+      }
+    );
   }
 
-  const accessToken = match[1];
 
-  try {
+  const accessToken =
+    match[1];
 
-    // Finn brukeren fra innloggingstokenet
-    const userResponse =
-      await fetch(
-        SUPABASE_URL + '/auth/v1/user',
+
+  try{
+
+    /* ========================= */
+    /* 1. KONTROLLER INNLOGGING */
+    /* ========================= */
+
+    const userResult =
+      await supabaseRequest(
+        '/auth/v1/user',
         {
-          headers: {
-            apikey: SUPABASE_SERVICE_ROLE_KEY,
+          method:'GET',
+
+          headers:{
             Authorization:
-              'Bearer ' + accessToken
+              'Bearer ' +
+              accessToken
           }
         }
       );
 
-    const userText =
-      await userResponse.text();
 
-    let userData = null;
+    if(
+      !userResult.response.ok ||
+      !userResult.data ||
+      !userResult.data.id
+    ){
 
-    try {
-      userData =
-        userText
-          ? JSON.parse(userText)
-          : null;
-    } catch (_) {
-      userData = null;
+      return sendJson(
+        res,
+        401,
+        {
+          error:
+            'Innloggingen er ikke gyldig.'
+        }
+      );
     }
 
-    if (
-      !userResponse.ok ||
-      !userData?.id
-    ) {
-      return sendJson(res, 401, {
-        error:
-          'Innloggingen er ikke gyldig.'
-      });
-    }
 
-    const userId = userData.id;
+    const userId =
+      userResult.data.id;
 
-    // Slett samlingen
-    const collection =
+
+    /* ========================= */
+    /* 2. SLETT SAMLING */
+    /* ========================= */
+
+    const collectionResult =
       await supabaseRequest(
         '/rest/v1/collection_items?user_id=eq.' +
         encodeURIComponent(userId),
         {
-          method: 'DELETE',
-          headers: {
-            Prefer: 'return=minimal'
+          method:'DELETE',
+
+          headers:{
+            Prefer:
+              'return=minimal'
           }
         }
       );
 
-    if (!collection.response.ok) {
-      throw new Error(
-        'collection_items: ' +
-        collection.response.status +
-        ' ' +
-        collection.text
+
+    if(!collectionResult.response.ok){
+
+      console.error(
+        'collection_items:',
+        collectionResult.data
+      );
+
+      return sendJson(
+        res,
+        500,
+        {
+          error:
+            'Kunne ikke slette samlingen.'
+        }
       );
     }
 
-    // Slett kjøpsønskene
-    const wanted =
+
+    /* ========================= */
+    /* 3. SLETT KJØPSØNSKER */
+    /* ========================= */
+
+    const wantedResult =
       await supabaseRequest(
         '/rest/v1/wanted_items?user_id=eq.' +
         encodeURIComponent(userId),
         {
-          method: 'DELETE',
-          headers: {
-            Prefer: 'return=minimal'
+          method:'DELETE',
+
+          headers:{
+            Prefer:
+              'return=minimal'
           }
         }
       );
 
-    if (!wanted.response.ok) {
-      throw new Error(
-        'wanted_items: ' +
-        wanted.response.status +
-        ' ' +
-        wanted.text
+
+    if(!wantedResult.response.ok){
+
+      console.error(
+        'wanted_items:',
+        wantedResult.data
+      );
+
+      return sendJson(
+        res,
+        500,
+        {
+          error:
+            'Kunne ikke slette kjøpsønskene.'
+        }
       );
     }
 
-    // Slett selve brukerkontoen
-    const deletedUser =
+
+    /* ========================= */
+    /* 4. SLETT BRUKERKONTO */
+    /* ========================= */
+
+    const deleteUserResult =
       await supabaseRequest(
         '/auth/v1/admin/users/' +
         encodeURIComponent(userId),
         {
-          method: 'DELETE'
+          method:'DELETE'
         }
       );
 
-    if (!deletedUser.response.ok) {
-      throw new Error(
-        'auth user: ' +
-        deletedUser.response.status +
-        ' ' +
-        deletedUser.text
+
+    if(!deleteUserResult.response.ok){
+
+      console.error(
+        'delete user:',
+        deleteUserResult.data
+      );
+
+      return sendJson(
+        res,
+        500,
+        {
+          error:
+            'Kunne ikke slette brukerkontoen.'
+        }
       );
     }
 
-    return sendJson(res, 200, {
-      success: true
-    });
 
-  } catch (error) {
+    /* ========================= */
+    /* FERDIG */
+    /* ========================= */
+
+    return sendJson(
+      res,
+      200,
+      {
+        success:true,
+        message:
+          'Kontoen og alle dataene er slettet.'
+      }
+    );
+
+
+  }
+  catch(error){
 
     console.error(
       'delete-account:',
       error
     );
 
-    return sendJson(res, 500, {
-      error:
-        'Kunne ikke slette kontoen og alle dataene.',
-      detail: error.message
-    });
+    return sendJson(
+      res,
+      500,
+      {
+        error:
+          'Det oppstod en feil under sletting av kontoen.'
+      }
+    );
   }
+
 };
