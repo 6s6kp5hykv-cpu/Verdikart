@@ -567,7 +567,7 @@ Du kan for eksempel skrive:
 </div>
 
 <div class="muted">
-Samlet verdi
+Samlet estimert verdi
 </div>
 
 </div>
@@ -2238,33 +2238,69 @@ function numericValue(value){
 
   }
 
-  const match =
+  /*
+    Hvis AI-en returnerer et verdiintervall,
+    f.eks. "300–1200 kr", bruker vi
+    midtpunktet som samlingsverdi:
+
+    300–1200 kr = 750 kr
+
+    Selve intervallet vises fortsatt
+    på gjenstanden.
+  */
+
+  const numbers =
     value.match(
-      /\d[\d\s.]*/
+      /\d[\d\s.]*/g
     );
 
-  if(!match){
+  if(!numbers || !numbers.length){
 
     return 0;
 
   }
 
-  const number =
-    Number(
-      match[0]
-        .replace(
-          /\s/g,
-          ''
+  const parsed =
+    numbers
+      .map(number =>
+        Number(
+          number
+            .replace(
+              /\s/g,
+              ''
+            )
+            .replace(
+              /\./g,
+              ''
+            )
         )
-        .replace(
-          /\./g,
-          ''
-        )
+      )
+      .filter(
+        number =>
+          Number.isFinite(number)
+      );
+
+  if(!parsed.length){
+
+    return 0;
+
+  }
+
+  if(parsed.length >= 2){
+
+    const low =
+      parsed[0];
+
+    const high =
+      parsed[1];
+
+    return Math.round(
+      (low + high) / 2
     );
 
-  return Number.isFinite(number)
-    ? number
-    : 0;
+  }
+
+  return parsed[0];
 
 }
 
