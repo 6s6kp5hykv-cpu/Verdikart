@@ -445,22 +445,54 @@ Verdikart bruker både bildet og informasjonen du skriver for å forsøke å ide
 </p>
 
 
-<label>
-  📷 Velg bilde
+<div
+  class="scan-actions"
+  style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"
+>
 
-  <input
-    id="photo"
-    type="file"
-    accept="image/jpeg,image/png,image/webp"
-    capture="environment"
+  <label
+    class="primary"
+    style="margin:0;flex:1;min-width:150px;text-align:center;cursor:pointer"
   >
-</label>
+    📷 Ta bilde
+    <input
+      id="cameraInput"
+      type="file"
+      accept="image/*"
+      capture="environment"
+      hidden
+    >
+  </label>
 
+  <label
+    class="secondary"
+    style="margin:0;flex:1;min-width:150px;text-align:center;cursor:pointer"
+  >
+    🖼️ Velg bilder
+    <input
+      id="photo"
+      type="file"
+      accept="image/jpeg,image/png,image/webp"
+      multiple
+      hidden
+    >
+  </label>
+
+</div>
+
+<p class="muted" style="margin-top:10px">
+  Du kan ta bilder ett etter ett eller velge flere bilder samtidig.
+</p>
+
+<div
+  id="selectedImages"
+  style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px"
+></div>
 
 <img
   id="preview"
   class="preview hidden"
-  alt="Valgt bilde"
+  alt="Forhåndsvisning av bildene"
 >
 
 
@@ -480,6 +512,11 @@ Verdikart bruker både bildet og informasjonen du skriver for å forsøke å ide
 
 
 <div class="helper">
+
+💡 <strong>Flere bilder hjelper:</strong>
+Ta gjerne bilder fra flere vinkler, av detaljer, merking, serienummer og eventuelle skader.
+
+<br><br>
 
 💡 <strong>Tips:</strong>
 Jo mer informasjon du gir, desto lettere kan Verdikart skille mellom lignende modeller og gjenstander.
@@ -967,11 +1004,18 @@ function show(id){
 const photoInput =
   document.getElementById('photo');
 
+const cameraInput =
+  document.getElementById('cameraInput');
+
 const analyzeButton =
   document.getElementById('analyzeButton');
 
 const itemDescription =
   document.getElementById('itemDescription');
+
+let selectedFiles = [];
+
+let selectedPreviewUrls = [];
 
 
 /* ========================= */
@@ -1786,8 +1830,117 @@ async function loadCloudData(){
 
 
 /* ========================= */
-/* BILDE VALGT */
+/* BILDEVALG */
 /* ========================= */
+
+function addSelectedFiles(fileList){
+
+  const incoming =
+    Array.from(fileList || [])
+      .filter(
+        file =>
+          file &&
+          file.type &&
+          file.type.startsWith('image/')
+      );
+
+  if(!incoming.length){
+    return;
+  }
+
+  selectedFiles =
+    selectedFiles.concat(
+      incoming
+    );
+
+  renderSelectedImages();
+
+  analyzeButton.disabled =
+    selectedFiles.length === 0;
+
+}
+
+
+function renderSelectedImages(){
+
+  const container =
+    document.getElementById(
+      'selectedImages'
+    );
+
+  if(!container){
+    return;
+  }
+
+  selectedPreviewUrls.forEach(
+    url => URL.revokeObjectURL(url)
+  );
+
+  selectedPreviewUrls = [];
+
+  container.innerHTML = '';
+
+  selectedFiles.forEach(
+    (file,index)=>{
+
+      const url =
+        URL.createObjectURL(file);
+
+      selectedPreviewUrls.push(url);
+
+      const wrapper =
+        document.createElement(
+          'div'
+        );
+
+      wrapper.style.cssText =
+        'position:relative;width:90px;height:90px;';
+
+      const image =
+        document.createElement(
+          'img'
+        );
+
+      image.src = url;
+
+      image.alt =
+        'Bilde ' + (index + 1);
+
+      image.style.cssText =
+        'width:90px;height:90px;object-fit:cover;border-radius:12px;border:1px solid #d1d5db;';
+
+      const remove =
+        document.createElement(
+          'button'
+        );
+
+      remove.type = 'button';
+
+      remove.textContent = '×';
+
+      remove.style.cssText =
+        'position:absolute;right:-6px;top:-6px;width:28px;height:28px;border:0;border-radius:50%;background:#111827;color:white;font-size:20px;line-height:24px;padding:0;';
+
+      remove.onclick = ()=>{
+        selectedFiles.splice(
+          index,
+          1
+        );
+
+        renderSelectedImages();
+
+      };
+
+      wrapper.appendChild(image);
+      wrapper.appendChild(remove);
+
+      container.appendChild(wrapper);
+
+    }
+  );
+
+}
+
 
 if(photoInput){
 
@@ -1795,53 +1948,189 @@ if(photoInput){
     'change',
     e=>{
 
-      const f =
-        e.target.files[0];
-
-      if(!f){
-
-        analyzeButton.disabled =
-          true;
-
-        return;
-
-      }
-
-      const preview =
-        document.getElementById(
-          'preview'
-        );
-
-      const result =
-        document.getElementById(
-          'result'
-        );
-
-      const loading =
-        document.getElementById(
-          'loading'
-        );
-
-      preview.src =
-        URL.createObjectURL(f);
-
-      preview.classList.remove(
-        'hidden'
+      addSelectedFiles(
+        e.target.files
       );
 
-      result.classList.add(
-        'hidden'
-      );
-
-      loading.classList.add(
-        'hidden'
-      );
-
-      analyzeButton.disabled =
-        false;
+      /* Allows the same file to be selected again. */
+      e.target.value = '';
 
     }
   );
+
+}
+
+
+if(cameraInput){
+
+  cameraInput.addEventListener(
+    'change',
+    e=>{
+
+      addSelectedFiles(
+        e.target.files
+      );
+
+      /* Allows another photo to be taken immediately. */
+      e.target.value = '';
+
+    }
+  );
+
+}
+
+
+/* ========================= */
+/* FLERE BILDER TIL ANALYSE */
+/* ========================= */
+
+async function createAnalysisImage(files){
+
+  const images =
+    await Promise.all(
+      files.map(
+        file =>
+          fileToDataURL(file)
+      )
+    );
+
+  if(images.length === 1){
+
+    return {
+      analysisImage: images[0],
+      originalImages: images
+    };
+
+  }
+
+  const loaded =
+    await Promise.all(
+      images.map(
+        dataUrl =>
+          new Promise(
+            (resolve,reject)=>{
+
+              const img =
+                new Image();
+
+              img.onload =
+                ()=>resolve(img);
+
+              img.onerror =
+                ()=>reject(
+                  new Error(
+                    'Kunne ikke lese et av bildene.'
+                  )
+                );
+
+              img.src =
+                dataUrl;
+
+            }
+          )
+      )
+    );
+
+  const thumbWidth = 900;
+
+  const gap = 20;
+
+  const widths =
+    loaded.map(
+      img => {
+
+        if(img.naturalWidth <= thumbWidth){
+          return img.naturalWidth;
+        }
+
+        return thumbWidth;
+
+      }
+    );
+
+  const heights =
+    loaded.map(
+      (img,index)=>{
+
+        return Math.round(
+          img.naturalHeight *
+          widths[index] /
+          img.naturalWidth
+        );
+
+      }
+    );
+
+  const canvas =
+    document.createElement(
+      'canvas'
+    );
+
+  canvas.width =
+    thumbWidth;
+
+  canvas.height =
+    heights.reduce(
+      (sum,height)=>
+        sum + height,
+      0
+    ) +
+    gap * (loaded.length - 1);
+
+  const ctx =
+    canvas.getContext(
+      '2d'
+    );
+
+  ctx.fillStyle =
+    '#ffffff';
+
+  ctx.fillRect(
+    0,
+    0,
+    canvas.width,
+    canvas.height
+  );
+
+  let y = 0;
+
+  loaded.forEach(
+    (img,index)=>{
+
+      const width =
+        widths[index];
+
+      const height =
+        heights[index];
+
+      const x =
+        Math.round(
+          (canvas.width - width) / 2
+        );
+
+      ctx.drawImage(
+        img,
+        x,
+        y,
+        width,
+        height
+      );
+
+      y += height + gap;
+
+    }
+  );
+
+  return {
+    analysisImage:
+      canvas.toDataURL(
+        'image/jpeg',
+        0.85
+      ),
+
+    originalImages:
+      images
+  };
 
 }
 
@@ -1856,13 +2145,10 @@ if(analyzeButton){
     'click',
     async ()=>{
 
-      const f =
-        photoInput.files[0];
-
-      if(!f){
+      if(!selectedFiles.length){
 
         alert(
-          'Velg et bilde først.'
+          'Ta eller velg minst ett bilde først.'
         );
 
         return;
@@ -1900,11 +2186,20 @@ if(analyzeButton){
 
       try{
 
+        const imageSet =
+          await createAnalysisImage(
+            selectedFiles
+          );
+
         const dataUrl =
-          await fileToDataURL(f);
+          imageSet.analysisImage;
 
         preview.src =
           dataUrl;
+
+        preview.classList.remove(
+          'hidden'
+        );
 
         const res =
           await fetch(
@@ -1948,6 +2243,9 @@ if(analyzeButton){
 
           img:
             dataUrl,
+
+          images:
+            imageSet.originalImages,
 
           userDescription:
             description
