@@ -638,6 +638,14 @@ Gjenstander
   </button>
 
   <button
+    class="danger"
+    style="margin-top:8px;width:100%"
+    onclick="deleteCurrentItem()"
+  >
+    🗑️ Slett gjenstand
+  </button>
+
+  <button
     class="secondary"
     style="margin-top:8px;width:100%"
     onclick="closeHistory()"
@@ -2451,6 +2459,14 @@ function renderItems(){
                 📈 Verdiutvikling
               </button>
 
+              <button
+                class="danger"
+                style="margin-top:8px;width:100%"
+                onclick="deleteItem('${item.id}')"
+              >
+                🗑️ Slett gjenstand
+              </button>
+
             </div>
 
           </div>
@@ -2460,6 +2476,119 @@ function renderItems(){
       }
 
     ).join('');
+
+}
+
+
+/* ========================= */
+/* SLETT GJENSTAND */
+/* ========================= */
+
+async function deleteItem(itemId){
+
+  if(!currentUser){
+    alert(
+      'Du må være logget inn.'
+    );
+    return;
+  }
+
+  const item =
+    items.find(
+      x => x.id === itemId
+    );
+
+  if(!item){
+    return;
+  }
+
+  const confirmed =
+    confirm(
+      'Er du sikker på at du vil slette "' +
+      (item.name || 'denne gjenstanden') +
+      '"?\n\nDette sletter gjenstanden og all verdi-historikk for den.'
+    );
+
+  if(!confirmed){
+    return;
+  }
+
+  try{
+
+    const { error: historyError } =
+      await supabaseClient
+        .from('value_history')
+        .delete()
+        .eq('user_id', currentUser.id)
+        .eq('item_id', itemId);
+
+    if(historyError){
+      throw historyError;
+    }
+
+    const { error: itemError } =
+      await supabaseClient
+        .from('collection_items')
+        .delete()
+        .eq('user_id', currentUser.id)
+        .eq('id', itemId);
+
+    if(itemError){
+      throw itemError;
+    }
+
+    items =
+      items.filter(
+        x => x.id !== itemId
+      );
+
+    localStorage.setItem(
+      'vk_items',
+      JSON.stringify(items)
+    );
+
+    closeHistory();
+    renderItems();
+
+    alert(
+      'Gjenstanden er slettet.'
+    );
+
+  }
+  catch(err){
+
+    console.error(err);
+
+    alert(
+      'Kunne ikke slette gjenstanden. ' +
+      (err.message || '')
+    );
+
+  }
+
+}
+
+
+function deleteCurrentItem(){
+
+  const title =
+    document.getElementById(
+      'historyTitle'
+    );
+
+  const item =
+    items.find(
+      x => x.name === title.textContent
+    );
+
+  if(!item){
+    alert(
+      'Fant ikke gjenstanden.'
+    );
+    return;
+  }
+
+  deleteItem(item.id);
 
 }
 
