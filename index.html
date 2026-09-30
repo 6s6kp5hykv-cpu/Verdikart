@@ -481,13 +481,24 @@ Verdikart bruker både bildet og informasjonen du skriver for å forsøke å ide
 </div>
 
 <p class="muted" style="margin-top:10px">
-  Du kan ta bilder ett etter ett eller velge flere bilder samtidig.
+  Ta bilde med kameraet, eller velg bilder fra telefonen.
+  Du kan legge til flere bilder før du analyserer.
 </p>
 
 <div
   id="selectedImages"
   style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px"
 ></div>
+
+<button
+  id="resetScanButton"
+  type="button"
+  class="danger hidden"
+  style="margin-top:10px;width:100%"
+  onclick="resetScan()"
+>
+  🗑️ Fjern bilder og start på nytt
+</button>
 
 <img
   id="preview"
@@ -513,8 +524,8 @@ Verdikart bruker både bildet og informasjonen du skriver for å forsøke å ide
 
 <div class="helper">
 
-💡 <strong>Flere bilder hjelper:</strong>
-Ta gjerne bilder fra flere vinkler, av detaljer, merking, serienummer og eventuelle skader.
+💡 <strong>Flere bilder kan gi bedre identifisering:</strong>
+Ta gjerne bilde fra flere vinkler, av detaljer, merking, serienummer og eventuelle skader.
 
 <br><br>
 
@@ -1880,6 +1891,18 @@ function renderSelectedImages(){
 
   container.innerHTML = '';
 
+  const resetButton =
+    document.getElementById(
+      'resetScanButton'
+    );
+
+  if(resetButton){
+    resetButton.classList.toggle(
+      'hidden',
+      selectedFiles.length === 0
+    );
+  }
+
   selectedFiles.forEach(
     (file,index)=>{
 
@@ -1917,6 +1940,11 @@ function renderSelectedImages(){
       remove.type = 'button';
 
       remove.textContent = '×';
+      remove.setAttribute(
+        'aria-label',
+        'Fjern bilde'
+      );
+      remove.title = 'Fjern bilde';
 
       remove.style.cssText =
         'position:absolute;right:-6px;top:-6px;width:28px;height:28px;border:0;border-radius:50%;background:#111827;color:white;font-size:20px;line-height:24px;padding:0;';
@@ -1976,6 +2004,80 @@ if(cameraInput){
 
     }
   );
+
+}
+
+
+/* ========================= */
+/* START SKANNING PÅ NYTT */
+/* ========================= */
+
+function resetScan(){
+
+  selectedFiles = [];
+
+  selectedPreviewUrls.forEach(
+    url => URL.revokeObjectURL(url)
+  );
+
+  selectedPreviewUrls = [];
+
+  if(photoInput){
+    photoInput.value = '';
+  }
+
+  if(cameraInput){
+    cameraInput.value = '';
+  }
+
+  const preview =
+    document.getElementById(
+      'preview'
+    );
+
+  if(preview){
+    preview.src = '';
+    preview.classList.add(
+      'hidden'
+    );
+  }
+
+  const result =
+    document.getElementById(
+      'result'
+    );
+
+  if(result){
+    result.classList.add(
+      'hidden'
+    );
+  }
+
+  const loading =
+    document.getElementById(
+      'loading'
+    );
+
+  if(loading){
+    loading.classList.add(
+      'hidden'
+    );
+  }
+
+  if(itemDescription){
+    itemDescription.value = '';
+  }
+
+  current = null;
+
+  analyzeButton.disabled = true;
+
+  renderSelectedImages();
+
+  window.scrollTo({
+    top: 0,
+    behavior: 'smooth'
+  });
 
 }
 
