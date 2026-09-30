@@ -296,7 +296,15 @@ hr{
 
 <div class="nav">
 
-  <button class="primary" onclick="show('scan')">
+  <button
+    id="marketplaceNavButton"
+    class="primary"
+    onclick="show('marketplace')"
+  >
+    🏪 Markedsplass
+  </button>
+
+  <button class="secondary" onclick="show('scan')">
     📷 Skann
   </button>
 
@@ -306,10 +314,6 @@ hr{
 
   <button class="secondary" onclick="show('wanted')">
     🔎 Ønsker å kjøpe
-  </button>
-
-  <button class="secondary" onclick="show('marketplace')">
-    🏪 Markedsplass
   </button>
 
   <button class="secondary" onclick="show('account')">
@@ -793,9 +797,9 @@ Kommentar
   class="hidden"
 >
 
-<div class="card">
+<div class="card" style="border:2px solid #111827">
 
-  <h2>🏪 Markedsplass</h2>
+  <h2 style="font-size:30px">🏪 Markedsplass</h2>
 
   <p class="muted">
     Søk blant gjenstander og kjøpsønsker som brukere selv har valgt å gjøre offentlige.
@@ -892,6 +896,20 @@ let cloudLoaded = false;
 /* ========================= */
 
 function show(id){
+
+  document.querySelectorAll('.nav button').forEach(button => {
+    button.classList.remove('primary');
+    button.classList.add('secondary');
+  });
+
+  const activeButton = document.querySelector(
+    `.nav button[onclick="show('${id}')"]`
+  );
+
+  if(activeButton){
+    activeButton.classList.remove('secondary');
+    activeButton.classList.add('primary');
+  }
 
   [
     'scan',
@@ -1476,6 +1494,21 @@ async function loadCloudData(){
     }
 
 
+    const marketplaceResult =
+      await supabaseClient
+        .from('marketplace_listings')
+        .select('id, listing_type, collection_item_id, wanted_item_id')
+        .eq('user_id', currentUser.id);
+
+    if(marketplaceResult.error){
+      throw marketplaceResult.error;
+    }
+
+
+    const marketplaceRows =
+      marketplaceResult.data || [];
+
+
     /*
       Første gang brukeren logger inn på denne
       enheten: hvis kontoen er tom, flyttes
@@ -1670,7 +1703,16 @@ async function loadCloudData(){
               '',
 
             history:
-              savedHistory
+              savedHistory,
+
+            marketplaceListingId:
+              (
+                marketplaceRows.find(
+                  m =>
+                    m.listing_type === 'sale' &&
+                    m.collection_item_id === row.id
+                ) || {}
+              ).id || null
 
           };
 
@@ -1693,7 +1735,16 @@ async function loadCloudData(){
 
           note:
             row.description ||
-            ''
+            '',
+
+          marketplaceListingId:
+            (
+              marketplaceRows.find(
+                m =>
+                  m.listing_type === 'wanted' &&
+                  m.wanted_item_id === row.id
+              ) || {}
+            ).id || null
 
         }));
 
@@ -2567,11 +2618,23 @@ function renderItems(){
               </button>
 
               <button
-                class="secondary"
+                class="${
+                  item.marketplaceListingId
+                    ? 'danger'
+                    : 'secondary'
+                }"
                 style="margin-top:8px;width:100%"
-                onclick="publishCollectionItem('${item.id}')"
+                onclick="${
+                  item.marketplaceListingId
+                    ? `removeMarketplaceListing('${item.marketplaceListingId}')`
+                    : `publishCollectionItem('${item.id}')`
+                }"
               >
-                💰 Legg ut for salg
+                ${
+                  item.marketplaceListingId
+                    ? '🗑️ Fjern fra markedsplassen'
+                    : '💰 Legg ut for salg'
+                }
               </button>
 
               <button
@@ -3360,11 +3423,23 @@ function renderWants(){
           </div>
 
           <button
-            class="secondary"
+            class="${
+              w.marketplaceListingId
+                ? 'danger'
+                : 'secondary'
+            }"
             style="margin-top:10px;width:100%"
-            onclick="publishWantedItem('${w.id}')"
+            onclick="${
+              w.marketplaceListingId
+                ? `removeMarketplaceListing('${w.marketplaceListingId}')`
+                : `publishWantedItem('${w.id}')`
+            }"
           >
-            🌐 Vis på markedsplassen
+            ${
+              w.marketplaceListingId
+                ? '🗑️ Fjern fra markedsplassen'
+                : '🌐 Vis på markedsplassen'
+            }
           </button>
 
         </div>
@@ -3754,6 +3829,7 @@ async function publishCollectionItem(itemId){
       'Gjenstanden er nå synlig på markedsplassen.'
     );
 
+    await loadCloudData();
     show('marketplace');
 
   }
@@ -3869,6 +3945,7 @@ async function publishWantedItem(wantedId){
       'Kjøpsønsket er nå synlig på markedsplassen.'
     );
 
+    await loadCloudData();
     show('marketplace');
 
   }
@@ -3920,6 +3997,7 @@ async function removeMarketplaceListing(listingId){
       throw error;
     }
 
+    await loadCloudData();
     searchMarketplace();
 
   }
@@ -4000,7 +4078,7 @@ async function start(){
     data.session
   );
 
-  show('scan');
+  show('marketplace');
 
 }
 
