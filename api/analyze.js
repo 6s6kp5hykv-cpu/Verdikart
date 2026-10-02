@@ -1,4 +1,4 @@
-export default async function handler(req, res) {
+   export default async function handler(req, res) {
           if (req.method !== "POST") {
             return res.status(405).json({
               error: "Method not allowed"
@@ -236,6 +236,96 @@ export default async function handler(req, res) {
              * 3. HJELPEFUNKSJONER
              * ---------------------------------------------------------
              */
+
+            /*
+             * ---------------------------------------------------------
+             * 2B. INFORMASJON TIL "SE ALL INFORMASJON"
+             * ---------------------------------------------------------
+             */
+
+            if (!parsed.item_info || typeof parsed.item_info !== "object") {
+              parsed.item_info = {};
+            }
+
+            const info = parsed.item_info;
+
+            const infoText = (value, fallback = "Ukjent") => {
+              if (typeof value === "string" && value.trim()) {
+                return value.trim();
+              }
+              return fallback;
+            };
+
+            const infoList = value => {
+              if (Array.isArray(value)) {
+                return value
+                  .filter(v => typeof v === "string" && v.trim())
+                  .map(v => v.trim());
+              }
+
+              if (typeof value === "string" && value.trim()) {
+                return [value.trim()];
+              }
+
+              return [];
+            };
+
+            const itemInfo = {
+              brand: infoText(info.brand),
+              model: infoText(info.model),
+              manufacturer: infoText(info.manufacturer),
+              type: infoText(info.type, parsed.name || "Ukjent"),
+              year_or_period: infoText(info.year_or_period),
+              material: infoText(info.material),
+              serial_number: infoText(info.serial_number),
+
+              identifying_features:
+                infoList(info.identifying_features),
+
+              modifications:
+                infoText(
+                  info.modifications,
+                  "Ingen sikre modifikasjoner bekreftet."
+                ),
+
+              condition_details:
+                infoText(
+                  info.condition_details,
+                  parsed.condition ||
+                  "Tilstanden kan ikke vurderes sikkert fra bildene."
+                ),
+
+              value_factors:
+                infoList(info.value_factors),
+
+              uncertainties:
+                infoList(info.uncertainties)
+            };
+
+            if (
+              itemInfo.identifying_features.length === 0 &&
+              typeof parsed.description === "string" &&
+              parsed.description.trim()
+            ) {
+              itemInfo.identifying_features = [
+                parsed.description.trim()
+              ];
+            }
+
+            if (
+              itemInfo.uncertainties.length === 0 &&
+              String(parsed.confidence || "").toLowerCase() !== "høy"
+            ) {
+              itemInfo.uncertainties = [
+                "Identifikasjonen er ikke helt sikker og bør kontrolleres mot bilder, merking og eventuelt serienummer."
+              ];
+            }
+
+            if (itemInfo.value_factors.length === 0) {
+              itemInfo.value_factors = [
+                "Merke, modell, alder, tilstand, originalitet og dokumentert markedspris kan påvirke verdien."
+              ];
+            }
 
             function parseNok(value) {
               if (typeof value === "number") {
@@ -995,6 +1085,45 @@ export default async function handler(req, res) {
               condition:
                 parsed.condition ||
                 "",
+
+              brand:
+                itemInfo.brand,
+
+              model:
+                itemInfo.model,
+
+              manufacturer:
+                itemInfo.manufacturer,
+
+              type:
+                itemInfo.type,
+
+              year_or_period:
+                itemInfo.year_or_period,
+
+              material:
+                itemInfo.material,
+
+              serial_number:
+                itemInfo.serial_number,
+
+              identifying_features:
+                itemInfo.identifying_features,
+
+              modifications:
+                itemInfo.modifications,
+
+              condition_details:
+                itemInfo.condition_details,
+
+              value_factors:
+                itemInfo.value_factors,
+
+              uncertainties:
+                itemInfo.uncertainties,
+
+              item_info:
+                itemInfo,
 
               ebay_search_query:
                 parsed.ebay_search_query ||
