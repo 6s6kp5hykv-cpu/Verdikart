@@ -72,6 +72,20 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:18px 0}
 .grounding-row:first-of-type{margin-top:10px}
 .grounding-title{font-weight:750}
 .grounding-value{color:#64748b;font-size:14px;line-height:1.45;margin-top:3px}
+.info-button{margin-top:12px;width:100%;background:#eef2ff;color:#3730a3;border:1px solid #c7d2fe}
+.info-modal{position:fixed;inset:0;background:#0008;display:flex;align-items:flex-end;justify-content:center;z-index:1000}
+.info-sheet{background:#fff;width:100%;max-width:720px;max-height:88vh;overflow:auto;border-radius:22px 22px 0 0;padding:20px}
+.info-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.info-close{background:#e5e7eb;color:#111827;padding:9px 12px}
+.info-section{margin-top:18px}
+.info-section h4{margin:0 0 7px;font-size:16px}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.info-field{background:#f8fafc;border:1px solid #e5e7eb;border-radius:12px;padding:10px}
+.info-field-label{display:block;color:#64748b;font-size:12px;margin-bottom:3px}
+.info-field-value{font-weight:650;line-height:1.35}
+.info-list{margin:6px 0 0;padding-left:20px}
+.info-list li{margin:6px 0;line-height:1.4}
+@media(max-width:520px){.info-grid{grid-template-columns:1fr}}
 </style>
 </head>
 
@@ -154,6 +168,7 @@ Du kan for eksempel skrive: <strong>merke, modell, alder, mål, materiale, serie
 <hr>
 <div class="result-title" id="rname"></div>
 <p id="rdesc"></p>
+<button class="info-button" id="itemInfoButton" type="button">ℹ️ Se all informasjon om gjenstanden</button>
 <div class="price" id="rprice"></div>
 
 <div id="priceRange" class="price-range hidden">
@@ -499,10 +514,75 @@ result.classList.remove('hidden');result.scrollIntoView({behavior:'smooth',block
 function renderEbayResult(ebay,searchQuery){
 const c=document.getElementById('ebayResult');if(!c)return;c.classList.remove('hidden');
 if(!ebay||!ebay.enabled){c.innerHTML='<div class="ebay-title">🛒 eBay markedsreferanser</div><div class="muted">eBay-priser kunne ikke hentes akkurat nå.</div>'+(ebay?.reason?'<div class="ebay-note">'+esc(ebay.reason)+'</div>':'');return}
-if(!ebay.sample_size){c.innerHTML='<div class="ebay-title">🛒 eBay markedsreferanser</div><div class="muted">Ingen sammenlignbare eBay-annonser ble funnet.</div>'+(searchQuery?'<div class="ebay-note">Søk brukt: <strong>'+esc(searchQuery)+'</strong></div>':'')+'<div class="ebay-note">eBay Sandbox brukes foreløpig og inneholder ikke vanlige aktive eBay-annonser.</div>';return}
+if(!ebay.sample_size){c.innerHTML='<div class="ebay-title">🛒 eBay markedsreferanser</div><div class="muted">Ingen sammenlignbare eBay-annonser ble funnet.</div>'+(searchQuery?'<div class="ebay-note">Søk brukt: <strong>'+esc(searchQuery)+'</strong></div>':'')+'<div class="ebay-note">Ingen sammenlignbare aktive eBay-annonser ble funnet for dette søket.</div>';return}
 const fmt=v=>Number(v).toLocaleString('no-NO')+' kr',low=Number(ebay.low_nok)||0,high=Number(ebay.high_nok)||0,median=Number(ebay.median_nok)||0;
 const listings=(ebay.listings||[]).slice(0,5).map(x=>'<div class="ebay-listing"><div class="ebay-listing-title">'+esc(x.title||'eBay-annonse')+'</div><div class="ebay-listing-price">'+(Number(x.price_nok)>0?fmt(x.price_nok):'Pris ikke oppgitt')+'</div>'+(x.url&&x.url.startsWith('https://')?'<a class="ebay-link" href="'+esc(x.url)+'" target="_blank" rel="noopener noreferrer">Se annonsen på eBay →</a>':'')+'</div>').join('');
 c.innerHTML='<div class="ebay-title">🛒 eBay markedsreferanser</div>'+(searchQuery?'<div class="muted">Søkt etter: <strong>'+esc(searchQuery)+'</strong></div>':'')+'<div class="ebay-summary"><div class="muted">'+ebay.sample_size+' sammenlignbare annonser</div>'+(low&&high?'<div class="ebay-price-range">'+fmt(low)+' – '+fmt(high)+'</div>':'')+(median?'<div style="margin-top:5px">Median: <strong>'+fmt(median)+'</strong></div>':'')+'</div>'+(listings?'<div style="margin-top:12px"><strong>Eksempler fra eBay</strong>'+listings+'</div>':'')+'<div class="ebay-note">eBay-prisene er aktive annonsepriser og er derfor ikke nødvendigvis det samme som faktisk salgspris.</div>';
+}
+
+function escAttr(value){
+return esc(String(value ?? '')).replace(/"/g,'&quot;');
+}
+
+function infoValue(value){
+if(value===null||value===undefined||value==='')return 'Ukjent';
+if(Array.isArray(value))return value.length?value.map(x=>String(x)).join(', '):'Ingen opplysninger';
+return String(value);
+}
+
+function renderItemInfo(info,data){
+const modal=document.getElementById('itemInfoModal');
+const content=document.getElementById('itemInfoContent');
+if(!modal||!content)return;
+
+info=info||{};
+const list=(arr)=>{
+if(!Array.isArray(arr)||!arr.length)return '<div class="muted">Ingen opplysninger</div>';
+return '<ul class="info-list">'+arr.map(x=>'<li>'+esc(String(x))+'</li>').join('')+'</ul>';
+};
+
+content.innerHTML=
+'<div class="info-section">'+
+'<div class="info-grid">'+
+'<div class="info-field"><span class="info-field-label">Merke</span><div class="info-field-value">'+esc(infoValue(info.brand))+'</div></div>'+
+'<div class="info-field"><span class="info-field-label">Modell</span><div class="info-field-value">'+esc(infoValue(info.model))+'</div></div>'+
+'<div class="info-field"><span class="info-field-label">Produsent</span><div class="info-field-value">'+esc(infoValue(info.manufacturer))+'</div></div>'+
+'<div class="info-field"><span class="info-field-label">Type</span><div class="info-field-value">'+esc(infoValue(info.type))+'</div></div>'+
+'<div class="info-field"><span class="info-field-label">År / periode</span><div class="info-field-value">'+esc(infoValue(info.year_or_period))+'</div></div>'+
+'<div class="info-field"><span class="info-field-label">Materiale</span><div class="info-field-value">'+esc(infoValue(info.material))+'</div></div>'+
+'<div class="info-field"><span class="info-field-label">Serienummer</span><div class="info-field-value">'+esc(infoValue(info.serial_number))+'</div></div>'+
+'<div class="info-field"><span class="info-field-label">Tilstand</span><div class="info-field-value">'+esc(infoValue(info.condition_details||data?.condition))+'</div></div>'+
+'</div></div>'+
+'<div class="info-section"><h4>🔎 Kjennetegn</h4>'+list(info.identifying_features)+'</div>'+
+'<div class="info-section"><h4>🛠️ Modifikasjoner</h4><div class="note">'+esc(infoValue(info.modifications))+'</div></div>'+
+'<div class="info-section"><h4>💰 Hva påvirker verdien?</h4>'+list(info.value_factors)+'</div>'+
+'<div class="info-section"><h4>⚠️ Usikkerhet</h4>'+list(info.uncertainties)+'</div>'+
+'<div class="info-section"><h4>📊 Verdikartets vurdering</h4><div class="note">'+
+'Estimert verdi: <strong>'+((Number(data?.estimated_value_nok)>0)?Number(data.estimated_value_nok).toLocaleString('no-NO')+' kr':'Ikke fastslått')+'</strong>'+
+'<br>Lav pris: '+((Number(data?.low_value_nok)>0)?Number(data.low_value_nok).toLocaleString('no-NO')+' kr':'Ikke fastslått')+
+'<br>Høy pris: '+((Number(data?.high_value_nok)>0)?Number(data.high_value_nok).toLocaleString('no-NO')+' kr':'Ikke fastslått')+
+'<br>Identifiseringssikkerhet: '+esc(infoValue(data?.confidence))+
+'</div></div>';
+
+modal.classList.remove('hidden');
+}
+
+const itemInfoButton=document.getElementById('itemInfoButton');
+const itemInfoModal=document.getElementById('itemInfoModal');
+const closeItemInfo=document.getElementById('closeItemInfo');
+
+if(itemInfoButton){
+itemInfoButton.addEventListener('click',()=>{
+renderItemInfo(current?.item_info,current||{});
+});
+}
+if(closeItemInfo){
+closeItemInfo.addEventListener('click',()=>itemInfoModal?.classList.add('hidden'));
+}
+if(itemInfoModal){
+itemInfoModal.addEventListener('click',(e)=>{
+if(e.target===itemInfoModal)itemInfoModal.classList.add('hidden');
+});
 }
 
 function numericValue(value){
@@ -648,5 +728,19 @@ await handleAuthSession(data.session);show('marketplace');
 }
 start();
 </script>
+
+<div id="itemInfoModal" class="info-modal hidden" role="dialog" aria-modal="true" aria-labelledby="itemInfoTitle">
+  <div class="info-sheet">
+    <div class="info-head">
+      <div>
+        <div class="muted">Verdikart</div>
+        <h2 id="itemInfoTitle" style="margin:3px 0 0">Informasjon om gjenstanden</h2>
+      </div>
+      <button class="info-close" id="closeItemInfo" type="button">Lukk</button>
+    </div>
+    <div id="itemInfoContent"></div>
+  </div>
+</div>
+
 </body>
 </html>
