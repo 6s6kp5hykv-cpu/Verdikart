@@ -67,6 +67,11 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:18px 0}
 .ebay-listing-price{font-weight:750;margin-top:3px}
 .ebay-link{display:inline-block;margin-top:5px;color:#3730a3;font-weight:650;text-decoration:none}
 .ebay-note{color:#64748b;font-size:13px;line-height:1.4;margin-top:10px}
+.market-grounding{margin-top:12px;background:#f8fafc;border:1px solid #e2e8f0}
+.grounding-row{margin-top:13px}
+.grounding-row:first-of-type{margin-top:10px}
+.grounding-title{font-weight:750}
+.grounding-value{color:#64748b;font-size:14px;line-height:1.45;margin-top:3px}
 </style>
 </head>
 
@@ -163,7 +168,34 @@ Du kan for eksempel skrive: <strong>merke, modell, alder, mål, materiale, serie
 </div>
 
 <p class="muted" id="rconfidence"></p>
+
 <div id="ebayResult" class="ebay-result hidden"></div>
+
+<div class="card market-grounding">
+  <h3 style="margin:0">📊 Markedsgrunnlag</h3>
+
+  <div class="grounding-row">
+    <div class="grounding-title">🔎 Identifikasjon</div>
+    <div class="grounding-value" id="marketConfidence">
+      Basert på bilde og informasjonen du har oppgitt.
+    </div>
+  </div>
+
+  <div class="grounding-row">
+    <div class="grounding-title">💰 Verdiestimat</div>
+    <div class="grounding-value">
+      Verdien er et estimat basert på identifikasjonen og tilgjengelig markedsinformasjon.
+    </div>
+  </div>
+
+  <div class="grounding-row">
+    <div class="grounding-title">🛒 Markedsdata</div>
+    <div class="grounding-value" id="marketDataSummary">
+      Sammenlignbare annonser vises når Verdikart finner relevante treff.
+    </div>
+  </div>
+</div>
+
 <div class="note">ℹ️ Verdien er et foreløpig AI-estimat. eBay-data er aktive annonsepriser og kan avvike fra faktisk salgspris.</div>
 <button class="primary" style="margin-top:14px;width:100%" onclick="saveCurrent()">💾 Lagre i samlingen</button>
 </div>
@@ -427,19 +459,39 @@ if(
   Number.isFinite(high)&&
   high>0
 ){
-  document.getElementById('rlow').textContent=
-    low.toLocaleString('no-NO')+' kr';
-
-  document.getElementById('rhigh').textContent=
-    high.toLocaleString('no-NO')+' kr';
-
+  document.getElementById('rlow').textContent=low.toLocaleString('no-NO')+' kr';
+  document.getElementById('rhigh').textContent=high.toLocaleString('no-NO')+' kr';
   priceRange.classList.remove('hidden');
 }else{
   priceRange.classList.add('hidden');
 }
 
-document.getElementById('rconfidence').textContent='Identifiseringssikkerhet: '+(data.confidence||'ukjent');
+const confidence=data.confidence||'ukjent';
+document.getElementById('rconfidence').textContent='Identifiseringssikkerhet: '+confidence;
+
+const marketConfidence=document.getElementById('marketConfidence');
+if(marketConfidence){
+  marketConfidence.textContent='Verdikart vurderer identifikasjonen som: '+confidence+'.';
+}
+
 renderEbayResult(data.ebay,data.ebay_search_query);
+
+const marketDataSummary=document.getElementById('marketDataSummary');
+if(marketDataSummary){
+  if(data.ebay?.enabled && Number(data.ebay.sample_size)>0){
+    const n=Number(data.ebay.sample_size);
+    const lowE=Number(data.ebay.low_nok)||0;
+    const highE=Number(data.ebay.high_nok)||0;
+    const medianE=Number(data.ebay.median_nok)||0;
+    let text=n+' sammenlignbare eBay-annonser funnet.';
+    if(lowE&&highE)text+=' Prisene ligger på '+lowE.toLocaleString('no-NO')+'–'+highE.toLocaleString('no-NO')+' kr.';
+    if(medianE)text+=' Median: '+medianE.toLocaleString('no-NO')+' kr.';
+    marketDataSummary.textContent=text;
+  }else{
+    marketDataSummary.textContent='Ingen gode sammenlignbare eBay-annonser funnet akkurat nå. Verdien bør derfor sees som et foreløpig estimat.';
+  }
+}
+
 result.classList.remove('hidden');result.scrollIntoView({behavior:'smooth',block:'start'});
 }catch(err){console.error(err);alert(err.message||'Det oppstod en feil.')}finally{loading.classList.add('hidden');analyzeButton.disabled=false}
 });
