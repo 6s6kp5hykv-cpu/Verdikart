@@ -29,6 +29,10 @@ label{display:block}
 .muted{color:#64748b;font-size:14px}
 .result-title{font-size:23px;font-weight:800}
 .price{font-size:30px;font-weight:800;margin-top:8px}
+.price-range{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+.price-range>div{background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:12px}
+.price-label{display:block;color:#64748b;font-size:13px;margin-bottom:4px}
+.price-range strong{font-size:20px}
 .loading{text-align:center;padding:20px}
 .item{display:flex;gap:12px;align-items:center}
 .thumb{width:68px;height:68px;object-fit:cover;border-radius:12px;background:#e5e7eb}
@@ -146,6 +150,18 @@ Du kan for eksempel skrive: <strong>merke, modell, alder, mål, materiale, serie
 <div class="result-title" id="rname"></div>
 <p id="rdesc"></p>
 <div class="price" id="rprice"></div>
+
+<div id="priceRange" class="price-range hidden">
+  <div>
+    <span class="price-label">Lav pris</span>
+    <strong id="rlow"></strong>
+  </div>
+  <div>
+    <span class="price-label">Høy pris</span>
+    <strong id="rhigh"></strong>
+  </div>
+</div>
+
 <p class="muted" id="rconfidence"></p>
 <div id="ebayResult" class="ebay-result hidden"></div>
 <div class="note">ℹ️ Verdien er et foreløpig AI-estimat. eBay-data er aktive annonsepriser og kan avvike fra faktisk salgspris.</div>
@@ -389,9 +405,39 @@ const data=await res.json();if(!res.ok)throw new Error(data.error||'Kunne ikke a
 current={...data,img:imageSet.analysisImage,images:imageSet.originalImages,userDescription:description};
 document.getElementById('rname').textContent=data.name||'Ukjent gjenstand';
 document.getElementById('rdesc').textContent=data.description||'';
-const raw=data.estimated_value_nok;let display='Verdi ikke fastslått';
-if(typeof raw==='number'&&Number.isFinite(raw)&&raw>0)display=raw.toLocaleString('no-NO')+' kr';else if(typeof raw==='string'&&raw.trim())display=raw.trim();
+
+const raw=data.estimated_value_nok;
+let display='Verdi ikke fastslått';
+
+if(typeof raw==='number'&&Number.isFinite(raw)&&raw>0){
+  display=raw.toLocaleString('no-NO')+' kr';
+}else if(typeof raw==='string'&&raw.trim()){
+  display=raw.trim();
+}
+
 document.getElementById('rprice').textContent=display;
+
+const low=Number(data.low_value_nok);
+const high=Number(data.high_value_nok);
+const priceRange=document.getElementById('priceRange');
+
+if(
+  Number.isFinite(low)&&
+  low>0&&
+  Number.isFinite(high)&&
+  high>0
+){
+  document.getElementById('rlow').textContent=
+    low.toLocaleString('no-NO')+' kr';
+
+  document.getElementById('rhigh').textContent=
+    high.toLocaleString('no-NO')+' kr';
+
+  priceRange.classList.remove('hidden');
+}else{
+  priceRange.classList.add('hidden');
+}
+
 document.getElementById('rconfidence').textContent='Identifiseringssikkerhet: '+(data.confidence||'ukjent');
 renderEbayResult(data.ebay,data.ebay_search_query);
 result.classList.remove('hidden');result.scrollIntoView({behavior:'smooth',block:'start'});
