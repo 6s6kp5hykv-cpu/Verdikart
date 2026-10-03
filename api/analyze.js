@@ -6,114 +6,163 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { image, description = "" } = req.body || {};
+    const { image, description } = req.body || {};
 
-    if (
-      !image ||
-      typeof image !== "string" ||
-      !image.startsWith("data:image/")
-    ) {
+    if (!image || typeof image !== "string") {
       return res.status(400).json({
-        error: "Mangler eller ugyldig bilde"
+        error: "Mangler bilde"
       });
     }
 
-    const context = String(description).trim();
+    if (!image.startsWith("data:image/")) {
+      return res.status(400).json({
+        error: "Ugyldig bildeformat"
+      });
+    }
 
-    const prompt = `
-Du er Kistefunn, ekspert på identifisering og verdivurdering av fysiske gjenstander.
+    const userDescription =
+      typeof description === "string"
+        ? description.trim()
+        : "";
+
+    const contextText = userDescription
+      ? `
+Brukeren har også skrevet følgende informasjon om gjenstanden:
+
+"${userDescription}"
+
+Bruk dette som ekstra informasjon. Hvis opplysningene virker feil i forhold til bildet, skal du ikke stole blindt på dem.
+`
+      : `
+Brukeren har ikke gitt noen ekstra informasjon om gjenstanden.
+`;
+
+    /*
+     * ---------------------------------------------------------
+     * 1. IDENTIFISER GJENSTANDEN MED OPENAI
+     * ---------------------------------------------------------
+     */
+
+    const response = await fetch(
+      "https://api.openai.com/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
+        },
+        body: JSON.stringify({
+          model: "gpt-5.6-luna",
+          input: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "input_text",
+                  text: `
+Du er ekspert på identifisering og verdivurdering av gjenstander.
 
 Identifiser gjenstanden på bildet så presist som mulig.
-Ikke finn på detaljer.
 
-${
-  context
-    ? `Brukerens ekstra informasjon: "${context}"`
-    : "Ingen ekstra informasjon fra brukeren."
-}
+${contextText}
 
-Vurder:
+Vurder spesielt:
 
 - merke
 - modell
 - produsent
-- type
+- type gjenstand
 - alder eller produksjonsperiode
 - materiale
 - spesielle kjennetegn
 - eventuell samlerverdi
-- synlig tilstand
+- tilstand dersom dette kan vurderes fra bildet
 
-Vær spesielt forsiktig dersom identifikasjonen er usikker.
-Lav sikkerhet skal gi et forsiktig verdiestimat.
+Gi et forsiktig og realistisk verdiestimat i norske kroner.
 
-Returner KUN gyldig JSON med denne strukturen:
+Du skal returnere TRE prisverdier:
+
+1. estimated_value_nok
+   Den mest sannsynlige markedsverdien.
+
+2. low_value_nok
+   En realistisk lav pris for samme eller tilsvarende gjenstand.
+
+3. high_value_nok
+   En realistisk høy pris for samme eller tilsvarende gjenstand.
+
+Prisintervallet skal være realistisk for akkurat denne gjenstanden.
+
+Ikke bruk ekstreme verdier uten tydelig grunnlag.
+
+Hvis du er usikker på identifikasjonen, skal du være forsiktig med verdien.
+
+VIKTIG:
+Returner prisene som NUMERISKE VERDIER uten "kr", punktum eller mellomrom som tusenskiller.
+
+Eksempel:
 
 {
-  "name": "navn",
-  "description": "kort beskrivelse",
-  "estimated_value_nok": 500,
-  "low_value_nok": 150,
-  "high_value_nok": 1200,
-  "confidence": "lav",
-  "condition": "kort tilstandsvurdering",
-  "item_info": {
-    "brand": "ukjent",
-    "model": "ukjent",
-    "manufacturer": "ukjent",
-    "type": "type",
-    "year_or_period": "ukjent",
-    "material": "ukjent",
-    "serial_number": "ukjent",
-    "identifying_features": [
-      "synlig kjennetegn"
-    ],
-    "modifications": "ingen sikre modifikasjoner",
-    "condition_details": "detaljert tilstand",
-    "value_factors": [
-      "forhold som påvirker verdien"
-    ],
-    "uncertainties": [
-      "det som ikke kan bekreftes"
-    ]
-  },
-  "ebay_search_query": "3-8 presise søkeord"
+  "estimated_value_nok": 175,
+  "low_value_nok": 100,
+  "high_value_nok": 250
 }
 
-Prisene skal være numeriske NOK-verdier uten "kr".
+IKKE skriv:
 
-Hvis du ikke kan identifisere gjenstanden sikkert,
-skal du si det tydelig og bruke et forsiktig verdiestimat.
-`;
+"100-250 kr"
 
-    // ---------------------------------------------------------
-    // 1. OPENAI-ANALYSE
-    // ---------------------------------------------------------
+og ikke skriv:
 
-    const aiResponse = await fetch(
-      "https://api.openai.com/v1/responses",
-      {
-        method: "POST",
+"100 250"
 
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization":
-            `Bearer ${process.env.OPENAI_API_KEY}`
-        },
+Hvis du bare kan anslå et prisintervall, skal du selv beregne en realistisk estimert verdi mellom lav og høy.
 
-        body: JSON.stringify({
-          model: "gpt-5.6-luna",
+Ikke finn på detaljer som ikke kan underbygges av bildet eller brukerens informasjon.
 
-          input: [
-            {
-              role: "user",
+Hvis flere identifikasjoner er mulige, velg den mest sannsynlige og forklar usikkerheten kort.
 
-              content: [
-                {
-                  type: "input_text",
-                  text: prompt
+Lag også et presist søkeord som kan brukes til å finne tilsvarende gjenstander på eBay.
+
+eBay-søket skal helst inneholde:
+- merke
+- modell
+- type
+- relevant modellnummer
+- relevante kjennetegn
+
+Ikke bruk generelle ord som "old item" dersom en mer presis identifikasjon er mulig.
+
+Returner KUN gyldig JSON:
+
+{
+  "name": "navn på gjenstanden",
+  "description": "kort beskrivelse",
+  "estimated_value_nok": 175,
+  "low_value_nok": 100,
+  "high_value_nok": 250,
+  "confidence": "lav, middels eller høy",
+  "condition": "kort vurdering av tilstanden",
+  "item_info": {
+    "brand": "merke eller ukjent",
+    "model": "modell eller ukjent",
+    "manufacturer": "produsent eller ukjent",
+    "type": "type gjenstand",
+    "year_or_period": "år eller periode eller ukjent",
+    "material": "materiale eller ukjent",
+    "serial_number": "serienummer hvis synlig, ellers ukjent",
+    "identifying_features": ["viktig synlig kjennetegn"],
+    "modifications": "synlige modifikasjoner eller ingen synlig",
+    "condition_details": "detaljert tilstandsvurdering",
+    "value_factors": ["konkret forhold som påvirker verdien"],
+    "uncertainties": ["det som ikke kan bekreftes sikkert"]
+  },
+  "ebay_search_query": "kort eBay-søk med 3-8 sikre søkeord"
+}
+
+Hvis du ikke kan identifisere gjenstanden sikkert, si det tydelig og bruk et forsiktig verdiestimat.
+`
                 },
-
                 {
                   type: "input_image",
                   image_url: image,
@@ -126,21 +175,19 @@ skal du si det tydelig og bruke et forsiktig verdiestimat.
       }
     );
 
-    const aiData = await aiResponse.json();
+    const data = await response.json();
 
-    if (!aiResponse.ok) {
+    if (!response.ok) {
       return res.status(500).json({
-        error:
-          aiData?.error?.message ||
-          "OpenAI-feil"
+        error: data?.error?.message || "OpenAI-feil"
       });
     }
 
     const text =
-      aiData.output
-        ?.find(x => x.type === "message")
+      data.output
+        ?.find(item => item.type === "message")
         ?.content
-        ?.find(x => x.type === "output_text")
+        ?.find(item => item.type === "output_text")
         ?.text || "";
 
     if (!text) {
@@ -149,11 +196,13 @@ skal du si det tydelig og bruke et forsiktig verdiestimat.
       });
     }
 
-    // ---------------------------------------------------------
-    // 2. LES JSON FRA AI
-    // ---------------------------------------------------------
+    /*
+     * ---------------------------------------------------------
+     * 2. LES JSON FRA AI
+     * ---------------------------------------------------------
+     */
 
-    let parsed = null;
+    let parsed;
 
     try {
       parsed = JSON.parse(text);
@@ -163,7 +212,9 @@ skal du si det tydelig og bruke et forsiktig verdiestimat.
       if (match) {
         try {
           parsed = JSON.parse(match[0]);
-        } catch {}
+        } catch {
+          parsed = null;
+        }
       }
     }
 
@@ -171,49 +222,48 @@ skal du si det tydelig og bruke et forsiktig verdiestimat.
       parsed = {
         name: "Ukjent",
         description: text,
-        confidence: "lav"
+        estimated_value_nok: null,
+        low_value_nok: null,
+        high_value_nok: null,
+        confidence: "lav",
+        condition: "",
+        ebay_search_query: ""
       };
     }
 
-    // ---------------------------------------------------------
-    // 3. INFORMASJON TIL FUNNRAPPORT
-    // ---------------------------------------------------------
+    /*
+     * ---------------------------------------------------------
+     * 3. HJELPEFUNKSJONER
+     * ---------------------------------------------------------
+     */
 
-    const info =
-      parsed.item_info &&
-      typeof parsed.item_info === "object"
-        ? parsed.item_info
-        : {};
+    /*
+     * ---------------------------------------------------------
+     * 2B. INFORMASJON TIL "SE ALL INFORMASJON"
+     * ---------------------------------------------------------
+     */
 
-    const str = (
-      value,
-      fallback = "Ukjent"
-    ) => {
-      if (
-        typeof value === "string" &&
-        value.trim()
-      ) {
+    if (!parsed.item_info || typeof parsed.item_info !== "object") {
+      parsed.item_info = {};
+    }
+
+    const info = parsed.item_info;
+
+    const infoText = (value, fallback = "Ukjent") => {
+      if (typeof value === "string" && value.trim()) {
         return value.trim();
       }
-
       return fallback;
     };
 
-    const list = value => {
+    const infoList = value => {
       if (Array.isArray(value)) {
         return value
-          .filter(
-            x =>
-              typeof x === "string" &&
-              x.trim()
-          )
-          .map(x => x.trim());
+          .filter(v => typeof v === "string" && v.trim())
+          .map(v => v.trim());
       }
 
-      if (
-        typeof value === "string" &&
-        value.trim()
-      ) {
+      if (typeof value === "string" && value.trim()) {
         return [value.trim()];
       }
 
@@ -221,111 +271,153 @@ skal du si det tydelig og bruke et forsiktig verdiestimat.
     };
 
     const itemInfo = {
-      brand:
-        str(info.brand),
-
-      model:
-        str(info.model),
-
-      manufacturer:
-        str(info.manufacturer),
-
-      type:
-        str(
-          info.type,
-          parsed.name || "Ukjent"
-        ),
-
-      year_or_period:
-        str(info.year_or_period),
-
-      material:
-        str(info.material),
-
-      serial_number:
-        str(info.serial_number),
+      brand: infoText(info.brand),
+      model: infoText(info.model),
+      manufacturer: infoText(info.manufacturer),
+      type: infoText(info.type, parsed.name || "Ukjent"),
+      year_or_period: infoText(info.year_or_period),
+      material: infoText(info.material),
+      serial_number: infoText(info.serial_number),
 
       identifying_features:
-        list(info.identifying_features),
+        infoList(info.identifying_features),
 
       modifications:
-        str(
+        infoText(
           info.modifications,
           "Ingen sikre modifikasjoner bekreftet."
         ),
 
       condition_details:
-        str(
+        infoText(
           info.condition_details,
-          str(
-            parsed.condition,
-            "Tilstanden kan ikke vurderes sikkert fra bildene."
-          )
+          parsed.condition ||
+          "Tilstanden kan ikke vurderes sikkert fra bildene."
         ),
 
       value_factors:
-        list(info.value_factors),
+        infoList(info.value_factors),
 
       uncertainties:
-        list(info.uncertainties)
+        infoList(info.uncertainties)
     };
 
     if (
-      !itemInfo.identifying_features.length &&
-      parsed.description
+      itemInfo.identifying_features.length === 0 &&
+      typeof parsed.description === "string" &&
+      parsed.description.trim()
     ) {
       itemInfo.identifying_features = [
-        String(parsed.description)
+        parsed.description.trim()
       ];
     }
 
     if (
-      !itemInfo.uncertainties.length &&
-      String(parsed.confidence).toLowerCase() !==
-        "høy"
+      itemInfo.uncertainties.length === 0 &&
+      String(parsed.confidence || "").toLowerCase() !== "høy"
     ) {
       itemInfo.uncertainties = [
-        "Identifikasjonen er ikke sikkert bekreftet.",
-        "Merke, modell, signatur eller produksjonsår kan ikke fastslås sikkert fra tilgjengelig materiale."
+        "Identifikasjonen er ikke helt sikker og bør kontrolleres mot bilder, merking og eventuelt serienummer."
       ];
     }
 
-    // ---------------------------------------------------------
-    // 4. HJELPEFUNKSJONER FOR PRIS
-    // ---------------------------------------------------------
+    if (itemInfo.value_factors.length === 0) {
+      itemInfo.value_factors = [
+        "Merke, modell, alder, tilstand, originalitet og dokumentert markedspris kan påvirke verdien."
+      ];
+    }
 
-    const number = value => {
-      if (
-        typeof value === "number" &&
-        Number.isFinite(value)
-      ) {
-        return value;
+    function parseNok(value) {
+      if (typeof value === "number") {
+        return Number.isFinite(value) ? value : null;
       }
 
       if (typeof value !== "string") {
         return null;
       }
 
-      const cleaned =
-        value
-          .replace(/[^0-9,.-]/g, "")
-          .replace(
-            /\.(?=.*\.)/g,
-            ""
-          )
-          .replace(",", ".");
+      let textValue = value
+        .toLowerCase()
+        .replace(/kr/g, "")
+        .trim();
 
-      const n = Number(cleaned);
+      const rangeMatch = textValue.match(
+        /(\d+(?:[.,]\d+)?)\s*(?:-|–|—|til)\s*(\d+(?:[.,]\d+)?)/i
+      );
 
-      return Number.isFinite(n)
-        ? n
-        : null;
-    };
+      if (rangeMatch) {
+        const low = Number(
+          rangeMatch[1].replace(",", ".")
+        );
 
-    const median = values => {
-      if (!values.length) {
-        return null;
+        const high = Number(
+          rangeMatch[2].replace(",", ".")
+        );
+
+        if (
+          Number.isFinite(low) &&
+          Number.isFinite(high)
+        ) {
+          return Math.round((low + high) / 2);
+        }
       }
+
+      let cleaned = textValue
+        .replace(/\s/g, "")
+        .replace(/[^\d,.-]/g, "");
+
+      if (
+        cleaned.includes(",") &&
+        cleaned.includes(".")
+      ) {
+        const lastComma =
+          cleaned.lastIndexOf(",");
+
+        const lastDot =
+          cleaned.lastIndexOf(".");
+
+        if (lastComma > lastDot) {
+          cleaned = cleaned
+            .replace(/\./g, "")
+            .replace(",", ".");
+        } else {
+          cleaned = cleaned.replace(/,/g, "");
+        }
+      } else if (cleaned.includes(",")) {
+        const parts = cleaned.split(",");
+
+        if (
+          parts.length === 2 &&
+          parts[1].length <= 2
+        ) {
+          cleaned = parts[0] + "." + parts[1];
+        } else {
+          cleaned = parts.join("");
+        }
+      } else if (
+        cleaned.includes(".")
+      ) {
+        const parts = cleaned.split(".");
+
+        if (
+          parts.length === 2 &&
+          parts[1].length <= 2
+        ) {
+          cleaned = parts[0] + "." + parts[1];
+        } else {
+          cleaned = parts.join("");
+        }
+      }
+
+      const number = Number(cleaned);
+
+      return Number.isFinite(number)
+        ? number
+        : null;
+    }
+
+    function median(values) {
+      if (!values.length) return null;
 
       const sorted =
         [...values].sort(
@@ -333,29 +425,20 @@ skal du si det tydelig og bruke et forsiktig verdiestimat.
         );
 
       const middle =
-        Math.floor(
-          sorted.length / 2
-        );
+        Math.floor(sorted.length / 2);
 
-      if (
-        sorted.length % 2
-      ) {
-        return sorted[middle];
+      if (sorted.length % 2 === 0) {
+        return (
+          sorted[middle - 1] +
+          sorted[middle]
+        ) / 2;
       }
 
-      return (
-        sorted[middle - 1] +
-        sorted[middle]
-      ) / 2;
-    };
+      return sorted[middle];
+    }
 
-    const percentile = (
-      values,
-      p
-    ) => {
-      if (!values.length) {
-        return null;
-      }
+    function percentile(values, p) {
+      if (!values.length) return null;
 
       const sorted =
         [...values].sort(
@@ -381,79 +464,74 @@ skal du si det tydelig og bruke et forsiktig verdiestimat.
           sorted[lower]) *
           (index - lower)
       );
-    };
+    }
 
-    const removeOutliers =
-      items => {
-        if (items.length < 5) {
-          return items;
-        }
+    function removeOutliers(items) {
+      if (items.length < 5) {
+        return items;
+      }
 
-        const prices =
-          items.map(
-            x => x.nok
-          );
+      const prices =
+        items.map(item => item.nok);
 
-        const q1 =
-          percentile(
-            prices,
-            0.25
-          );
+      const q1 =
+        percentile(prices, 0.25);
 
-        const q3 =
-          percentile(
-            prices,
-            0.75
-          );
+      const q3 =
+        percentile(prices, 0.75);
 
-        const iqr =
-          q3 - q1;
+      const iqr = q3 - q1;
 
-        return items.filter(
-          x =>
-            x.nok >=
-              q1 - 1.5 * iqr &&
-            x.nok <=
-              q3 + 1.5 * iqr
-        );
-      };
+      const minimum =
+        q1 - 1.5 * iqr;
 
-    // ---------------------------------------------------------
-    // 5. AI-VERDI
-    // ---------------------------------------------------------
+      const maximum =
+        q3 + 1.5 * iqr;
+
+      return items.filter(
+        item =>
+          item.nok >= minimum &&
+          item.nok <= maximum
+      );
+    }
+
+    /*
+     * ---------------------------------------------------------
+     * 4. LAG ET REALISTISK AI-PRIS
+     * ---------------------------------------------------------
+     */
 
     let aiEstimated =
-      number(
+      parseNok(
         parsed.estimated_value_nok
       );
 
     let aiLow =
-      number(
+      parseNok(
         parsed.low_value_nok
       );
 
     let aiHigh =
-      number(
+      parseNok(
         parsed.high_value_nok
       );
 
     if (
-      !Number.isFinite(
-        aiEstimated
-      ) &&
-      Number.isFinite(aiLow) &&
-      Number.isFinite(aiHigh)
+      !Number.isFinite(aiEstimated)
     ) {
-      aiEstimated =
-        Math.round(
-          (aiLow + aiHigh) / 2
-        );
+      if (
+        Number.isFinite(aiLow) &&
+        Number.isFinite(aiHigh)
+      ) {
+        aiEstimated =
+          Math.round(
+            (aiLow + aiHigh) / 2
+          );
+      }
     }
 
     if (
-      Number.isFinite(
-        aiEstimated
-      )
+      Number.isFinite(aiEstimated)
     ) {
       if (
         !Number.isFinite(aiLow)
@@ -472,85 +550,100 @@ skal du si det tydelig og bruke et forsiktig verdiestimat.
             aiEstimated * 1.3
           );
       }
+    }
 
-      aiLow =
+    if (
+      Number.isFinite(aiEstimated) &&
+      Number.isFinite(aiLow) &&
+      aiLow > aiEstimated
+    ) {
+      aiLow = aiEstimated;
+    }
+
+    if (
+      Number.isFinite(aiEstimated) &&
+      Number.isFinite(aiHigh) &&
+      aiHigh < aiEstimated
+    ) {
+      aiHigh = aiEstimated;
+    }
+
+    if (
+      Number.isFinite(aiLow) &&
+      Number.isFinite(aiHigh) &&
+      Number.isFinite(aiEstimated)
+    ) {
+      aiEstimated =
         Math.min(
-          aiLow,
-          aiEstimated
-        );
-
-      aiHigh =
-        Math.max(
-          aiHigh,
-          aiEstimated
+          Math.max(
+            aiEstimated,
+            aiLow
+          ),
+          aiHigh
         );
     }
 
-    // ---------------------------------------------------------
-    // 6. eBAY TOKEN
-    // ---------------------------------------------------------
+    /*
+     * ---------------------------------------------------------
+     * 5. eBAY-INTEGRASJON
+     * ---------------------------------------------------------
+     */
 
-    async function ebayToken() {
-      const id =
+    async function getEbayToken() {
+      const clientId =
         process.env.EBAY_CLIENT_ID;
 
-      const secret =
+      const clientSecret =
         process.env.EBAY_CLIENT_SECRET;
 
-      if (!id || !secret) {
+      if (
+        !clientId ||
+        !clientSecret
+      ) {
         return null;
       }
 
-      const auth =
-        Buffer
-          .from(
-            `${id}:${secret}`
-          )
-          .toString("base64");
+      const credentials =
+        Buffer.from(
+          `${clientId}:${clientSecret}`
+        ).toString("base64");
 
-      const response =
+      const tokenResponse =
         await fetch(
           "https://api.ebay.com/identity/v1/oauth2/token",
           {
             method: "POST",
-
             headers: {
               "Content-Type":
                 "application/x-www-form-urlencoded",
-
               "Authorization":
-                `Basic ${auth}`
+                `Basic ${credentials}`
             },
-
             body:
               "grant_type=client_credentials" +
               "&scope=https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope"
           }
         );
 
-      const data =
-        await response.json();
+      const tokenData =
+        await tokenResponse.json();
 
-      if (!response.ok) {
+      if (!tokenResponse.ok) {
         return null;
       }
 
       return (
-        data.access_token ||
+        tokenData.access_token ||
         null
       );
     }
 
-    // ---------------------------------------------------------
-    // 7. VALUTAKURS
-    // ---------------------------------------------------------
-
-    async function exchangeRate(
-      from
+    async function getExchangeRate(
+      fromCurrency,
+      toCurrency = "NOK"
     ) {
       if (
-        !from ||
-        from === "NOK"
+        fromCurrency === toCurrency
       ) {
         return 1;
       }
@@ -559,19 +652,21 @@ skal du si det tydelig og bruke et forsiktig verdiestimat.
         const response =
           await fetch(
             `https://api.frankfurter.app/latest?from=${encodeURIComponent(
-              from
-            )}&to=NOK`
+              fromCurrency
+            )}&to=${encodeURIComponent(
+              toCurrency
+            )}`
           );
-
-        const data =
-          await response.json();
 
         if (!response.ok) {
           return null;
         }
 
+        const data =
+          await response.json();
+
         return (
-          data?.rates?.NOK ||
+          data?.rates?.[toCurrency] ||
           null
         );
       } catch {
@@ -579,205 +674,195 @@ skal du si det tydelig og bruke et forsiktig verdiestimat.
       }
     }
 
-    // ---------------------------------------------------------
-    // 8. eBAY-SØK
-    // ---------------------------------------------------------
+    async function searchEbay(query, fallbackQueries = []) {
+      const baseQueries = [query, ...fallbackQueries]
+        .filter(q => typeof q === "string" && q.trim().length >= 2)
+        .map(q => q.trim().replace(/\s+/g, " "));
 
-    async function searchEbay(
-      query
-    ) {
-      if (
-        !query ||
-        query.trim().length < 2
-      ) {
+      const queries = [...new Set(baseQueries)].slice(0, 4);
+
+      if (!queries.length) {
         return {
           enabled: false,
-          reason:
-            "Ingen egnet eBay-søkestreng"
+          reason: "Ingen egnet eBay-søkestreng"
         };
       }
 
-      const token =
-        await ebayToken();
+      const token = await getEbayToken();
 
       if (!token) {
         return {
           enabled: false,
-          reason:
-            "eBay-tilkobling er ikke tilgjengelig"
+          reason: "eBay-tilkobling er ikke tilgjengelig"
         };
       }
 
-      const url =
-        "https://api.ebay.com" +
-        "/buy/browse/v1/item_summary/search" +
-        `?q=${encodeURIComponent(
-          query
-        )}` +
-        "&limit=20";
+      const allItems = [];
+      const seenIds = new Set();
+      let successfulQueries = [];
 
-      const response =
-        await fetch(
-          url,
-          {
+      for (const currentQuery of queries) {
+        try {
+          const url =
+            "https://api.ebay.com" +
+            "/buy/browse/v1/item_summary/search" +
+            `?q=${encodeURIComponent(currentQuery)}` +
+            "&limit=20";
+
+          const ebayResponse = await fetch(url, {
+            method: "GET",
             headers: {
-              "Authorization":
-                `Bearer ${token}`,
-
-              "Accept":
-                "application/json",
-
-              "X-EBAY-C-MARKETPLACE-ID":
-                "EBAY_DE"
+              "Authorization": `Bearer ${token}`,
+              "Accept": "application/json",
+              "X-EBAY-C-MARKETPLACE-ID": "EBAY_DE"
             }
+          });
+
+          const ebayData = await ebayResponse.json();
+
+          if (!ebayResponse.ok) {
+            continue;
           }
-        );
 
-      const data =
-        await response.json();
+          const rawItems = Array.isArray(ebayData.itemSummaries)
+            ? ebayData.itemSummaries
+            : [];
 
-      if (!response.ok) {
+          if (rawItems.length) {
+            successfulQueries.push(currentQuery);
+          }
+
+          for (const item of rawItems) {
+            const id = item?.itemId || item?.legacyItemId || item?.itemWebUrl;
+
+            if (!id || seenIds.has(id)) continue;
+
+            seenIds.add(id);
+            allItems.push(item);
+          }
+
+          // One good query with enough results is normally enough.
+          if (allItems.length >= 20) break;
+        } catch {
+          // Try the next, broader query.
+        }
+      }
+
+      if (!allItems.length) {
         return {
-          enabled: false,
-          reason:
-            data?.errors?.[0]?.message ||
-            "eBay-søk feilet"
+          enabled: true,
+          marketplace: "EBAY_DE",
+          query: queries[0],
+          queries_tried: queries,
+          successful_queries: successfulQueries,
+          sample_size: 0,
+          listings: []
         };
       }
 
-      const raw =
-        Array.isArray(
-          data.itemSummaries
+      // Fetch each currency rate only once instead of making one
+      // external exchange-rate request per listing.
+      const currencies = [
+        ...new Set(
+          allItems
+            .map(item => item?.price?.currency)
+            .filter(Boolean)
         )
-          ? data.itemSummaries
-          : [];
+      ];
 
-      const items = [];
+      const rates = {};
 
-      for (
-        const item of raw
-      ) {
-        const value =
-          Number(
-            item?.price?.value
-          );
+      for (const currency of currencies) {
+        rates[currency] = await getExchangeRate(currency, "NOK");
+      }
 
-        const currency =
-          item?.price?.currency;
+      const prepared = [];
 
-        if (
-          !Number.isFinite(
-            value
-          ) ||
-          !currency
-        ) {
+      for (const item of allItems) {
+        const originalPrice = Number(item?.price?.value);
+        const currency = item?.price?.currency;
+        const rate = currency ? rates[currency] : null;
+
+        if (!Number.isFinite(originalPrice) || !currency || !rate) {
           continue;
         }
 
-        const fx =
-          await exchangeRate(
-            currency
-          );
+        const nok = originalPrice * rate;
 
-        if (!fx) {
-          continue;
-        }
+        if (!Number.isFinite(nok) || nok <= 0) continue;
 
-        const nok =
-          value * fx;
-
-        if (
-          !Number.isFinite(nok) ||
-          nok <= 0
-        ) {
-          continue;
-        }
-
-        items.push({
-          title:
-            item.title || "",
-
+        prepared.push({
+          title: item.title || "",
           price: {
-            value,
+            value: originalPrice,
             currency
           },
-
-          nok:
-            Math.round(nok),
-
-          url:
-            item.itemWebUrl || ""
+          nok: Math.round(nok),
+          url: item.itemWebUrl || ""
         });
       }
 
-      const clean =
-        removeOutliers(
-          items
-        );
-
-      const prices =
-        clean.map(
-          x => x.nok
-        );
+      const filtered = removeOutliers(prepared);
+      const prices = filtered.map(item => item.nok);
+      const medianNok = median(prices);
+      const ebayLow = percentile(prices, 0.15);
+      const ebayHigh = percentile(prices, 0.85);
 
       return {
         enabled: true,
-
-        marketplace:
-          "EBAY_DE",
-
-        query,
-
-        sample_size:
-          clean.length,
-
-        median_nok:
-          median(prices),
-
-        low_nok:
-          percentile(
-            prices,
-            0.15
-          ),
-
-        high_nok:
-          percentile(
-            prices,
-            0.85
-          ),
-
-        listings:
-          clean
-            .slice(0, 10)
-            .map(x => ({
-              title:
-                x.title,
-
-              price:
-                x.price,
-
-              price_nok:
-                x.nok,
-
-              url:
-                x.url
-            }))
+        marketplace: "EBAY_DE",
+        query: queries[0],
+        queries_tried: queries,
+        successful_queries: successfulQueries,
+        sample_size: filtered.length,
+        median_nok: Number.isFinite(medianNok) ? Math.round(medianNok) : null,
+        low_nok: Number.isFinite(ebayLow) ? Math.round(ebayLow) : null,
+        high_nok: Number.isFinite(ebayHigh) ? Math.round(ebayHigh) : null,
+        listings: filtered.slice(0, 10).map(item => ({
+          title: item.title,
+          price: item.price,
+          price_nok: item.nok,
+          url: item.url
+        }))
       };
     }
 
-    // ---------------------------------------------------------
-    // 9. KJØR eBAY
-    // ---------------------------------------------------------
+    /*
+     * ---------------------------------------------------------
+     * 6. KJØR eBAY-SØK
+     * ---------------------------------------------------------
+     */
 
-    let ebay;
+    let ebay = {
+      enabled: false,
+      reason:
+        "eBay-søk ikke utført"
+    };
 
     try {
-      ebay =
-        await searchEbay(
-          parsed.ebay_search_query ||
-          parsed.name ||
-          ""
-        );
+      const brand = itemInfo.brand !== "Ukjent" ? itemInfo.brand : "";
+      const model = itemInfo.model !== "Ukjent" ? itemInfo.model : "";
+      const type = itemInfo.type !== "Ukjent" ? itemInfo.type : "";
+
+      const aiQuery =
+        typeof parsed.ebay_search_query === "string"
+          ? parsed.ebay_search_query.trim()
+          : "";
+
+      const primaryQuery =
+        aiQuery ||
+        [brand, model].filter(Boolean).join(" ") ||
+        parsed.name ||
+        "";
+
+      const fallbackQueries = [
+        [brand, model].filter(Boolean).join(" "),
+        [brand, model, type].filter(Boolean).join(" "),
+        [brand, type].filter(Boolean).join(" "),
+        brand
+      ];
+
+      ebay = await searchEbay(primaryQuery, fallbackQueries);
     } catch {
       ebay = {
         enabled: false,
@@ -786,176 +871,112 @@ skal du si det tydelig og bruke et forsiktig verdiestimat.
       };
     }
 
-    // ---------------------------------------------------------
-    // 10. KOMBINER AI + eBAY
-    // ---------------------------------------------------------
+    /*
+     * ---------------------------------------------------------
+     * 7. KOMBINER AI + eBAY
+     * ---------------------------------------------------------
+     *
+     * eBay-data skal hjelpe verdsettelsen, men ikke dominere når
+     * det finnes få treff. Aktive annonsepriser er tross alt
+     * prisforlangende og ikke dokumenterte salgspriser.
+     *
+     * Vekting:
+     * 0 treff  = 100 % AI
+     * 1 treff  = 85 % AI / 15 % eBay
+     * 2 treff  = 75 % AI / 25 % eBay
+     * 3-4     = 60 % AI / 40 % eBay
+     * 5+      = 50 % AI / 50 % eBay
+     *
+     * På denne måten vil ett enkelt eBay-treff påvirke estimatet
+     * litt, mens mange sammenlignbare treff får større betydning.
+     * ---------------------------------------------------------
+     */
 
-    let finalEstimated =
-      aiEstimated;
-
-    let finalLow =
-      aiLow;
-
-    let finalHigh =
-      aiHigh;
-
+    let finalEstimated = aiEstimated;
+    let finalLow = aiLow;
+    let finalHigh = aiHigh;
     let ebayWeight = 0;
+    let valuationMethod = "AI-estimat uten eBay-grunnlag";
 
-    let valuationMethod =
-      "AI-estimat uten eBay-grunnlag";
-
-    const sampleSize =
-      ebay?.enabled
-        ? Number(
-            ebay.sample_size
-          ) || 0
+    const ebaySampleSize =
+      ebay?.enabled && Number.isFinite(Number(ebay.sample_size))
+        ? Number(ebay.sample_size)
         : 0;
 
-    if (
-      sampleSize > 0 &&
-      Number.isFinite(
-        ebay.median_nok
-      )
-    ) {
-      if (
-        sampleSize === 1
-      ) {
+    if (ebaySampleSize > 0 && Number.isFinite(ebay.median_nok)) {
+      if (ebaySampleSize === 1) {
         ebayWeight = 0.15;
-      } else if (
-        sampleSize === 2
-      ) {
+      } else if (ebaySampleSize === 2) {
         ebayWeight = 0.25;
-      } else if (
-        sampleSize <= 4
-      ) {
+      } else if (ebaySampleSize <= 4) {
         ebayWeight = 0.40;
       } else {
         ebayWeight = 0.50;
       }
 
-      const aiWeight =
-        1 - ebayWeight;
+      const aiWeight = 1 - ebayWeight;
 
-      if (
-        Number.isFinite(
-          aiEstimated
-        )
-      ) {
-        finalEstimated =
-          Math.round(
-            aiEstimated *
-              aiWeight +
-            ebay.median_nok *
-              ebayWeight
-          );
+      if (Number.isFinite(aiEstimated)) {
+        finalEstimated = Math.round(
+          aiEstimated * aiWeight +
+          ebay.median_nok * ebayWeight
+        );
       } else {
-        finalEstimated =
-          Math.round(
-            ebay.median_nok
-          );
+        finalEstimated = Math.round(ebay.median_nok);
       }
 
-      if (
-        Number.isFinite(aiLow) &&
-        Number.isFinite(
-          ebay.low_nok
-        )
-      ) {
-        finalLow =
-          Math.round(
-            aiLow *
-              aiWeight +
-            ebay.low_nok *
-              ebayWeight
-          );
-      } else if (
-        Number.isFinite(
-          ebay.low_nok
-        )
-      ) {
-        finalLow =
-          Math.round(
-            ebay.low_nok
-          );
+      // For ranges, blend AI's range with the eBay market range.
+      // If eBay has only one or two listings, its range is treated
+      // cautiously instead of replacing the AI range completely.
+      if (Number.isFinite(aiLow) && Number.isFinite(ebay.low_nok)) {
+        finalLow = Math.round(
+          aiLow * aiWeight +
+          ebay.low_nok * ebayWeight
+        );
+      } else if (Number.isFinite(ebay.low_nok)) {
+        finalLow = Math.round(ebay.low_nok);
       }
 
-      if (
-        Number.isFinite(aiHigh) &&
-        Number.isFinite(
-          ebay.high_nok
-        )
-      ) {
-        finalHigh =
-          Math.round(
-            aiHigh *
-              aiWeight +
-            ebay.high_nok *
-              ebayWeight
-          );
-      } else if (
-        Number.isFinite(
-          ebay.high_nok
-        )
-      ) {
-        finalHigh =
-          Math.round(
-            ebay.high_nok
-          );
+      if (Number.isFinite(aiHigh) && Number.isFinite(ebay.high_nok)) {
+        finalHigh = Math.round(
+          aiHigh * aiWeight +
+          ebay.high_nok * ebayWeight
+        );
+      } else if (Number.isFinite(ebay.high_nok)) {
+        finalHigh = Math.round(ebay.high_nok);
       }
 
       valuationMethod =
-        `AI + eBay-markedsdata (${Math.round(
-          ebayWeight * 100
-        )} % eBay-vekt, ${sampleSize} treff)`;
+        `AI + eBay-markedsdata (${Math.round(ebayWeight * 100)} % eBay-vekt, ${ebaySampleSize} treff)`;
     }
 
-    // ---------------------------------------------------------
-    // 11. SØRG FOR LOGISK PRISINTERVALL
-    // ---------------------------------------------------------
-
-    if (
-      Number.isFinite(
-        finalEstimated
-      )
-    ) {
-      if (
-        !Number.isFinite(
-          finalLow
-        )
-      ) {
-        finalLow =
-          Math.round(
-            finalEstimated * 0.7
-          );
+    // Keep the final range logically consistent.
+    if (Number.isFinite(finalEstimated)) {
+      if (!Number.isFinite(finalLow)) {
+        finalLow = Math.round(finalEstimated * 0.7);
       }
 
-      if (
-        !Number.isFinite(
-          finalHigh
-        )
-      ) {
-        finalHigh =
-          Math.round(
-            finalEstimated * 1.3
-          );
+      if (!Number.isFinite(finalHigh)) {
+        finalHigh = Math.round(finalEstimated * 1.3);
       }
 
-      finalLow =
-        Math.min(
-          finalLow,
-          finalEstimated
-        );
+      if (finalLow > finalEstimated) {
+        finalLow = finalEstimated;
+      }
 
-      finalHigh =
-        Math.max(
-          finalHigh,
-          finalEstimated
-        );
+      if (finalHigh < finalEstimated) {
+        finalHigh = finalEstimated;
+      }
     }
 
-    // ---------------------------------------------------------
-    // 12. RETURNER ALT TIL KISTEFUNN
-    // ---------------------------------------------------------
+    // Expose the method/weight so the frontend can explain why the
+    // value changed when market references are available.
+
+    /*
+     * ---------------------------------------------------------
+     * 8. RETURNER ALT TIL APPEN
+     * ---------------------------------------------------------
+     */
 
     return res.status(200).json({
       name:
@@ -1066,17 +1087,13 @@ skal du si det tydelig og bruke et forsiktig verdiestimat.
         valuationMethod,
 
       ebay_weight_percent:
-        Math.round(
-          ebayWeight * 100
-        )
+        Math.round(ebayWeight * 100)
     });
 
   } catch (e) {
-    console.error(e);
-
     return res.status(500).json({
       error:
-        e?.message ||
+        e.message ||
         "Ukjent feil"
     });
   }
