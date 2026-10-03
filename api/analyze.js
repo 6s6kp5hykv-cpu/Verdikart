@@ -52,7 +52,7 @@ export default async function handler(req, res) {
                   "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
                 },
                 body: JSON.stringify({
-                  model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
+                  model: "gpt-5.6-luna",
                   input: [
                     {
                       role: "user",
@@ -178,7 +178,7 @@ export default async function handler(req, res) {
             const data = await response.json();
 
             if (!response.ok) {
-              const apiError = data?.error || {};
+              const openaiError = data?.error || {};
               const requestId =
                 response.headers.get("x-request-id") ||
                 response.headers.get("request-id") ||
@@ -186,17 +186,17 @@ export default async function handler(req, res) {
 
               console.error("OpenAI API error", {
                 status: response.status,
-                code: apiError.code || null,
-                type: apiError.type || null,
-                message: apiError.message || null,
-                requestId,
-                model: process.env.OPENAI_MODEL || "gpt-5.6-luna"
+                code: openaiError.code || null,
+                type: openaiError.type || null,
+                message: openaiError.message || null,
+                requestId
               });
 
-              return res.status(response.status >= 400 && response.status < 600 ? response.status : 502).json({
-                error: apiError.message || "OpenAI-feil",
-                error_code: apiError.code || apiError.type || "openai_error",
-                status: response.status,
+              return res.status(response.status || 500).json({
+                error: openaiError.message || "OpenAI-feil",
+                code: openaiError.code || null,
+                type: openaiError.type || null,
+                status: response.status || 500,
                 request_id: requestId
               });
             }
@@ -692,154 +692,217 @@ export default async function handler(req, res) {
               }
             }
 
-            async function searchEbay(query, fallbackQueries = []) {
-              const baseQueries = [query, ...fallbackQueries]
-                .filter(q => typeof q === "string" && q.trim().length >= 2)
-                .map(q => q.trim().replace(/\s+/g, " "));
-
-              const queries = [...new Set(baseQueries)].slice(0, 4);
-
-              if (!queries.length) {
+            async function searchEbay(query) {
+              if (
+                !query ||
+                query.trim().length < 2
+              ) {
                 return {
                   enabled: false,
-                  reason: "Ingen egnet eBay-søkestreng"
+                  reason:
+                    "Ingen egnet eBay-søkestreng"
                 };
               }
 
-              const token = await getEbayToken();
+              const token =
+                await getEbayToken();
 
               if (!token) {
                 return {
                   enabled: false,
-                  reason: "eBay-tilkobling er ikke tilgjengelig"
+                  reason:
+                    "eBay-tilkobling er ikke tilgjengelig"
                 };
               }
 
-              const allItems = [];
-              const seenIds = new Set();
-              let successfulQueries = [];
+              const url =
+                "https://api.ebay.com" +
+                "/buy/browse/v1/item_summary/search" +
+                `?q=${encodeURIComponent(query)}` +
+                "&limit=20";
 
-              for (const currentQuery of queries) {
-                try {
-                  const url =
-                    "https://api.ebay.com" +
-                    "/buy/browse/v1/item_summary/search" +
-                    `?q=${encodeURIComponent(currentQuery)}` +
-                    "&limit=20";
-
-                  const ebayResponse = await fetch(url, {
-                    method: "GET",
-                    headers: {
-                      "Authorization": `Bearer ${token}`,
-                      "Accept": "application/json",
-                      "X-EBAY-C-MARKETPLACE-ID": "EBAY_DE"
-                    }
-                  });
-
-                  const ebayData = await ebayResponse.json();
-
-                  if (!ebayResponse.ok) {
-                    continue;
+              const ebayResponse =
+                await fetch(url, {
+                  method: "GET",
+                  headers: {
+                    "Authorization":
+                      `Bearer ${token}`,
+                    "Accept":
+                      "application/json",
+                    "X-EBAY-C-MARKETPLACE-ID":
+                      "EBAY_DE"
                   }
+                });
 
-                  const rawItems = Array.isArray(ebayData.itemSummaries)
-                    ? ebayData.itemSummaries
-                    : [];
+              const ebayData =
+                await ebayResponse.json();
 
-                  if (rawItems.length) {
-                    successfulQueries.push(currentQuery);
-                  }
-
-                  for (const item of rawItems) {
-                    const id = item?.itemId || item?.legacyItemId || item?.itemWebUrl;
-                    if (!id || seenIds.has(id)) continue;
-                    seenIds.add(id);
-                    allItems.push(item);
-                  }
-
-                  // One good query with enough results is normally enough.
-                  if (allItems.length >= 20) break;
-                } catch {
-                  // Try the next, broader query.
-                }
+              if (!ebayResponse.ok) {
+                return {
+                  enabled: false,
+                  reason:
+                    ebayData?.errors?.[0]?.message ||
+                    "eBay-søk feilet"
+                };
               }
 
-              if (!allItems.length) {
+              const rawItems =
+                Array.isArray(
+                  ebayData.itemSummaries
+                )
+                  ? ebayData.itemSummaries
+                  : [];
+
+              if (!rawItems.length) {
                 return {
                   enabled: true,
-                  marketplace: "EBAY_DE",
-                  query: queries[0],
-                  queries_tried: queries,
-                  successful_queries: successfulQueries,
+                  marketplace:
+                    "EBAY_DE",
+                  query,
                   sample_size: 0,
                   listings: []
                 };
               }
 
-              // Fetch each currency rate only once instead of making one
-              // external exchange-rate request per listing.
-              const currencies = [
-                ...new Set(
-                  allItems
-                    .map(item => item?.price?.currency)
-                    .filter(Boolean)
-                )
-              ];
-
-              const rates = {};
-
-              for (const currency of currencies) {
-                rates[currency] = await getExchangeRate(currency, "NOK");
-              }
-
               const prepared = [];
 
-              for (const item of allItems) {
-                const originalPrice = Number(item?.price?.value);
-                const currency = item?.price?.currency;
-                const rate = currency ? rates[currency] : null;
+              for (
+                const item of rawItems
+              ) {
+                const originalPrice =
+                  Number(
+                    item?.price?.value
+                  );
 
-                if (!Number.isFinite(originalPrice) || !currency || !rate) {
+                const currency =
+                  item?.price?.currency;
+
+                if (
+                  !Number.isFinite(
+                    originalPrice
+                  ) ||
+                  !currency
+                ) {
                   continue;
                 }
 
-                const nok = originalPrice * rate;
+                const rate =
+                  await getExchangeRate(
+                    currency,
+                    "NOK"
+                  );
 
-                if (!Number.isFinite(nok) || nok <= 0) continue;
+                if (!rate) {
+                  continue;
+                }
+
+                const nok =
+                  originalPrice * rate;
+
+                if (
+                  !Number.isFinite(nok) ||
+                  nok <= 0
+                ) {
+                  continue;
+                }
 
                 prepared.push({
-                  title: item.title || "",
+                  title:
+                    item.title || "",
+
                   price: {
-                    value: originalPrice,
+                    value:
+                      originalPrice,
                     currency
                   },
-                  nok: Math.round(nok),
-                  url: item.itemWebUrl || ""
+
+                  nok:
+                    Math.round(nok),
+
+                  url:
+                    item.itemWebUrl || ""
                 });
               }
 
-              const filtered = removeOutliers(prepared);
-              const prices = filtered.map(item => item.nok);
-              const medianNok = median(prices);
-              const ebayLow = percentile(prices, 0.15);
-              const ebayHigh = percentile(prices, 0.85);
+              const filtered =
+                removeOutliers(
+                  prepared
+                );
+
+              const prices =
+                filtered.map(
+                  item => item.nok
+                );
+
+              const medianNok =
+                median(prices);
+
+              const ebayLow =
+                percentile(
+                  prices,
+                  0.15
+                );
+
+              const ebayHigh =
+                percentile(
+                  prices,
+                  0.85
+                );
 
               return {
                 enabled: true,
-                marketplace: "EBAY_DE",
-                query: queries[0],
-                queries_tried: queries,
-                successful_queries: successfulQueries,
-                sample_size: filtered.length,
-                median_nok: Number.isFinite(medianNok) ? Math.round(medianNok) : null,
-                low_nok: Number.isFinite(ebayLow) ? Math.round(ebayLow) : null,
-                high_nok: Number.isFinite(ebayHigh) ? Math.round(ebayHigh) : null,
-                listings: filtered.slice(0, 10).map(item => ({
-                  title: item.title,
-                  price: item.price,
-                  price_nok: item.nok,
-                  url: item.url
-                }))
+
+                marketplace:
+                  "EBAY_DE",
+
+                query,
+
+                sample_size:
+                  filtered.length,
+
+                median_nok:
+                  Number.isFinite(
+                    medianNok
+                  )
+                    ? Math.round(
+                        medianNok
+                      )
+                    : null,
+
+                low_nok:
+                  Number.isFinite(
+                    ebayLow
+                  )
+                    ? Math.round(
+                        ebayLow
+                      )
+                    : null,
+
+                high_nok:
+                  Number.isFinite(
+                    ebayHigh
+                  )
+                    ? Math.round(
+                        ebayHigh
+                      )
+                    : null,
+
+                listings:
+                  filtered
+                    .slice(0, 10)
+                    .map(item => ({
+                      title:
+                        item.title,
+
+                      price:
+                        item.price,
+
+                      price_nok:
+                        item.nok,
+
+                      url:
+                        item.url
+                    }))
               };
             }
 
@@ -856,29 +919,12 @@ export default async function handler(req, res) {
             };
 
             try {
-              const brand = itemInfo.brand !== "Ukjent" ? itemInfo.brand : "";
-              const model = itemInfo.model !== "Ukjent" ? itemInfo.model : "";
-              const type = itemInfo.type !== "Ukjent" ? itemInfo.type : "";
-
-              const aiQuery =
-                typeof parsed.ebay_search_query === "string"
-                  ? parsed.ebay_search_query.trim()
-                  : "";
-
-              const primaryQuery =
-                aiQuery ||
-                [brand, model].filter(Boolean).join(" ") ||
-                parsed.name ||
-                "";
-
-              const fallbackQueries = [
-                [brand, model].filter(Boolean).join(" "),
-                [brand, model, type].filter(Boolean).join(" "),
-                [brand, type].filter(Boolean).join(" "),
-                brand
-              ];
-
-              ebay = await searchEbay(primaryQuery, fallbackQueries);
+              ebay =
+                await searchEbay(
+                  parsed.ebay_search_query ||
+                  parsed.name ||
+                  ""
+                );
             } catch {
               ebay = {
                 enabled: false,
@@ -1107,10 +1153,10 @@ export default async function handler(req, res) {
             });
 
           } catch (e) {
-            console.error("Kistefunn analyze error", e);
             return res.status(500).json({
-              error: e?.message || "Ukjent feil",
-              error_code: e?.code || "server_error"
+              error:
+                e.message ||
+                "Ukjent feil"
             });
           }
         }
