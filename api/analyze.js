@@ -52,7 +52,7 @@ export default async function handler(req, res) {
                   "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
                 },
                 body: JSON.stringify({
-                  model: "gpt-5.6-luna",
+                  model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
                   input: [
                     {
                       role: "user",
@@ -178,26 +178,8 @@ export default async function handler(req, res) {
             const data = await response.json();
 
             if (!response.ok) {
-              const openaiError = data?.error || {};
-              const requestId =
-                response.headers.get("x-request-id") ||
-                response.headers.get("request-id") ||
-                null;
-
-              console.error("OpenAI API error", {
-                status: response.status,
-                code: openaiError.code || null,
-                type: openaiError.type || null,
-                message: openaiError.message || null,
-                requestId
-              });
-
-              return res.status(response.status || 500).json({
-                error: openaiError.message || "OpenAI-feil",
-                code: openaiError.code || null,
-                type: openaiError.type || null,
-                status: response.status || 500,
-                request_id: requestId
+              return res.status(500).json({
+                error: data?.error?.message || "OpenAI-feil"
               });
             }
 
