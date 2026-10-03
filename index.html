@@ -118,6 +118,24 @@ hr{border:0;border-top:1px solid var(--line);margin:18px 0}
 #marketplace> .card:first-child h2{color:var(--navy);font-size:30px}
 #marketplace> .card:first-child h2:after{content:"  ✦";color:var(--gold);font-size:18px}
 @media(max-width:520px){.info-grid{grid-template-columns:1fr}.nav button{font-size:9px}}
+.market-search-card{padding:18px 16px 16px}
+.market-kicker{font-size:12px;letter-spacing:1.4px;text-transform:uppercase;font-weight:850;color:#8a6a25}
+.market-title{margin:5px 0 5px;font-size:29px;letter-spacing:-.7px;color:var(--navy)}
+.market-subtitle{margin:0 0 15px}
+.market-search-label{font-size:14px;font-weight:750;color:var(--ink)}
+.market-search-row{position:relative;margin-top:6px}
+.market-search-row input{margin-top:0;padding:14px 48px 14px 14px;background:#fff}
+.market-search-icon{position:absolute;right:13px;top:50%;transform:translateY(-50%);font-size:20px;pointer-events:none}
+.market-type-label{font-size:14px;font-weight:750;color:var(--ink);display:block;margin-top:12px}
+.market-search-button{margin-top:12px;width:100%;background:var(--navy);box-shadow:0 6px 15px rgba(11,23,48,.12)}
+.market-empty{padding:22px 16px;text-align:center}
+.market-empty-icon{font-size:34px;margin-bottom:5px}
+.market-empty-title{font-size:18px;font-weight:800;color:var(--navy)}
+.market-empty p{margin:6px 0 0}
+@media(max-width:520px){
+  .market-title{font-size:27px}
+}
+
 </style>
 </head>
 <body>
@@ -178,7 +196,21 @@ hr{border:0;border-top:1px solid var(--line);margin:18px 0}
 <div id="wantedContent" class="hidden"><div class="card"><h2>🔎 Jeg ønsker å kjøpe</h2><label>Hva leter du etter?<input id="wantName" placeholder="F.eks. Sony Walkman WM-3"></label><label style="margin-top:12px">Makspris<input id="wantPrice" type="number" placeholder="2500"></label><label style="margin-top:12px">Kommentar<input id="wantNote" placeholder="Helst komplett og fungerende"></label><button class="primary" style="margin-top:14px;width:100%" onclick="saveWant()">🔔 Lagre kjøpsønske</button></div><div id="wants"></div></div>
 </section>
 
-<section id="marketplace"><div class="card" style="border:2px solid #c89b3c"><div class="muted" style="text-transform:uppercase;letter-spacing:1.2px;font-weight:800">Kistefunn · Marked</div><h2 style="font-size:30px;margin-bottom:6px">🏪 Markedsplass</h2><p class="muted">Søk blant gjenstander og kjøpsønsker som brukere selv har valgt å gjøre offentlige.</p><label style="margin-top:14px">🔎 Søk<input id="marketplaceSearch" type="search" placeholder="F.eks. Sony Walkman WM-3" onkeydown="if(event.key==='Enter'){searchMarketplace()}"></label><label style="margin-top:12px">Type<select id="marketplaceType"><option value="all">Alle</option><option value="sale">📦 Til salgs</option><option value="wanted">🔎 Ønsker å kjøpe</option></select></label><button class="primary" style="margin-top:14px;width:100%" onclick="searchMarketplace()">🔎 Søk i markedsplassen</button></div><div id="marketplaceResults"><div class="card"><p class="muted">Søk etter noe for å finne gjenstander og kjøpsønsker.</p></div></div></section>
+<section id="marketplace">
+<div class="card market-search-card" style="border:2px solid #c89b3c">
+<div class="market-kicker">Kistefunn · Marked</div>
+<h2 class="market-title">🏪 Markedsplass</h2>
+<p class="muted market-subtitle">Finn skatter andre Kistefunn-brukere har lagt ut – eller se hvem som leter etter noe du har.</p>
+<label class="market-search-label">Søk etter en gjenstand
+<div class="market-search-row"><input id="marketplaceSearch" type="search" placeholder="F.eks. Sony Walkman WM-3" onkeydown="if(event.key==='Enter'){searchMarketplace()}"><span class="market-search-icon">🔎</span></div>
+</label>
+<label class="market-type-label">Hva vil du se?
+<select id="marketplaceType"><option value="all">Alle oppføringer</option><option value="sale">📦 Til salgs</option><option value="wanted">🔎 Ønsker å kjøpe</option></select>
+</label>
+<button class="primary market-search-button" onclick="searchMarketplace()">Finn oppføringer</button>
+</div>
+<div id="marketplaceResults"><div class="card market-empty"><div class="market-empty-icon">🗝️</div><div class="market-empty-title">Hva er du på jakt etter?</div><p class="muted">Søk etter en gjenstand for å finne offentlige oppføringer på Kistefunn.</p></div></div>
+</section>
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
