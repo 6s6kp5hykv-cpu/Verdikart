@@ -80,6 +80,19 @@ label{display:block}
 .note,.helper,.auth-message{padding:12px;border-radius:13px;background:#f3eee5;margin-top:12px}
 .helper{color:var(--muted);font-size:14px;line-height:1.45}
 .analyze-button{width:100%;margin-top:12px;background:var(--gold);color:#fff}
+
+.scan-hero{background:linear-gradient(145deg,var(--navy),var(--navy2));color:#fff;border-radius:22px;padding:20px;margin-bottom:12px;position:relative;overflow:hidden}
+.scan-hero:after{content:'🗝️';position:absolute;right:18px;top:10px;font-size:56px;opacity:.12;transform:rotate(12deg)}
+.scan-kicker{font-size:12px;text-transform:uppercase;letter-spacing:1.3px;color:var(--gold2);font-weight:800}
+.scan-hero h2{margin:5px 0 7px;font-size:27px}.scan-hero p{margin:0;color:#e8edf6;line-height:1.45;max-width:590px}
+.scan-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}.scan-action{min-height:54px!important;font-size:16px!important}
+.scan-count{display:flex;justify-content:space-between;align-items:center;margin:14px 0 6px;font-size:13px;color:var(--muted)}
+.scan-thumbs{display:flex;gap:10px;flex-wrap:wrap}.scan-thumb{position:relative;width:82px;height:82px}.scan-thumb img{width:82px;height:82px;object-fit:cover;border-radius:14px;border:1px solid var(--line);background:var(--soft)}
+.scan-remove{position:absolute;right:-6px;top:-7px;width:27px!important;height:27px!important;padding:0!important;border:0!important;border-radius:50%!important;background:#111827!important;color:#fff!important;font-size:18px!important;line-height:25px!important}
+.scan-guide{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:13px}.scan-guide>div{background:#faf7f0;border:1px solid var(--line);border-radius:14px;padding:10px;font-size:12px;line-height:1.35}.scan-guide b{display:block;font-size:15px;margin-bottom:3px}
+.scan-ready{display:flex;gap:9px;align-items:center;padding:11px 13px;border-radius:14px;background:#f3eee5;margin-top:12px;font-size:14px}.scan-dot{width:9px;height:9px;border-radius:50%;background:var(--gold);flex:none}
+.scan-result-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.scan-result-badge{display:inline-flex;align-items:center;padding:6px 9px;border-radius:999px;background:#f4ead0;color:#795916;font-size:12px;font-weight:800;white-space:nowrap}
+@media(max-width:480px){.scan-guide{grid-template-columns:1fr}.scan-hero h2{font-size:24px}}
 .account-email{font-size:19px;font-weight:750;word-break:break-word}
 hr{border:0;border-top:1px solid var(--line);margin:18px 0}
 .history-chart{width:100%;height:230px;background:#faf7f0;border-radius:14px;margin-top:12px;overflow:hidden}
@@ -179,28 +192,55 @@ hr{border:0;border-top:1px solid var(--line);margin:18px 0}
 <p class="muted" style="margin-top:10px">Dette sletter kontoen, samlingen og kjøpsønskene dine permanent.</p></div>
 </section>
 
-<section id="scan" class="hidden"><div class="card"><h2>Skann en gjenstand</h2>
-<p class="muted">Ta bilde av gjenstanden og fortell gjerne litt om den. Kistefunn bruker både bildet og informasjonen du skriver for å forsøke å identifisere riktig gjenstand og beregne verdi.</p>
-<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px">
-<label class="primary" style="margin:0;flex:1;min-width:150px;text-align:center;cursor:pointer">📷 Ta bilde<input id="cameraInput" type="file" accept="image/*" capture="environment" hidden></label>
-<label class="secondary" style="margin:0;flex:1;min-width:150px;text-align:center;cursor:pointer">🖼️ Velg bilder<input id="photo" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden></label></div>
-<p class="muted" style="margin-top:10px">Ta bilde med kameraet, eller velg bilder fra telefonen. Du kan legge til flere bilder før du analyserer.</p>
-<div id="selectedImages" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px"></div>
-<button id="resetScanButton" type="button" class="danger hidden" style="margin-top:10px;width:100%" onclick="resetScan()">🗑️ Fjern bilder og start på nytt</button>
-<img id="preview" class="preview hidden" alt="Forhåndsvisning">
-<label style="margin-top:16px">📝 Beskriv gjenstanden <span class="muted">(valgfritt)</span><textarea id="itemDescription" placeholder="Skriv det du vet om gjenstanden. F.eks. merke, modell, alder, materiale, mål, hvor den kommer fra eller andre kjennetegn."></textarea></label>
-<div class="helper">💡 <strong>Flere bilder kan gi bedre identifisering:</strong> Ta gjerne bilde fra flere vinkler, av detaljer, merking, serienummer og eventuelle skader.<br><br>💡 <strong>Tips:</strong> Jo mer informasjon du gir, desto lettere kan Kistefunn skille mellom lignende modeller og gjenstander.<br><br>Du kan for eksempel skrive: <strong>merke, modell, alder, mål, materiale, serienummer, tekst på gjenstanden eller hvor den kommer fra.</strong></div>
-<button id="analyzeButton" class="primary analyze-button" disabled>🔍 Analyser gjenstanden</button><div id="loading" class="loading hidden">🔍 Analyserer bilde og informasjon …</div>
-<div id="result" class="hidden"><hr><div class="result-title" id="rname"></div><p id="rdesc"></p><button class="info-button" id="itemInfoButton" type="button">ℹ️ Se all informasjon om gjenstanden</button><div class="price" id="rprice"></div>
-<div id="priceRange" class="price-range hidden"><div><span class="price-label">Lav pris</span><strong id="rlow"></strong></div><div><span class="price-label">Høy pris</span><strong id="rhigh"></strong></div></div>
-<p class="muted" id="rconfidence"></p><div id="ebayResult" class="ebay-result hidden"></div>
-<div class="card market-grounding"><h3 style="margin:0">📊 Markedsgrunnlag</h3>
-<div class="grounding-row"><div class="grounding-title">🔎 Identifikasjon</div><div class="grounding-value" id="marketConfidence">Basert på bilde og informasjonen du har oppgitt.</div></div>
-<div class="grounding-row"><div class="grounding-title">💰 Verdiestimat</div><div class="grounding-value">Verdien er et estimat basert på identifikasjonen og tilgjengelig markedsinformasjon.</div></div>
-<div class="grounding-row"><div class="grounding-title">🛒 Markedsdata</div><div class="grounding-value" id="marketDataSummary">Sammenlignbare annonser vises når Kistefunn finner relevante treff.</div></div></div>
-<div class="note">ℹ️ Verdien er et foreløpig AI-estimat. eBay-data er aktive annonsepriser og kan avvike fra faktisk salgspris.</div>
-<div class="note" style="margin-top:14px">💎 Dette er et funn. Trykk <strong>Lagre i samlingen</strong> hvis du vil følge verdien over tid.</div><button class="primary" style="margin-top:10px;width:100%" onclick="saveCurrent()">💾 Lagre i samlingen</button></div></div></section>
+<section id="scan" class="hidden">
+<div class="scan-hero">
+  <div class="scan-kicker">Kistefunn · Skann</div>
+  <h2>Hva har du funnet?</h2>
+  <p>Ta gode bilder av gjenstanden, så prøver Kistefunn å identifisere den og finne et realistisk verdiestimat.</p>
+  <div class="scan-actions">
+    <label class="primary scan-action" style="margin:0;text-align:center;cursor:pointer;display:flex;align-items:center;justify-content:center">📷 Ta bilde<input id="cameraInput" type="file" accept="image/*" capture="environment" hidden></label>
+    <label class="secondary scan-action" style="margin:0;text-align:center;cursor:pointer;display:flex;align-items:center;justify-content:center">🖼️ Velg bilder<input id="photo" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden></label>
+  </div>
+</div>
 
+<div class="card">
+  <div class="scan-count"><strong>📸 Bildene dine</strong><span id="scanImageCount">Ingen bilder valgt</span></div>
+  <div id="selectedImages" class="scan-thumbs"></div>
+  <button id="resetScanButton" type="button" class="danger hidden" style="margin-top:12px;width:100%" onclick="resetScan()">🗑️ Fjern bilder og start på nytt</button>
+  <div class="scan-guide">
+    <div><b>📐 Oversikt</b>Ta ett bilde av hele gjenstanden.</div>
+    <div><b>🔎 Detaljer</b>Ta bilde av merke, tekst og serienummer.</div>
+    <div><b>🛠️ Tilstand</b>Vis skader, slitasje og viktige detaljer.</div>
+  </div>
+  <div class="scan-ready"><span class="scan-dot"></span><span id="scanReadyText">Legg til minst ett bilde for å starte.</span></div>
+</div>
+
+<div class="card">
+  <label>📝 Hva vet du om gjenstanden? <span class="muted">(valgfritt)</span>
+    <textarea id="itemDescription" placeholder="F.eks. merke, modell, alder, materiale, mål, serienummer, hvor den kommer fra eller hva som står på den."></textarea>
+  </label>
+  <div class="helper">💡 <strong>Tips:</strong> Flere bilder og mer informasjon kan gjøre identifikasjonen mer presis. Du trenger ikke vite hva gjenstanden er – skriv bare det du vet.</div>
+  <button id="analyzeButton" class="primary analyze-button" disabled>🔍 Finn ut hva det er</button>
+  <div id="loading" class="loading hidden">🔍 Kistefunn analyserer gjenstanden …</div>
+</div>
+
+<div id="result" class="hidden"><div class="card">
+  <div class="scan-result-head"><div><div class="muted">FUNNET</div><div class="result-title" id="rname"></div></div><span class="scan-result-badge">💎 AI-vurdering</span></div>
+  <img id="preview" class="preview hidden" alt="Bilde brukt i analysen">
+  <p id="rdesc"></p>
+  <button class="info-button" id="itemInfoButton" type="button">ℹ️ Se all informasjon om gjenstanden</button>
+  <div class="price" id="rprice"></div>
+  <div id="priceRange" class="price-range hidden"><div><span class="price-label">Lav pris</span><strong id="rlow"></strong></div><div><span class="price-label">Høy pris</span><strong id="rhigh"></strong></div></div>
+  <p class="muted" id="rconfidence"></p><div id="ebayResult" class="ebay-result hidden"></div>
+  <div class="card market-grounding"><h3 style="margin:0">📊 Markedsgrunnlag</h3>
+  <div class="grounding-row"><div class="grounding-title">🔎 Identifikasjon</div><div class="grounding-value" id="marketConfidence">Basert på bilde og informasjonen du har oppgitt.</div></div>
+  <div class="grounding-row"><div class="grounding-title">💰 Verdiestimat</div><div class="grounding-value">Verdien er et estimat basert på identifikasjonen og tilgjengelig markedsinformasjon.</div></div>
+  <div class="grounding-row"><div class="grounding-title">🛒 Markedsdata</div><div class="grounding-value" id="marketDataSummary">Sammenlignbare annonser vises når Kistefunn finner relevante treff.</div></div></div>
+  <div class="note">ℹ️ Verdien er et foreløpig AI-estimat. eBay-data er aktive annonsepriser og kan avvike fra faktisk salgspris.</div>
+  <div class="note" style="margin-top:14px">💎 Dette er et funn. Trykk <strong>Lagre i samlingen</strong> hvis du vil følge verdien over tid.</div>
+  <button class="primary" style="margin-top:10px;width:100%" onclick="saveCurrent()">💾 Lagre i samlingen</button>
+</div></div>
+</section>
 <section id="collection" class="hidden">
 <div id="collectionLoginCard" class="card hidden"><h2>📦 Min samling</h2><p>Logg inn for å se og lagre din personlige samling.</p><button class="primary" style="width:100%" onclick="show('account')">👤 Gå til Min side</button></div>
 <div id="collectionContent" class="hidden"><div class="card"><h2>Min samling</h2><p class="muted">Her ligger gjenstandene du har valgt å følge. Du kan se verdiutvikling og oppdatere verdien over tid.</p><div class="grid"><div><div class="stat" id="total">0 kr</div><div class="muted">Samlet estimert verdi</div></div><div><div class="stat" id="count">0</div><div class="muted">Gjenstander</div></div></div></div><div id="items"></div></div>
@@ -261,7 +301,7 @@ supabaseClient.auth.onAuthStateChange((event,session)=>setTimeout(()=>handleAuth
 async function loadCloudData(){if(!currentUser)return;try{const collectionResult=await supabaseClient.from('collection_items').select('*').eq('user_id',currentUser.id).order('created_at',{ascending:false});if(collectionResult.error)throw collectionResult.error;const wantedResult=await supabaseClient.from('wanted_items').select('*').eq('user_id',currentUser.id).order('created_at',{ascending:false});if(wantedResult.error)throw wantedResult.error;const historyResult=await supabaseClient.from('value_history').select('*').eq('user_id',currentUser.id).order('created_at',{ascending:true});if(historyResult.error)throw historyResult.error;const marketplaceResult=await supabaseClient.from('marketplace_listings').select('id,listing_type,collection_item_id,wanted_item_id').eq('user_id',currentUser.id);if(marketplaceResult.error)throw marketplaceResult.error;const marketplaceRows=marketplaceResult.data||[];const localItems=JSON.parse(localStorage.getItem('vk_items')||'[]'),localWants=JSON.parse(localStorage.getItem('vk_wants')||'[]');if((collectionResult.data||[]).length===0&&(wantedResult.data||[]).length===0&&(localItems.length||localWants.length)){if(localItems.length)await supabaseClient.from('collection_items').insert(localItems.map(i=>({user_id:currentUser.id,name:i.name||'Ukjent gjenstand',description:i.description||'',condition:i.condition||'Ukjent',confidence:i.confidence||'',estimated_value_nok:i.value||0,image_url:i.img||''})));if(localWants.length)await supabaseClient.from('wanted_items').insert(localWants.map(i=>({user_id:currentUser.id,name:i.name,target_price_nok:i.price||0,description:i.note||''})));return loadCloudData()}const historyRows=historyResult.data||[];items=(collectionResult.data||[]).map(row=>{let h=historyRows.filter(x=>x.item_id===row.id).map(x=>({date:new Date(x.created_at).toLocaleDateString('no-NO'),value:Number(x.value)||0,createdAt:x.created_at,source:x.source||'Ukjent'}));if(!h.length)h=[{date:new Date(row.created_at).toLocaleDateString('no-NO'),value:Number(row.estimated_value_nok)||0,createdAt:row.created_at,source:'Opprinnelig estimat'}];return{id:row.id,name:row.name||'Ukjent gjenstand',value:row.estimated_value_nok||0,condition:row.condition||'Ukjent',description:row.description||'',userDescription:row.description||'',confidence:row.confidence||'',img:row.image_url||'',history:h,marketplaceListingId:(marketplaceRows.find(m=>m.listing_type==='sale'&&m.collection_item_id===row.id)||{}).id||null}});wants=(wantedResult.data||[]).map(row=>({id:row.id,name:row.name,price:row.target_price_nok||0,note:row.description||'',marketplaceListingId:(marketplaceRows.find(m=>m.listing_type==='wanted'&&m.wanted_item_id===row.id)||{}).id||null}));localStorage.setItem('vk_items',JSON.stringify(items));localStorage.setItem('vk_wants',JSON.stringify(wants));cloudLoaded=true;renderItems();renderWants()}catch(err){console.error(err);alert('Kunne ikke hente data fra kontoen. '+(err.message||''))}}
 const photoInput=document.getElementById('photo'),cameraInput=document.getElementById('cameraInput'),analyzeButton=document.getElementById('analyzeButton'),itemDescription=document.getElementById('itemDescription');
 function addSelectedFiles(list){const incoming=Array.from(list||[]).filter(f=>f?.type?.startsWith('image/'));if(!incoming.length)return;selectedFiles=selectedFiles.concat(incoming);renderSelectedImages();analyzeButton.disabled=selectedFiles.length===0}
-function renderSelectedImages(){const c=document.getElementById('selectedImages');if(!c)return;selectedPreviewUrls.forEach(u=>URL.revokeObjectURL(u));selectedPreviewUrls=[];c.innerHTML='';document.getElementById('resetScanButton')?.classList.toggle('hidden',selectedFiles.length===0);selectedFiles.forEach((file,index)=>{const url=URL.createObjectURL(file);selectedPreviewUrls.push(url);const w=document.createElement('div');w.style.cssText='position:relative;width:90px;height:90px';const img=document.createElement('img');img.src=url;img.alt='Bilde '+(index+1);img.style.cssText='width:90px;height:90px;object-fit:cover;border-radius:12px;border:1px solid #d1d5db';const remove=document.createElement('button');remove.type='button';remove.textContent='×';remove.style.cssText='position:absolute;right:-6px;top:-6px;width:28px;height:28px;border:0;border-radius:50%;background:#111827;color:white;font-size:20px;line-height:24px;padding:0';remove.onclick=()=>{selectedFiles.splice(index,1);renderSelectedImages();analyzeButton.disabled=selectedFiles.length===0};w.append(img,remove);c.appendChild(w)})}
+function renderSelectedImages(){const c=document.getElementById('selectedImages');if(!c)return;selectedPreviewUrls.forEach(u=>URL.revokeObjectURL(u));selectedPreviewUrls=[];c.innerHTML='';const count=document.getElementById('scanImageCount'),ready=document.getElementById('scanReadyText');document.getElementById('resetScanButton')?.classList.toggle('hidden',selectedFiles.length===0);if(count)count.textContent=selectedFiles.length?(selectedFiles.length===1?'1 bilde valgt':selectedFiles.length+' bilder valgt'):'Ingen bilder valgt';if(ready)ready.textContent=selectedFiles.length?'Klar for analyse – du kan legge til flere bilder hvis du vil.':'Legg til minst ett bilde for å starte.';selectedFiles.forEach((file,index)=>{const url=URL.createObjectURL(file);selectedPreviewUrls.push(url);const w=document.createElement('div');w.className='scan-thumb';const img=document.createElement('img');img.src=url;img.alt='Bilde '+(index+1);const remove=document.createElement('button');remove.type='button';remove.className='scan-remove';remove.textContent='×';remove.setAttribute('aria-label','Fjern bilde '+(index+1));remove.onclick=()=>{selectedFiles.splice(index,1);renderSelectedImages();analyzeButton.disabled=selectedFiles.length===0};w.append(img,remove);c.appendChild(w)})}
 photoInput?.addEventListener('change',e=>{addSelectedFiles(e.target.files);e.target.value=''});cameraInput?.addEventListener('change',e=>{addSelectedFiles(e.target.files);e.target.value=''});
 function resetScan(){selectedFiles=[];selectedPreviewUrls.forEach(u=>URL.revokeObjectURL(u));selectedPreviewUrls=[];if(photoInput)photoInput.value='';if(cameraInput)cameraInput.value='';const p=document.getElementById('preview');p.src='';p.classList.add('hidden');document.getElementById('result').classList.add('hidden');document.getElementById('loading').classList.add('hidden');itemDescription.value='';current=null;analyzeButton.disabled=true;renderSelectedImages();window.scrollTo({top:0,behavior:'smooth'})}
 async function fileToDataURL(file){return new Promise((resolve,reject)=>{const url=URL.createObjectURL(file),img=new Image();img.onload=()=>{try{const max=1600;let w=img.naturalWidth,h=img.naturalHeight;if(w>max||h>max){if(w>h){h=Math.round(h*max/w);w=max}else{w=Math.round(w*max/h);h=max}}const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);const data=c.toDataURL('image/jpeg',.85);URL.revokeObjectURL(url);resolve(data)}catch(e){URL.revokeObjectURL(url);reject(e)}};img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('Kunne ikke lese bildet.'))};img.src=url})}
