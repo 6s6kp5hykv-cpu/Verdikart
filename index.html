@@ -4,8 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#111827">
-<title>Verdikart</title>
-
+<title>Kistefunn</title>
 <style>
 *{box-sizing:border-box}
 body{margin:0;background:#f5f7fb;color:#111827;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
@@ -17,84 +16,38 @@ main{padding:16px;max-width:720px;margin:auto}
 .nav button{white-space:nowrap}
 button{border:0;border-radius:13px;padding:13px 16px;font-size:16px;font-weight:650;cursor:pointer}
 button:disabled{opacity:.5;cursor:not-allowed}
-.primary{background:#111827;color:#fff}
-.secondary{background:#e5e7eb;color:#111827}
-.danger{background:#fee2e2;color:#991b1b}
+.primary{background:#111827;color:#fff}.secondary{background:#e5e7eb;color:#111827}.danger{background:#fee2e2;color:#991b1b}
 .card{background:#fff;border-radius:18px;padding:16px;margin:12px 0;box-shadow:0 2px 12px #0000000b}
 input,select,textarea{width:100%;padding:12px;border:1px solid #d1d5db;border-radius:12px;font-size:16px;margin-top:6px;font-family:inherit}
-textarea{min-height:110px;resize:vertical}
-label{display:block}
+textarea{min-height:110px;resize:vertical}label{display:block}
 .preview{width:100%;max-height:330px;object-fit:contain;border-radius:14px;background:#eef2f7;margin-top:12px}
-.hidden{display:none!important}
-.muted{color:#64748b;font-size:14px}
-.result-title{font-size:23px;font-weight:800}
-.price{font-size:30px;font-weight:800;margin-top:8px}
-.price-range{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
-.price-range>div{background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:12px}
-.price-label{display:block;color:#64748b;font-size:13px;margin-bottom:4px}
-.price-range strong{font-size:20px}
-.loading{text-align:center;padding:20px}
-.item{display:flex;gap:12px;align-items:center}
-.thumb{width:68px;height:68px;object-fit:cover;border-radius:12px;background:#e5e7eb}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.stat{font-size:25px;font-weight:750}
-.note{padding:12px;border-radius:12px;background:#f1f5f9;margin-top:12px}
-.helper{padding:11px 12px;border-radius:12px;background:#f8fafc;color:#64748b;font-size:14px;line-height:1.45;margin-top:8px}
-.analyze-button{width:100%;margin-top:12px}
-.auth-message{padding:11px 12px;border-radius:12px;background:#f1f5f9;margin-top:12px;line-height:1.45}
-.account-email{font-size:19px;font-weight:750;word-break:break-word}
-hr{border:0;border-top:1px solid #e5e7eb;margin:18px 0}
-.history-chart{width:100%;height:230px;background:#f8fafc;border-radius:14px;margin-top:12px;overflow:hidden}
-.history-svg{width:100%;height:100%;display:block}
-.history-point{fill:#111827}
-.history-line{fill:none;stroke:#111827;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
-.history-list{margin-top:12px}
-.history-row{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid #e5e7eb}
-.history-row:last-child{border-bottom:0}
+.hidden{display:none!important}.muted{color:#64748b;font-size:14px}.result-title{font-size:23px;font-weight:800}.price{font-size:30px;font-weight:800;margin-top:8px}
+.price-range{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}.price-range>div{background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:12px}
+.price-label{display:block;color:#64748b;font-size:13px;margin-bottom:4px}.price-range strong{font-size:20px}.loading{text-align:center;padding:20px}
+.item{display:flex;gap:12px;align-items:center}.thumb{width:68px;height:68px;object-fit:cover;border-radius:12px;background:#e5e7eb}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.stat{font-size:25px;font-weight:750}.note{padding:12px;border-radius:12px;background:#f1f5f9;margin-top:12px}
+.helper{padding:11px 12px;border-radius:12px;background:#f8fafc;color:#64748b;font-size:14px;line-height:1.45;margin-top:8px}.analyze-button{width:100%;margin-top:12px}
+.auth-message{padding:11px 12px;border-radius:12px;background:#f1f5f9;margin-top:12px}.account-email{font-size:19px;font-weight:750;word-break:break-word}
+hr{border:0;border-top:1px solid #e5e7eb;margin:18px 0}.history-chart{width:100%;height:230px;background:#f8fafc;border-radius:14px;margin-top:12px;overflow:hidden}
+.history-svg{width:100%;height:100%;display:block}.history-point{fill:#111827}.history-line{fill:none;stroke:#111827;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.history-list{margin-top:12px}.history-row{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid #e5e7eb}.history-row:last-child{border-bottom:0}
 .marketplace-badge{display:inline-block;padding:5px 9px;border-radius:999px;background:#eef2ff;color:#3730a3;font-size:13px;font-weight:700}
-.marketplace-price{font-size:24px;font-weight:800;margin-top:8px}
-.marketplace-card{display:flex;gap:12px;align-items:flex-start}
-.marketplace-thumb{width:78px;height:78px;object-fit:cover;border-radius:12px;background:#e5e7eb;flex:none}
-
-/* eBay */
-.ebay-result{margin-top:14px;padding:15px;border-radius:16px;background:#f8fafc;border:1px solid #e2e8f0}
-.ebay-title{font-size:19px;font-weight:800;margin-bottom:8px}
-.ebay-summary{margin-top:10px;padding:12px;border-radius:12px;background:#fff;border:1px solid #e5e7eb}
-.ebay-price-range{font-size:22px;font-weight:800;margin-top:5px}
-.ebay-listing{padding:10px 0;border-top:1px solid #e5e7eb}
-.ebay-listing:first-child{border-top:0}
-.ebay-listing-title{font-weight:650;line-height:1.35}
-.ebay-listing-price{font-weight:750;margin-top:3px}
-.ebay-link{display:inline-block;margin-top:5px;color:#3730a3;font-weight:650;text-decoration:none}
-.ebay-note{color:#64748b;font-size:13px;line-height:1.4;margin-top:10px}
-.market-grounding{margin-top:12px;background:#f8fafc;border:1px solid #e2e8f0}
-.grounding-row{margin-top:13px}
-.grounding-row:first-of-type{margin-top:10px}
-.grounding-title{font-weight:750}
-.grounding-value{color:#64748b;font-size:14px;line-height:1.45;margin-top:3px}
-.info-button{margin-top:12px;width:100%;background:#eef2ff;color:#3730a3;border:1px solid #c7d2fe}
-.info-modal{position:fixed;inset:0;background:#0008;display:flex;align-items:flex-end;justify-content:center;z-index:1000}
-.info-sheet{background:#fff;width:100%;max-width:720px;max-height:88vh;overflow:auto;border-radius:22px 22px 0 0;padding:20px}
-.info-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.info-close{background:#e5e7eb;color:#111827;padding:9px 12px}
-.info-section{margin-top:18px}
-.info-section h4{margin:0 0 7px;font-size:16px}
-.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.info-field{background:#f8fafc;border:1px solid #e5e7eb;border-radius:12px;padding:10px}
-.info-field-label{display:block;color:#64748b;font-size:12px;margin-bottom:3px}
-.info-field-value{font-weight:650;line-height:1.35}
-.info-list{margin:6px 0 0;padding-left:20px}
-.info-list li{margin:6px 0;line-height:1.4}
+.marketplace-price{font-size:24px;font-weight:800;margin-top:8px}.marketplace-card{display:flex;gap:12px;align-items:flex-start}.marketplace-thumb{width:78px;height:78px;object-fit:cover;border-radius:12px;background:#e5e7eb;flex:none}
+.ebay-result{margin-top:14px;padding:15px;border-radius:16px;background:#f8fafc;border:1px solid #e2e8f0}.ebay-title{font-size:19px;font-weight:800;margin-bottom:8px}
+.ebay-summary{margin-top:10px;padding:12px;border-radius:12px;background:#fff;border:1px solid #e5e7eb}.ebay-price-range{font-size:22px;font-weight:800;margin-top:5px}
+.ebay-listing{padding:10px 0;border-top:1px solid #e5e7eb}.ebay-listing:first-child{border-top:0}.ebay-listing-title{font-weight:650;line-height:1.35}.ebay-listing-price{font-weight:750;margin-top:3px}
+.ebay-link{display:inline-block;margin-top:5px;color:#3730a3;font-weight:650;text-decoration:none}.ebay-note{color:#64748b;font-size:13px;line-height:1.4;margin-top:10px}
+.market-grounding{margin-top:12px;background:#f8fafc;border:1px solid #e2e8f0}.grounding-row{margin-top:13px}.grounding-row:first-of-type{margin-top:10px}.grounding-title{font-weight:750}.grounding-value{color:#64748b;font-size:14px;line-height:1.45;margin-top:3px}
+.info-button{margin-top:12px;width:100%;background:#eef2ff;color:#3730a3;border:1px solid #c7d2fe}.info-modal{position:fixed;inset:0;background:#0008;display:flex;align-items:flex-end;justify-content:center;z-index:1000}
+.info-sheet{background:#fff;width:100%;max-width:720px;max-height:88vh;overflow:auto;border-radius:22px 22px 0 0;padding:20px}.info-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.info-close{background:#e5e7eb;color:#111827;padding:9px 12px}.info-section{margin-top:18px}.info-section h4{margin:0 0 7px;font-size:16px}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.info-field{background:#f8fafc;border:1px solid #e5e7eb;border-radius:12px;padding:10px}
+.info-field-label{display:block;color:#64748b;font-size:12px;margin-bottom:3px}.info-field-value{font-weight:650;line-height:1.35}.info-list{margin:6px 0 0;padding-left:20px}.info-list li{margin:6px 0;line-height:1.4}
 @media(max-width:520px){.info-grid{grid-template-columns:1fr}}
 </style>
 </head>
-
 <body>
-<header>
-<h1>Verdikart</h1>
-<p>Skann · Identifiser · Følg verdi · Finn kjøpere</p>
-</header>
-
+<header><h1>Kistefunn</h1><p>Skann · Identifiser · Følg verdi · Finn kjøpere</p></header>
 <main>
 <div class="nav">
 <button class="primary" onclick="show('marketplace')">🏪 Markedsplass</button>
@@ -105,172 +58,53 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:18px 0}
 </div>
 
 <section id="account" class="hidden">
-<div class="card" id="loggedOutCard">
-<h2>👤 Min side</h2>
-<p class="muted">Logg inn for å lagre samlingen og kjøpsønskene dine på kontoen din.</p>
+<div class="card" id="loggedOutCard"><h2>👤 Min side</h2><p class="muted">Logg inn for å lagre samlingen og kjøpsønskene dine på kontoen din.</p>
 <label style="margin-top:14px">E-post<input id="authEmail" type="email" autocomplete="email" placeholder="din@email.no"></label>
 <label style="margin-top:12px">Passord<input id="authPassword" type="password" autocomplete="current-password" placeholder="Minst 6 tegn"></label>
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px">
-<button class="primary" onclick="login()">🔑 Logg inn</button>
-<button class="secondary" onclick="signup()">✉️ Opprett konto</button>
-</div>
-<div id="authMessage" class="auth-message hidden"></div>
-</div>
-
-<div class="card hidden" id="loggedInCard">
-<h2>👤 Min side</h2>
-<p class="muted">Du er logget inn som:</p>
-<div id="accountEmail" class="account-email"></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px"><button class="primary" onclick="login()">🔑 Logg inn</button><button class="secondary" onclick="signup()">✉️ Opprett konto</button></div>
+<div id="authMessage" class="auth-message hidden"></div></div>
+<div class="card hidden" id="loggedInCard"><h2>👤 Min side</h2><p class="muted">Du er logget inn som:</p><div id="accountEmail" class="account-email"></div>
 <div class="auth-message">☁️ Samlingen og kjøpsønskene dine lagres på kontoen din.</div>
 <button class="secondary" style="margin-top:14px;width:100%" onclick="logout()">🚪 Logg ut</button>
 <button class="danger" style="margin-top:10px;width:100%" onclick="deleteAccount()">🗑️ Slett konto og alle data</button>
-<p class="muted" style="margin-top:10px">Dette sletter kontoen, samlingen og kjøpsønskene dine permanent.</p>
-</div>
+<p class="muted" style="margin-top:10px">Dette sletter kontoen, samlingen og kjøpsønskene dine permanent.</p></div>
 </section>
 
-<section id="scan">
-<div class="card">
-<h2>Skann en gjenstand</h2>
-<p class="muted">Ta bilde av gjenstanden og fortell gjerne litt om den. Verdikart bruker både bildet og informasjonen du skriver for å forsøke å identifisere riktig gjenstand og beregne verdi.</p>
-
+<section id="scan"><div class="card"><h2>Skann en gjenstand</h2>
+<p class="muted">Ta bilde av gjenstanden og fortell gjerne litt om den. Kistefunn bruker både bildet og informasjonen du skriver for å forsøke å identifisere riktig gjenstand og beregne verdi.</p>
 <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px">
-<label class="primary" style="margin:0;flex:1;min-width:150px;text-align:center;cursor:pointer">
-📷 Ta bilde
-<input id="cameraInput" type="file" accept="image/*" capture="environment" hidden>
-</label>
-<label class="secondary" style="margin:0;flex:1;min-width:150px;text-align:center;cursor:pointer">
-🖼️ Velg bilder
-<input id="photo" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden>
-</label>
-</div>
-
+<label class="primary" style="margin:0;flex:1;min-width:150px;text-align:center;cursor:pointer">📷 Ta bilde<input id="cameraInput" type="file" accept="image/*" capture="environment" hidden></label>
+<label class="secondary" style="margin:0;flex:1;min-width:150px;text-align:center;cursor:pointer">🖼️ Velg bilder<input id="photo" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden></label></div>
 <p class="muted" style="margin-top:10px">Ta bilde med kameraet, eller velg bilder fra telefonen. Du kan legge til flere bilder før du analyserer.</p>
 <div id="selectedImages" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px"></div>
 <button id="resetScanButton" type="button" class="danger hidden" style="margin-top:10px;width:100%" onclick="resetScan()">🗑️ Fjern bilder og start på nytt</button>
 <img id="preview" class="preview hidden" alt="Forhåndsvisning">
-
-<label style="margin-top:16px">📝 Beskriv gjenstanden <span class="muted">(valgfritt)</span>
-<textarea id="itemDescription" placeholder="Skriv det du vet om gjenstanden. F.eks. merke, modell, alder, materiale, mål, hvor den kommer fra eller andre kjennetegn."></textarea>
-</label>
-
-<div class="helper">
-💡 <strong>Flere bilder kan gi bedre identifisering:</strong> Ta gjerne bilde fra flere vinkler, av detaljer, merking, serienummer og eventuelle skader.
-<br><br>
-💡 <strong>Tips:</strong> Jo mer informasjon du gir, desto lettere kan Verdikart skille mellom lignende modeller og gjenstander.
-<br><br>
-Du kan for eksempel skrive: <strong>merke, modell, alder, mål, materiale, serienummer, tekst på gjenstanden eller hvor den kommer fra.</strong>
-</div>
-
-<button id="analyzeButton" class="primary analyze-button" disabled>🔍 Analyser gjenstanden</button>
-<div id="loading" class="loading hidden">🔍 Analyserer bilde og informasjon …</div>
-
-<div id="result" class="hidden">
-<hr>
-<div class="result-title" id="rname"></div>
-<p id="rdesc"></p>
-<button class="info-button" id="itemInfoButton" type="button">ℹ️ Se all informasjon om gjenstanden</button>
-<div class="price" id="rprice"></div>
-
-<div id="priceRange" class="price-range hidden">
-  <div>
-    <span class="price-label">Lav pris</span>
-    <strong id="rlow"></strong>
-  </div>
-  <div>
-    <span class="price-label">Høy pris</span>
-    <strong id="rhigh"></strong>
-  </div>
-</div>
-
-<p class="muted" id="rconfidence"></p>
-
-<div id="ebayResult" class="ebay-result hidden"></div>
-
-<div class="card market-grounding">
-  <h3 style="margin:0">📊 Markedsgrunnlag</h3>
-
-  <div class="grounding-row">
-    <div class="grounding-title">🔎 Identifikasjon</div>
-    <div class="grounding-value" id="marketConfidence">
-      Basert på bilde og informasjonen du har oppgitt.
-    </div>
-  </div>
-
-  <div class="grounding-row">
-    <div class="grounding-title">💰 Verdiestimat</div>
-    <div class="grounding-value">
-      Verdien er et estimat basert på identifikasjonen og tilgjengelig markedsinformasjon.
-    </div>
-  </div>
-
-  <div class="grounding-row">
-    <div class="grounding-title">🛒 Markedsdata</div>
-    <div class="grounding-value" id="marketDataSummary">
-      Sammenlignbare annonser vises når Verdikart finner relevante treff.
-    </div>
-  </div>
-</div>
-
+<label style="margin-top:16px">📝 Beskriv gjenstanden <span class="muted">(valgfritt)</span><textarea id="itemDescription" placeholder="Skriv det du vet om gjenstanden. F.eks. merke, modell, alder, materiale, mål, hvor den kommer fra eller andre kjennetegn."></textarea></label>
+<div class="helper">💡 <strong>Flere bilder kan gi bedre identifisering:</strong> Ta gjerne bilde fra flere vinkler, av detaljer, merking, serienummer og eventuelle skader.<br><br>💡 <strong>Tips:</strong> Jo mer informasjon du gir, desto lettere kan Kistefunn skille mellom lignende modeller og gjenstander.<br><br>Du kan for eksempel skrive: <strong>merke, modell, alder, mål, materiale, serienummer, tekst på gjenstanden eller hvor den kommer fra.</strong></div>
+<button id="analyzeButton" class="primary analyze-button" disabled>🔍 Analyser gjenstanden</button><div id="loading" class="loading hidden">🔍 Analyserer bilde og informasjon …</div>
+<div id="result" class="hidden"><hr><div class="result-title" id="rname"></div><p id="rdesc"></p><button class="info-button" id="itemInfoButton" type="button">ℹ️ Se all informasjon om gjenstanden</button><div class="price" id="rprice"></div>
+<div id="priceRange" class="price-range hidden"><div><span class="price-label">Lav pris</span><strong id="rlow"></strong></div><div><span class="price-label">Høy pris</span><strong id="rhigh"></strong></div></div>
+<p class="muted" id="rconfidence"></p><div id="ebayResult" class="ebay-result hidden"></div>
+<div class="card market-grounding"><h3 style="margin:0">📊 Markedsgrunnlag</h3>
+<div class="grounding-row"><div class="grounding-title">🔎 Identifikasjon</div><div class="grounding-value" id="marketConfidence">Basert på bilde og informasjonen du har oppgitt.</div></div>
+<div class="grounding-row"><div class="grounding-title">💰 Verdiestimat</div><div class="grounding-value">Verdien er et estimat basert på identifikasjonen og tilgjengelig markedsinformasjon.</div></div>
+<div class="grounding-row"><div class="grounding-title">🛒 Markedsdata</div><div class="grounding-value" id="marketDataSummary">Sammenlignbare annonser vises når Kistefunn finner relevante treff.</div></div></div>
 <div class="note">ℹ️ Verdien er et foreløpig AI-estimat. eBay-data er aktive annonsepriser og kan avvike fra faktisk salgspris.</div>
-<button class="primary" style="margin-top:14px;width:100%" onclick="saveCurrent()">💾 Lagre i samlingen</button>
-</div>
-</div>
-</section>
+<button class="primary" style="margin-top:14px;width:100%" onclick="saveCurrent()">💾 Lagre i samlingen</button></div></div></section>
 
 <section id="collection" class="hidden">
-<div id="collectionLoginCard" class="card hidden">
-<h2>📦 Min samling</h2><p>Logg inn for å se og lagre din personlige samling.</p>
-<button class="primary" style="width:100%" onclick="show('account')">👤 Gå til Min side</button>
-</div>
-
-<div id="collectionContent" class="hidden">
-<div class="card"><h2>Min samling</h2><div class="grid">
-<div><div class="stat" id="total">0 kr</div><div class="muted">Samlet estimert verdi</div></div>
-<div><div class="stat" id="count">0</div><div class="muted">Gjenstander</div></div>
-</div></div>
-<div id="items"></div>
-</div>
-
-<div id="historyPanel" class="card hidden">
-<h2>📈 Verdiutvikling</h2>
-<div id="historyTitle" class="result-title"></div>
-<div id="historyCurrent" class="price"></div>
-<div id="historyChange" class="muted"></div>
-<div id="historyChart" class="history-chart"></div>
-<div id="historyList" class="history-list"></div>
-<button id="refreshValueButton" class="primary" style="margin-top:14px;width:100%" onclick="refreshCurrentValue()">🔄 Oppdater verdi</button>
-<button class="danger" style="margin-top:8px;width:100%" onclick="deleteCurrentItem()">🗑️ Slett gjenstand</button>
-<button class="secondary" style="margin-top:8px;width:100%" onclick="closeHistory()">Lukk</button>
-</div>
+<div id="collectionLoginCard" class="card hidden"><h2>📦 Min samling</h2><p>Logg inn for å se og lagre din personlige samling.</p><button class="primary" style="width:100%" onclick="show('account')">👤 Gå til Min side</button></div>
+<div id="collectionContent" class="hidden"><div class="card"><h2>Min samling</h2><div class="grid"><div><div class="stat" id="total">0 kr</div><div class="muted">Samlet estimert verdi</div></div><div><div class="stat" id="count">0</div><div class="muted">Gjenstander</div></div></div></div><div id="items"></div></div>
+<div id="historyPanel" class="card hidden"><h2>📈 Verdiutvikling</h2><div id="historyTitle" class="result-title"></div><div id="historyCurrent" class="price"></div><div id="historyChange" class="muted"></div><div id="historyChart" class="history-chart"></div><div id="historyList" class="history-list"></div>
+<button id="refreshValueButton" class="primary" style="margin-top:14px;width:100%" onclick="refreshCurrentValue()">🔄 Oppdater verdi</button><button class="danger" style="margin-top:8px;width:100%" onclick="deleteCurrentItem()">🗑️ Slett gjenstand</button><button class="secondary" style="margin-top:8px;width:100%" onclick="closeHistory()">Lukk</button></div>
 </section>
 
 <section id="wanted" class="hidden">
-<div id="wantedLoginCard" class="card hidden">
-<h2>🔎 Jeg ønsker å kjøpe</h2><p>Logg inn for å lagre dine personlige kjøpsønsker.</p>
-<button class="primary" style="width:100%" onclick="show('account')">👤 Gå til Min side</button>
-</div>
-<div id="wantedContent" class="hidden">
-<div class="card">
-<h2>🔎 Jeg ønsker å kjøpe</h2>
-<label>Hva leter du etter?<input id="wantName" placeholder="F.eks. Sony Walkman WM-3"></label>
-<label style="margin-top:12px">Makspris<input id="wantPrice" type="number" placeholder="2500"></label>
-<label style="margin-top:12px">Kommentar<input id="wantNote" placeholder="Helst komplett og fungerende"></label>
-<button class="primary" style="margin-top:14px;width:100%" onclick="saveWant()">🔔 Lagre kjøpsønske</button>
-</div>
-<div id="wants"></div>
-</div>
+<div id="wantedLoginCard" class="card hidden"><h2>🔎 Jeg ønsker å kjøpe</h2><p>Logg inn for å lagre dine personlige kjøpsønsker.</p><button class="primary" style="width:100%" onclick="show('account')">👤 Gå til Min side</button></div>
+<div id="wantedContent" class="hidden"><div class="card"><h2>🔎 Jeg ønsker å kjøpe</h2><label>Hva leter du etter?<input id="wantName" placeholder="F.eks. Sony Walkman WM-3"></label><label style="margin-top:12px">Makspris<input id="wantPrice" type="number" placeholder="2500"></label><label style="margin-top:12px">Kommentar<input id="wantNote" placeholder="Helst komplett og fungerende"></label><button class="primary" style="margin-top:14px;width:100%" onclick="saveWant()">🔔 Lagre kjøpsønske</button></div><div id="wants"></div></div>
 </section>
 
-<section id="marketplace" class="hidden">
-<div class="card" style="border:2px solid #111827">
-<h2 style="font-size:30px">🏪 Markedsplass</h2>
-<p class="muted">Søk blant gjenstander og kjøpsønsker som brukere selv har valgt å gjøre offentlige.</p>
-<label style="margin-top:14px">🔎 Søk<input id="marketplaceSearch" type="search" placeholder="F.eks. Sony Walkman WM-3" onkeydown="if(event.key==='Enter'){searchMarketplace()}"></label>
-<label style="margin-top:12px">Type<select id="marketplaceType"><option value="all">Alle</option><option value="sale">📦 Til salgs</option><option value="wanted">🔎 Ønsker å kjøpe</option></select></label>
-<button class="primary" style="margin-top:14px;width:100%" onclick="searchMarketplace()">🔎 Søk i markedsplassen</button>
-</div>
-<div id="marketplaceResults"><div class="card"><p class="muted">Søk etter noe for å finne gjenstander og kjøpsønsker.</p></div></div>
-</section>
+<section id="marketplace" class="hidden"><div class="card" style="border:2px solid #111827"><h2 style="font-size:30px">🏪 Markedsplass</h2><p class="muted">Søk blant gjenstander og kjøpsønsker som brukere selv har valgt å gjøre offentlige.</p><label style="margin-top:14px">🔎 Søk<input id="marketplaceSearch" type="search" placeholder="F.eks. Sony Walkman WM-3" onkeydown="if(event.key==='Enter'){searchMarketplace()}"></label><label style="margin-top:12px">Type<select id="marketplaceType"><option value="all">Alle</option><option value="sale">📦 Til salgs</option><option value="wanted">🔎 Ønsker å kjøpe</option></select></label><button class="primary" style="margin-top:14px;width:100%" onclick="searchMarketplace()">🔎 Søk i markedsplassen</button></div><div id="marketplaceResults"><div class="card"><p class="muted">Søk etter noe for å finne gjenstander og kjøpsønsker.</p></div></div></section>
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -278,469 +112,52 @@ Du kan for eksempel skrive: <strong>merke, modell, alder, mål, materiale, serie
 const SUPABASE_URL='https://tiqwlxpclqqncykdwvjf.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY='sb_publishable_2lQgSsDQRbOO4DIg6pbDsg_5n1lfGKS';
 const supabaseClient=window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY);
-
-let items=JSON.parse(localStorage.getItem('vk_items')||'[]');
-let wants=JSON.parse(localStorage.getItem('vk_wants')||'[]');
-let current=null,currentUser=null,cloudLoaded=false;
-let selectedFiles=[],selectedPreviewUrls=[];
-
+let items=JSON.parse(localStorage.getItem('vk_items')||'[]'),wants=JSON.parse(localStorage.getItem('vk_wants')||'[]');
+let current=null,currentUser=null,cloudLoaded=false,selectedFiles=[],selectedPreviewUrls=[];
 function esc(value){return String(value||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
-
-function show(id){
-document.querySelectorAll('.nav button').forEach(b=>{b.classList.remove('primary');b.classList.add('secondary')});
-const buttons=[...document.querySelectorAll('.nav button')];
-const names=['marketplace','scan','collection','wanted','account'];
-const idx=names.indexOf(id);
-if(idx>=0&&buttons[idx]){buttons[idx].classList.remove('secondary');buttons[idx].classList.add('primary')}
-names.forEach(x=>document.getElementById(x)?.classList.toggle('hidden',x!==id));
-if(id==='collection'){updatePrivateSections();if(currentUser)renderItems()}
-if(id==='wanted'){updatePrivateSections();if(currentUser)renderWants()}
-if(id==='marketplace'){if(currentUser)searchMarketplace();else renderMarketplaceLogin()}
-}
-
-function setAuthMessage(message){
-const box=document.getElementById('authMessage');if(!box)return;
-box.textContent=message||'';box.classList.toggle('hidden',!message);
-}
-
-function updateAuthUI(){
-const out=document.getElementById('loggedOutCard'),inCard=document.getElementById('loggedInCard'),email=document.getElementById('accountEmail');
-if(currentUser){out.classList.add('hidden');inCard.classList.remove('hidden');email.textContent=currentUser.email||''}
-else{out.classList.remove('hidden');inCard.classList.add('hidden');email.textContent=''}
-updatePrivateSections();
-}
-
-function updatePrivateSections(){
-const cl=document.getElementById('collectionLoginCard'),cc=document.getElementById('collectionContent'),wl=document.getElementById('wantedLoginCard'),wc=document.getElementById('wantedContent');
-if(currentUser){cl.classList.add('hidden');cc.classList.remove('hidden');wl.classList.add('hidden');wc.classList.remove('hidden')}
-else{cl.classList.remove('hidden');cc.classList.add('hidden');wl.classList.remove('hidden');wc.classList.add('hidden')}
-}
-
-async function signup(){
-const email=document.getElementById('authEmail').value.trim(),password=document.getElementById('authPassword').value;
-if(!email||!password)return setAuthMessage('Skriv inn e-post og passord.');
-if(password.length<6)return setAuthMessage('Passordet må være minst 6 tegn.');
-setAuthMessage('Oppretter konto …');
-try{
-const {data,error}=await supabaseClient.auth.signUp({email,password,options:{emailRedirectTo:window.location.origin}});
-if(error)throw error;
-setAuthMessage(data.session?'Kontoen er opprettet og du er logget inn.':'Kontoen er opprettet. Sjekk e-posten din og bekreft e-postadressen før du logger inn.');
-}catch(err){console.error(err);setAuthMessage(err.message||'Kunne ikke opprette konto.')}
-}
-
-async function login(){
-const email=document.getElementById('authEmail').value.trim(),password=document.getElementById('authPassword').value;
-if(!email||!password)return setAuthMessage('Skriv inn e-post og passord.');
-setAuthMessage('Logger inn …');
-try{const {error}=await supabaseClient.auth.signInWithPassword({email,password});if(error)throw error;setAuthMessage('Du er logget inn.')}
-catch(err){console.error(err);setAuthMessage(err.message||'Kunne ikke logge inn.')}
-}
-
-async function logout(){
-const {error}=await supabaseClient.auth.signOut();
-if(error)return alert(error.message||'Kunne ikke logge ut.');
-currentUser=null;cloudLoaded=false;updateAuthUI();show('account');
-}
-
-async function deleteAccount(){
-if(!currentUser)return alert('Du må være logget inn for å slette kontoen.');
-if(!confirm('Er du sikker på at du vil slette '+(currentUser.email||'denne kontoen')+'?\n\nDette sletter permanent kontoen, alle gjenstander i samlingen og alle kjøpsønsker.'))return;
-try{
-const {data,error}=await supabaseClient.auth.refreshSession();if(error)throw error;
-const token=data?.session?.access_token;if(!token)throw new Error('Logg inn på nytt og prøv igjen.');
-const r=await fetch('/api/delete-account',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'}});
-const t=await r.text();let d={};try{d=t?JSON.parse(t):{}}catch(_){}
-if(!r.ok)throw new Error(d.error||t||('HTTP '+r.status));
-localStorage.removeItem('vk_items');localStorage.removeItem('vk_wants');
-items=[];wants=[];current=null;currentUser=null;cloudLoaded=false;
-await supabaseClient.auth.signOut();alert('Kontoen og alle dataene dine er slettet.');updateAuthUI();show('account');
-}catch(err){console.error(err);alert(err.message||'Det oppstod en feil under sletting av kontoen.')}
-}
-
-async function handleAuthSession(session){
-currentUser=session?.user||null;updateAuthUI();
-if(currentUser)await loadCloudData();else cloudLoaded=false;
-}
-
+function show(id){document.querySelectorAll('.nav button').forEach(b=>{b.classList.remove('primary');b.classList.add('secondary')});const buttons=[...document.querySelectorAll('.nav button')],names=['marketplace','scan','collection','wanted','account'],idx=names.indexOf(id);if(idx>=0&&buttons[idx]){buttons[idx].classList.remove('secondary');buttons[idx].classList.add('primary')}names.forEach(x=>document.getElementById(x)?.classList.toggle('hidden',x!==id));if(id==='collection'){updatePrivateSections();if(currentUser)renderItems()}if(id==='wanted'){updatePrivateSections();if(currentUser)renderWants()}if(id==='marketplace'){if(currentUser)searchMarketplace();else renderMarketplaceLogin()}}
+function setAuthMessage(message){const box=document.getElementById('authMessage');if(!box)return;box.textContent=message||'';box.classList.toggle('hidden',!message)}
+function updateAuthUI(){const out=document.getElementById('loggedOutCard'),inCard=document.getElementById('loggedInCard'),email=document.getElementById('accountEmail');if(currentUser){out.classList.add('hidden');inCard.classList.remove('hidden');email.textContent=currentUser.email||''}else{out.classList.remove('hidden');inCard.classList.add('hidden');email.textContent=''}updatePrivateSections()}
+function updatePrivateSections(){const cl=document.getElementById('collectionLoginCard'),cc=document.getElementById('collectionContent'),wl=document.getElementById('wantedLoginCard'),wc=document.getElementById('wantedContent');if(currentUser){cl.classList.add('hidden');cc.classList.remove('hidden');wl.classList.add('hidden');wc.classList.remove('hidden')}else{cl.classList.remove('hidden');cc.classList.add('hidden');wl.classList.remove('hidden');wc.classList.add('hidden')}}
+async function signup(){const email=document.getElementById('authEmail').value.trim(),password=document.getElementById('authPassword').value;if(!email||!password)return setAuthMessage('Skriv inn e-post og passord.');if(password.length<6)return setAuthMessage('Passordet må være minst 6 tegn.');setAuthMessage('Oppretter konto …');try{const {data,error}=await supabaseClient.auth.signUp({email,password,options:{emailRedirectTo:window.location.origin}});if(error)throw error;setAuthMessage(data.session?'Kontoen er opprettet og du er logget inn.':'Kontoen er opprettet. Sjekk e-posten din og bekreft e-postadressen før du logger inn.')}catch(err){console.error(err);setAuthMessage(err.message||'Kunne ikke opprette konto.')}}
+async function login(){const email=document.getElementById('authEmail').value.trim(),password=document.getElementById('authPassword').value;if(!email||!password)return setAuthMessage('Skriv inn e-post og passord.');setAuthMessage('Logger inn …');try{const {error}=await supabaseClient.auth.signInWithPassword({email,password});if(error)throw error;setAuthMessage('Du er logget inn.')}catch(err){console.error(err);setAuthMessage(err.message||'Kunne ikke logge inn.')}}
+async function logout(){const {error}=await supabaseClient.auth.signOut();if(error)return alert(error.message||'Kunne ikke logge ut.');currentUser=null;cloudLoaded=false;updateAuthUI();show('account')}
+async function deleteAccount(){if(!currentUser)return alert('Du må være logget inn for å slette kontoen.');if(!confirm('Er du sikker på at du vil slette '+(currentUser.email||'denne kontoen')+'?\n\nDette sletter permanent kontoen, alle gjenstander i samlingen og alle kjøpsønsker.'))return;try{const {data,error}=await supabaseClient.auth.refreshSession();if(error)throw error;const token=data?.session?.access_token;if(!token)throw new Error('Logg inn på nytt og prøv igjen.');const r=await fetch('/api/delete-account',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'}}),t=await r.text();let d={};try{d=t?JSON.parse(t):{}}catch(_){}if(!r.ok)throw new Error(d.error||t||('HTTP '+r.status));localStorage.removeItem('vk_items');localStorage.removeItem('vk_wants');items=[];wants=[];current=null;currentUser=null;cloudLoaded=false;await supabaseClient.auth.signOut();alert('Kontoen og alle dataene dine er slettet.');updateAuthUI();show('account')}catch(err){console.error(err);alert(err.message||'Det oppstod en feil under sletting av kontoen.')}}
+async function handleAuthSession(session){currentUser=session?.user||null;updateAuthUI();if(currentUser)await loadCloudData();else cloudLoaded=false}
 supabaseClient.auth.onAuthStateChange((event,session)=>setTimeout(()=>handleAuthSession(session),0));
-
-async function loadCloudData(){
-if(!currentUser)return;
-try{
-const collectionResult=await supabaseClient.from('collection_items').select('*').eq('user_id',currentUser.id).order('created_at',{ascending:false});
-if(collectionResult.error)throw collectionResult.error;
-const wantedResult=await supabaseClient.from('wanted_items').select('*').eq('user_id',currentUser.id).order('created_at',{ascending:false});
-if(wantedResult.error)throw wantedResult.error;
-const historyResult=await supabaseClient.from('value_history').select('*').eq('user_id',currentUser.id).order('created_at',{ascending:true});
-if(historyResult.error)throw historyResult.error;
-const marketplaceResult=await supabaseClient.from('marketplace_listings').select('id,listing_type,collection_item_id,wanted_item_id').eq('user_id',currentUser.id);
-if(marketplaceResult.error)throw marketplaceResult.error;
-const marketplaceRows=marketplaceResult.data||[];
-
-const localItems=JSON.parse(localStorage.getItem('vk_items')||'[]'),localWants=JSON.parse(localStorage.getItem('vk_wants')||'[]');
-if((collectionResult.data||[]).length===0&&(wantedResult.data||[]).length===0&&(localItems.length||localWants.length)){
-if(localItems.length)await supabaseClient.from('collection_items').insert(localItems.map(i=>({user_id:currentUser.id,name:i.name||'Ukjent gjenstand',description:i.description||'',condition:i.condition||'Ukjent',confidence:i.confidence||'',estimated_value_nok:i.value||0,image_url:i.img||''})));
-if(localWants.length)await supabaseClient.from('wanted_items').insert(localWants.map(i=>({user_id:currentUser.id,name:i.name,target_price_nok:i.price||0,description:i.note||''})));
-return loadCloudData();
-}
-
-const historyRows=historyResult.data||[];
-items=(collectionResult.data||[]).map(row=>{
-let h=historyRows.filter(x=>x.item_id===row.id).map(x=>({date:new Date(x.created_at).toLocaleDateString('no-NO'),value:Number(x.value)||0,createdAt:x.created_at,source:x.source||'Ukjent'}));
-if(!h.length)h=[{date:new Date(row.created_at).toLocaleDateString('no-NO'),value:Number(row.estimated_value_nok)||0,createdAt:row.created_at,source:'Opprinnelig estimat'}];
-return {id:row.id,name:row.name||'Ukjent gjenstand',value:row.estimated_value_nok||0,condition:row.condition||'Ukjent',description:row.description||'',userDescription:row.description||'',confidence:row.confidence||'',img:row.image_url||'',history:h,marketplaceListingId:(marketplaceRows.find(m=>m.listing_type==='sale'&&m.collection_item_id===row.id)||{}).id||null};
-});
-wants=(wantedResult.data||[]).map(row=>({id:row.id,name:row.name,price:row.target_price_nok||0,note:row.description||'',marketplaceListingId:(marketplaceRows.find(m=>m.listing_type==='wanted'&&m.wanted_item_id===row.id)||{}).id||null}));
-localStorage.setItem('vk_items',JSON.stringify(items));localStorage.setItem('vk_wants',JSON.stringify(wants));cloudLoaded=true;renderItems();renderWants();
-}catch(err){console.error(err);alert('Kunne ikke hente data fra kontoen. '+(err.message||''))}
-}
-
+async function loadCloudData(){if(!currentUser)return;try{const collectionResult=await supabaseClient.from('collection_items').select('*').eq('user_id',currentUser.id).order('created_at',{ascending:false});if(collectionResult.error)throw collectionResult.error;const wantedResult=await supabaseClient.from('wanted_items').select('*').eq('user_id',currentUser.id).order('created_at',{ascending:false});if(wantedResult.error)throw wantedResult.error;const historyResult=await supabaseClient.from('value_history').select('*').eq('user_id',currentUser.id).order('created_at',{ascending:true});if(historyResult.error)throw historyResult.error;const marketplaceResult=await supabaseClient.from('marketplace_listings').select('id,listing_type,collection_item_id,wanted_item_id').eq('user_id',currentUser.id);if(marketplaceResult.error)throw marketplaceResult.error;const marketplaceRows=marketplaceResult.data||[];const localItems=JSON.parse(localStorage.getItem('vk_items')||'[]'),localWants=JSON.parse(localStorage.getItem('vk_wants')||'[]');if((collectionResult.data||[]).length===0&&(wantedResult.data||[]).length===0&&(localItems.length||localWants.length)){if(localItems.length)await supabaseClient.from('collection_items').insert(localItems.map(i=>({user_id:currentUser.id,name:i.name||'Ukjent gjenstand',description:i.description||'',condition:i.condition||'Ukjent',confidence:i.confidence||'',estimated_value_nok:i.value||0,image_url:i.img||''})));if(localWants.length)await supabaseClient.from('wanted_items').insert(localWants.map(i=>({user_id:currentUser.id,name:i.name,target_price_nok:i.price||0,description:i.note||''})));return loadCloudData()}const historyRows=historyResult.data||[];items=(collectionResult.data||[]).map(row=>{let h=historyRows.filter(x=>x.item_id===row.id).map(x=>({date:new Date(x.created_at).toLocaleDateString('no-NO'),value:Number(x.value)||0,createdAt:x.created_at,source:x.source||'Ukjent'}));if(!h.length)h=[{date:new Date(row.created_at).toLocaleDateString('no-NO'),value:Number(row.estimated_value_nok)||0,createdAt:row.created_at,source:'Opprinnelig estimat'}];return{id:row.id,name:row.name||'Ukjent gjenstand',value:row.estimated_value_nok||0,condition:row.condition||'Ukjent',description:row.description||'',userDescription:row.description||'',confidence:row.confidence||'',img:row.image_url||'',history:h,marketplaceListingId:(marketplaceRows.find(m=>m.listing_type==='sale'&&m.collection_item_id===row.id)||{}).id||null}});wants=(wantedResult.data||[]).map(row=>({id:row.id,name:row.name,price:row.target_price_nok||0,note:row.description||'',marketplaceListingId:(marketplaceRows.find(m=>m.listing_type==='wanted'&&m.wanted_item_id===row.id)||{}).id||null}));localStorage.setItem('vk_items',JSON.stringify(items));localStorage.setItem('vk_wants',JSON.stringify(wants));cloudLoaded=true;renderItems();renderWants()}catch(err){console.error(err);alert('Kunne ikke hente data fra kontoen. '+(err.message||''))}}
 const photoInput=document.getElementById('photo'),cameraInput=document.getElementById('cameraInput'),analyzeButton=document.getElementById('analyzeButton'),itemDescription=document.getElementById('itemDescription');
-
-function addSelectedFiles(list){
-const incoming=Array.from(list||[]).filter(f=>f?.type?.startsWith('image/'));if(!incoming.length)return;
-selectedFiles=selectedFiles.concat(incoming);renderSelectedImages();analyzeButton.disabled=selectedFiles.length===0;
-}
-
-function renderSelectedImages(){
-const c=document.getElementById('selectedImages');if(!c)return;
-selectedPreviewUrls.forEach(u=>URL.revokeObjectURL(u));selectedPreviewUrls=[];c.innerHTML='';
-document.getElementById('resetScanButton')?.classList.toggle('hidden',selectedFiles.length===0);
-selectedFiles.forEach((file,index)=>{
-const url=URL.createObjectURL(file);selectedPreviewUrls.push(url);
-const w=document.createElement('div');w.style.cssText='position:relative;width:90px;height:90px';
-const img=document.createElement('img');img.src=url;img.alt='Bilde '+(index+1);img.style.cssText='width:90px;height:90px;object-fit:cover;border-radius:12px;border:1px solid #d1d5db';
-const remove=document.createElement('button');remove.type='button';remove.textContent='×';remove.style.cssText='position:absolute;right:-6px;top:-6px;width:28px;height:28px;border:0;border-radius:50%;background:#111827;color:white;font-size:20px;line-height:24px;padding:0';remove.onclick=()=>{selectedFiles.splice(index,1);renderSelectedImages();analyzeButton.disabled=selectedFiles.length===0};
-w.append(img,remove);c.appendChild(w);
-});
-}
-photoInput?.addEventListener('change',e=>{addSelectedFiles(e.target.files);e.target.value=''});
-cameraInput?.addEventListener('change',e=>{addSelectedFiles(e.target.files);e.target.value=''});
-
-function resetScan(){
-selectedFiles=[];selectedPreviewUrls.forEach(u=>URL.revokeObjectURL(u));selectedPreviewUrls=[];if(photoInput)photoInput.value='';if(cameraInput)cameraInput.value='';
-const p=document.getElementById('preview');p.src='';p.classList.add('hidden');
-document.getElementById('result').classList.add('hidden');document.getElementById('loading').classList.add('hidden');itemDescription.value='';current=null;analyzeButton.disabled=true;renderSelectedImages();window.scrollTo({top:0,behavior:'smooth'});
-}
-
-async function fileToDataURL(file){
-return new Promise((resolve,reject)=>{
-const url=URL.createObjectURL(file),img=new Image();
-img.onload=()=>{try{const max=1600;let w=img.naturalWidth,h=img.naturalHeight;if(w>max||h>max){if(w>h){h=Math.round(h*max/w);w=max}else{w=Math.round(w*max/h);h=max}}const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);const data=c.toDataURL('image/jpeg',.85);URL.revokeObjectURL(url);resolve(data)}catch(e){URL.revokeObjectURL(url);reject(e)}};
-img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('Kunne ikke lese bildet.'))};img.src=url;
-});
-}
-
-async function createAnalysisImage(files){
-const images=await Promise.all(files.map(fileToDataURL));
-if(images.length===1)return {analysisImage:images[0],originalImages:images};
-const loaded=await Promise.all(images.map(src=>new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>resolve(img);img.onerror=()=>reject(new Error('Kunne ikke lese et av bildene.'));img.src=src})));
-const width=900,gap=20,widths=loaded.map(i=>Math.min(width,i.naturalWidth)),heights=loaded.map((i,n)=>Math.round(i.naturalHeight*widths[n]/i.naturalWidth));
-const c=document.createElement('canvas');c.width=width;c.height=heights.reduce((a,b)=>a+b,0)+gap*(loaded.length-1);const ctx=c.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);let y=0;
-loaded.forEach((img,i)=>{const x=Math.round((c.width-widths[i])/2);ctx.drawImage(img,x,y,widths[i],heights[i]);y+=heights[i]+gap});
-return {analysisImage:c.toDataURL('image/jpeg',.85),originalImages:images};
-}
-
-if(analyzeButton)analyzeButton.addEventListener('click',async()=>{
-if(!selectedFiles.length)return alert('Ta eller velg minst ett bilde først.');
-const description=itemDescription.value.trim(),preview=document.getElementById('preview'),loading=document.getElementById('loading'),result=document.getElementById('result');
-analyzeButton.disabled=true;loading.classList.remove('hidden');result.classList.add('hidden');
-try{
-const imageSet=await createAnalysisImage(selectedFiles);preview.src=imageSet.analysisImage;preview.classList.remove('hidden');
-const res=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image:imageSet.analysisImage,description})});
-const data=await res.json();if(!res.ok)throw new Error(data.error||'Kunne ikke analysere gjenstanden.');
-current={...data,img:imageSet.analysisImage,images:imageSet.originalImages,userDescription:description};
-document.getElementById('rname').textContent=data.name||'Ukjent gjenstand';
-document.getElementById('rdesc').textContent=data.description||'';
-
-const raw=data.estimated_value_nok;
-let display='Verdi ikke fastslått';
-
-if(typeof raw==='number'&&Number.isFinite(raw)&&raw>0){
-  display=raw.toLocaleString('no-NO')+' kr';
-}else if(typeof raw==='string'&&raw.trim()){
-  display=raw.trim();
-}
-
-document.getElementById('rprice').textContent=display;
-
-const low=Number(data.low_value_nok);
-const high=Number(data.high_value_nok);
-const priceRange=document.getElementById('priceRange');
-
-if(
-  Number.isFinite(low)&&
-  low>0&&
-  Number.isFinite(high)&&
-  high>0
-){
-  document.getElementById('rlow').textContent=low.toLocaleString('no-NO')+' kr';
-  document.getElementById('rhigh').textContent=high.toLocaleString('no-NO')+' kr';
-  priceRange.classList.remove('hidden');
-}else{
-  priceRange.classList.add('hidden');
-}
-
-const confidence=data.confidence||'ukjent';
-document.getElementById('rconfidence').textContent='Identifiseringssikkerhet: '+confidence;
-
-const marketConfidence=document.getElementById('marketConfidence');
-if(marketConfidence){
-  marketConfidence.textContent='Verdikart vurderer identifikasjonen som: '+confidence+'.';
-}
-
-renderEbayResult(data.ebay,data.ebay_search_query);
-
-const marketDataSummary=document.getElementById('marketDataSummary');
-if(marketDataSummary){
-  if(data.ebay?.enabled && Number(data.ebay.sample_size)>0){
-    const n=Number(data.ebay.sample_size);
-    const lowE=Number(data.ebay.low_nok)||0;
-    const highE=Number(data.ebay.high_nok)||0;
-    const medianE=Number(data.ebay.median_nok)||0;
-    let text=n+' sammenlignbare eBay-annonser funnet.';
-    if(lowE&&highE)text+=' Prisene ligger på '+lowE.toLocaleString('no-NO')+'–'+highE.toLocaleString('no-NO')+' kr.';
-    if(medianE)text+=' Median: '+medianE.toLocaleString('no-NO')+' kr.';
-    marketDataSummary.textContent=text;
-  }else{
-    marketDataSummary.textContent='Ingen gode sammenlignbare eBay-annonser funnet akkurat nå. Verdien bør derfor sees som et foreløpig estimat.';
-  }
-}
-
-result.classList.remove('hidden');result.scrollIntoView({behavior:'smooth',block:'start'});
-}catch(err){console.error(err);alert(err.message||'Det oppstod en feil.')}finally{loading.classList.add('hidden');analyzeButton.disabled=false}
-});
-
-function renderEbayResult(ebay,searchQuery){
-const c=document.getElementById('ebayResult');if(!c)return;c.classList.remove('hidden');
-if(!ebay||!ebay.enabled){c.innerHTML='<div class="ebay-title">🛒 eBay markedsreferanser</div><div class="muted">eBay-priser kunne ikke hentes akkurat nå.</div>'+(ebay?.reason?'<div class="ebay-note">'+esc(ebay.reason)+'</div>':'');return}
-if(!ebay.sample_size){c.innerHTML='<div class="ebay-title">🛒 eBay markedsreferanser</div><div class="muted">Ingen sammenlignbare eBay-annonser ble funnet.</div>'+(searchQuery?'<div class="ebay-note">Søk brukt: <strong>'+esc(searchQuery)+'</strong></div>':'')+'<div class="ebay-note">Ingen sammenlignbare aktive eBay-annonser ble funnet for dette søket.</div>';return}
-const fmt=v=>Number(v).toLocaleString('no-NO')+' kr',low=Number(ebay.low_nok)||0,high=Number(ebay.high_nok)||0,median=Number(ebay.median_nok)||0;
-const listings=(ebay.listings||[]).slice(0,5).map(x=>'<div class="ebay-listing"><div class="ebay-listing-title">'+esc(x.title||'eBay-annonse')+'</div><div class="ebay-listing-price">'+(Number(x.price_nok)>0?fmt(x.price_nok):'Pris ikke oppgitt')+'</div>'+(x.url&&x.url.startsWith('https://')?'<a class="ebay-link" href="'+esc(x.url)+'" target="_blank" rel="noopener noreferrer">Se annonsen på eBay →</a>':'')+'</div>').join('');
-c.innerHTML='<div class="ebay-title">🛒 eBay markedsreferanser</div>'+(searchQuery?'<div class="muted">Søkt etter: <strong>'+esc(searchQuery)+'</strong></div>':'')+'<div class="ebay-summary"><div class="muted">'+ebay.sample_size+' sammenlignbare annonser</div>'+(low&&high?'<div class="ebay-price-range">'+fmt(low)+' – '+fmt(high)+'</div>':'')+(median?'<div style="margin-top:5px">Median: <strong>'+fmt(median)+'</strong></div>':'')+'</div>'+(listings?'<div style="margin-top:12px"><strong>Eksempler fra eBay</strong>'+listings+'</div>':'')+'<div class="ebay-note">eBay-prisene er aktive annonsepriser og er derfor ikke nødvendigvis det samme som faktisk salgspris.</div>';
-}
-
-function escAttr(value){
-return esc(String(value ?? '')).replace(/"/g,'&quot;');
-}
-
-function infoValue(value){
-if(value===null||value===undefined||value==='')return 'Ukjent';
-if(Array.isArray(value))return value.length?value.map(x=>String(x)).join(', '):'Ingen opplysninger';
-return String(value);
-}
-
-function renderItemInfo(info,data){
-const modal=document.getElementById('itemInfoModal');
-const content=document.getElementById('itemInfoContent');
-if(!modal||!content)return;
-
-info=info||{};
-const list=(arr)=>{
-if(!Array.isArray(arr)||!arr.length)return '<div class="muted">Ingen opplysninger</div>';
-return '<ul class="info-list">'+arr.map(x=>'<li>'+esc(String(x))+'</li>').join('')+'</ul>';
-};
-
-content.innerHTML=
-'<div class="info-section">'+
-'<div class="info-grid">'+
-'<div class="info-field"><span class="info-field-label">Merke</span><div class="info-field-value">'+esc(infoValue(info.brand))+'</div></div>'+
-'<div class="info-field"><span class="info-field-label">Modell</span><div class="info-field-value">'+esc(infoValue(info.model))+'</div></div>'+
-'<div class="info-field"><span class="info-field-label">Produsent</span><div class="info-field-value">'+esc(infoValue(info.manufacturer))+'</div></div>'+
-'<div class="info-field"><span class="info-field-label">Type</span><div class="info-field-value">'+esc(infoValue(info.type))+'</div></div>'+
-'<div class="info-field"><span class="info-field-label">År / periode</span><div class="info-field-value">'+esc(infoValue(info.year_or_period))+'</div></div>'+
-'<div class="info-field"><span class="info-field-label">Materiale</span><div class="info-field-value">'+esc(infoValue(info.material))+'</div></div>'+
-'<div class="info-field"><span class="info-field-label">Serienummer</span><div class="info-field-value">'+esc(infoValue(info.serial_number))+'</div></div>'+
-'<div class="info-field"><span class="info-field-label">Tilstand</span><div class="info-field-value">'+esc(infoValue(info.condition_details||data?.condition))+'</div></div>'+
-'</div></div>'+
-'<div class="info-section"><h4>🔎 Kjennetegn</h4>'+list(info.identifying_features)+'</div>'+
-'<div class="info-section"><h4>🛠️ Modifikasjoner</h4><div class="note">'+esc(infoValue(info.modifications))+'</div></div>'+
-'<div class="info-section"><h4>💰 Hva påvirker verdien?</h4>'+list(info.value_factors)+'</div>'+
-'<div class="info-section"><h4>⚠️ Usikkerhet</h4>'+list(info.uncertainties)+'</div>'+
-'<div class="info-section"><h4>📊 Verdikartets vurdering</h4><div class="note">'+
-'Estimert verdi: <strong>'+((Number(data?.estimated_value_nok)>0)?Number(data.estimated_value_nok).toLocaleString('no-NO')+' kr':'Ikke fastslått')+'</strong>'+
-'<br>Lav pris: '+((Number(data?.low_value_nok)>0)?Number(data.low_value_nok).toLocaleString('no-NO')+' kr':'Ikke fastslått')+
-'<br>Høy pris: '+((Number(data?.high_value_nok)>0)?Number(data.high_value_nok).toLocaleString('no-NO')+' kr':'Ikke fastslått')+
-'<br>Identifiseringssikkerhet: '+esc(infoValue(data?.confidence))+
-'</div></div>';
-
-modal.classList.remove('hidden');
-}
-
-const itemInfoButton=document.getElementById('itemInfoButton');
-const itemInfoModal=document.getElementById('itemInfoModal');
-const closeItemInfo=document.getElementById('closeItemInfo');
-
-if(itemInfoButton){
-itemInfoButton.addEventListener('click',()=>{
-renderItemInfo(current?.item_info,current||{});
-});
-}
-if(closeItemInfo){
-closeItemInfo.addEventListener('click',()=>itemInfoModal?.classList.add('hidden'));
-}
-if(itemInfoModal){
-itemInfoModal.addEventListener('click',(e)=>{
-if(e.target===itemInfoModal)itemInfoModal.classList.add('hidden');
-});
-}
-
-function numericValue(value){
-if(typeof value==='number'&&Number.isFinite(value))return value;
-if(typeof value!=='string')return 0;
-const nums=value.match(/\d[\d\s.]*/g);if(!nums)return 0;
-const p=nums.map(x=>Number(x.replace(/\s/g,'').replace(/\./g,''))).filter(Number.isFinite);
-if(!p.length)return 0;return p.length>=2?Math.round((p[0]+p[1])/2):p[0];
-}
-
-async function saveCurrent(){
-if(!current)return alert('Ingen gjenstand å lagre.');
-if(!currentUser){alert('Logg inn på Min side før du lagrer gjenstanden.');show('account');return}
-const row={user_id:currentUser.id,name:current.name||'Ukjent gjenstand',description:current.description||'',condition:current.condition||'Ukjent',confidence:current.confidence||'',estimated_value_nok:current.estimated_value_nok||0,image_url:current.img||''};
-try{
-const {data,error}=await supabaseClient.from('collection_items').insert(row).select().single();if(error)throw error;
-const initial=numericValue(data.estimated_value_nok||0);
-if(initial>0){const {error:e}=await supabaseClient.from('value_history').insert({user_id:currentUser.id,item_id:data.id,value:initial,source:'AI + eBay-estimat'});if(e)throw e}
-items.unshift({id:data.id,name:data.name,value:data.estimated_value_nok,condition:data.condition,description:data.description,userDescription:current.userDescription||'',confidence:data.confidence,img:data.image_url,history:[{date:new Date(data.created_at).toLocaleDateString('no-NO'),value:data.estimated_value_nok||0}],marketplaceListingId:null});
-localStorage.setItem('vk_items',JSON.stringify(items));alert('Gjenstanden er lagret på kontoen din.');show('collection');
-}catch(err){console.error(err);alert('Kunne ikke lagre gjenstanden. '+(err.message||''))}
-}
-
-function renderItems(){
-const count=document.getElementById('count'),total=document.getElementById('total'),container=document.getElementById('items');if(!count||!total||!container)return;
-count.textContent=items.length;total.textContent=items.reduce((s,i)=>s+numericValue(i.value),0).toLocaleString('no-NO')+' kr';
-if(!items.length){container.innerHTML='<div class="card"><p>Samlingen er tom.</p></div>';return}
-container.innerHTML=items.map(item=>'<div class="card item">'+(item.img?'<img class="thumb" src="'+esc(item.img)+'" alt="">':'<div class="thumb"></div>')+'<div style="flex:1"><b>'+esc(item.name)+'</b><div class="price">'+esc(String(item.value||'Verdi ikke fastslått'))+'</div><div class="muted">'+esc(item.condition||'Ukjent')+'</div><button class="secondary" style="margin-top:9px;width:100%" onclick="showHistory(\''+item.id+'\')">📈 Verdiutvikling</button><button class="'+(item.marketplaceListingId?'danger':'secondary')+'" style="margin-top:8px;width:100%" onclick="'+(item.marketplaceListingId?'removeMarketplaceListing(\''+item.marketplaceListingId+'\')':'publishCollectionItem(\''+item.id+'\')')+'">'+(item.marketplaceListingId?'🗑️ Fjern fra markedsplassen':'💰 Legg ut for salg')+'</button><button class="danger" style="margin-top:8px;width:100%" onclick="deleteItem(\''+item.id+'\')">🗑️ Slett gjenstand</button></div></div>').join('');
-}
-
-async function deleteItem(id){
-if(!currentUser)return alert('Du må være logget inn.');
-const item=items.find(x=>x.id===id);if(!item)return;
-if(!confirm('Er du sikker på at du vil slette "'+(item.name||'denne gjenstanden')+'"?'))return;
-try{
-let r=await supabaseClient.from('value_history').delete().eq('user_id',currentUser.id).eq('item_id',id);if(r.error)throw r.error;
-r=await supabaseClient.from('collection_items').delete().eq('user_id',currentUser.id).eq('id',id);if(r.error)throw r.error;
-items=items.filter(x=>x.id!==id);localStorage.setItem('vk_items',JSON.stringify(items));closeHistory();renderItems();alert('Gjenstanden er slettet.');
-}catch(err){console.error(err);alert('Kunne ikke slette gjenstanden. '+(err.message||''))}
-}
-
+function addSelectedFiles(list){const incoming=Array.from(list||[]).filter(f=>f?.type?.startsWith('image/'));if(!incoming.length)return;selectedFiles=selectedFiles.concat(incoming);renderSelectedImages();analyzeButton.disabled=selectedFiles.length===0}
+function renderSelectedImages(){const c=document.getElementById('selectedImages');if(!c)return;selectedPreviewUrls.forEach(u=>URL.revokeObjectURL(u));selectedPreviewUrls=[];c.innerHTML='';document.getElementById('resetScanButton')?.classList.toggle('hidden',selectedFiles.length===0);selectedFiles.forEach((file,index)=>{const url=URL.createObjectURL(file);selectedPreviewUrls.push(url);const w=document.createElement('div');w.style.cssText='position:relative;width:90px;height:90px';const img=document.createElement('img');img.src=url;img.alt='Bilde '+(index+1);img.style.cssText='width:90px;height:90px;object-fit:cover;border-radius:12px;border:1px solid #d1d5db';const remove=document.createElement('button');remove.type='button';remove.textContent='×';remove.style.cssText='position:absolute;right:-6px;top:-6px;width:28px;height:28px;border:0;border-radius:50%;background:#111827;color:white;font-size:20px;line-height:24px;padding:0';remove.onclick=()=>{selectedFiles.splice(index,1);renderSelectedImages();analyzeButton.disabled=selectedFiles.length===0};w.append(img,remove);c.appendChild(w)})}
+photoInput?.addEventListener('change',e=>{addSelectedFiles(e.target.files);e.target.value=''});cameraInput?.addEventListener('change',e=>{addSelectedFiles(e.target.files);e.target.value=''});
+function resetScan(){selectedFiles=[];selectedPreviewUrls.forEach(u=>URL.revokeObjectURL(u));selectedPreviewUrls=[];if(photoInput)photoInput.value='';if(cameraInput)cameraInput.value='';const p=document.getElementById('preview');p.src='';p.classList.add('hidden');document.getElementById('result').classList.add('hidden');document.getElementById('loading').classList.add('hidden');itemDescription.value='';current=null;analyzeButton.disabled=true;renderSelectedImages();window.scrollTo({top:0,behavior:'smooth'})}
+async function fileToDataURL(file){return new Promise((resolve,reject)=>{const url=URL.createObjectURL(file),img=new Image();img.onload=()=>{try{const max=1600;let w=img.naturalWidth,h=img.naturalHeight;if(w>max||h>max){if(w>h){h=Math.round(h*max/w);w=max}else{w=Math.round(w*max/h);h=max}}const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);const data=c.toDataURL('image/jpeg',.85);URL.revokeObjectURL(url);resolve(data)}catch(e){URL.revokeObjectURL(url);reject(e)}};img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('Kunne ikke lese bildet.'))};img.src=url})}
+async function createAnalysisImage(files){const images=await Promise.all(files.map(fileToDataURL));if(images.length===1)return{analysisImage:images[0],originalImages:images};const loaded=await Promise.all(images.map(src=>new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>resolve(img);img.onerror=()=>reject(new Error('Kunne ikke lese et av bildene.'));img.src=src})));const width=900,gap=20,widths=loaded.map(i=>Math.min(width,i.naturalWidth)),heights=loaded.map((i,n)=>Math.round(i.naturalHeight*widths[n]/i.naturalWidth));const c=document.createElement('canvas');c.width=width;c.height=heights.reduce((a,b)=>a+b,0)+gap*(loaded.length-1);const ctx=c.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);let y=0;loaded.forEach((img,i)=>{const x=Math.round((c.width-widths[i])/2);ctx.drawImage(img,x,y,widths[i],heights[i]);y+=heights[i]+gap});return{analysisImage:c.toDataURL('image/jpeg',.85),originalImages:images}}
+if(analyzeButton)analyzeButton.addEventListener('click',async()=>{if(!selectedFiles.length)return alert('Ta eller velg minst ett bilde først.');const description=itemDescription.value.trim(),preview=document.getElementById('preview'),loading=document.getElementById('loading'),result=document.getElementById('result');analyzeButton.disabled=true;loading.classList.remove('hidden');result.classList.add('hidden');try{const imageSet=await createAnalysisImage(selectedFiles);preview.src=imageSet.analysisImage;preview.classList.remove('hidden');const res=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image:imageSet.analysisImage,description})});const data=await res.json();if(!res.ok)throw new Error(data.error||'Kunne ikke analysere gjenstanden.');current={...data,img:imageSet.analysisImage,images:imageSet.originalImages,userDescription:description};document.getElementById('rname').textContent=data.name||'Ukjent gjenstand';document.getElementById('rdesc').textContent=data.description||'';const raw=data.estimated_value_nok;let display='Verdi ikke fastslått';if(typeof raw==='number'&&Number.isFinite(raw)&&raw>0)display=raw.toLocaleString('no-NO')+' kr';else if(typeof raw==='string'&&raw.trim())display=raw.trim();document.getElementById('rprice').textContent=display;const low=Number(data.low_value_nok),high=Number(data.high_value_nok),priceRange=document.getElementById('priceRange');if(Number.isFinite(low)&&low>0&&Number.isFinite(high)&&high>0){document.getElementById('rlow').textContent=low.toLocaleString('no-NO')+' kr';document.getElementById('rhigh').textContent=high.toLocaleString('no-NO')+' kr';priceRange.classList.remove('hidden')}else priceRange.classList.add('hidden');const confidence=data.confidence||'ukjent';document.getElementById('rconfidence').textContent='Identifiseringssikkerhet: '+confidence;const marketConfidence=document.getElementById('marketConfidence');if(marketConfidence)marketConfidence.textContent='Kistefunn vurderer identifikasjonen som: '+confidence+'.';renderEbayResult(data.ebay,data.ebay_search_query);const marketDataSummary=document.getElementById('marketDataSummary');if(marketDataSummary){if(data.ebay?.enabled&&Number(data.ebay.sample_size)>0){const n=Number(data.ebay.sample_size),lowE=Number(data.ebay.low_nok)||0,highE=Number(data.ebay.high_nok)||0,medianE=Number(data.ebay.median_nok)||0;let text=n+' sammenlignbare eBay-annonser funnet.';if(lowE&&highE)text+=' Prisene ligger på '+lowE.toLocaleString('no-NO')+'–'+highE.toLocaleString('no-NO')+' kr.';if(medianE)text+=' Median: '+medianE.toLocaleString('no-NO')+' kr.';marketDataSummary.textContent=text}else marketDataSummary.textContent='Ingen gode sammenlignbare eBay-annonser funnet akkurat nå. Verdien bør derfor sees som et foreløpig estimat.'}result.classList.remove('hidden');result.scrollIntoView({behavior:'smooth',block:'start'})}catch(err){console.error(err);alert(err.message||'Det oppstod en feil.')}finally{loading.classList.add('hidden');analyzeButton.disabled=false}});
+function renderEbayResult(ebay,searchQuery){const c=document.getElementById('ebayResult');if(!c)return;c.classList.remove('hidden');if(!ebay||!ebay.enabled){c.innerHTML='<div class="ebay-title">🛒 eBay markedsreferanser</div><div class="muted">eBay-priser kunne ikke hentes akkurat nå.</div>'+(ebay?.reason?'<div class="ebay-note">'+esc(ebay.reason)+'</div>':'');return}if(!ebay.sample_size){c.innerHTML='<div class="ebay-title">🛒 eBay markedsreferanser</div><div class="muted">Ingen sammenlignbare eBay-annonser ble funnet.</div>'+(searchQuery?'<div class="ebay-note">Søk brukt: <strong>'+esc(searchQuery)+'</strong></div>':'')+'<div class="ebay-note">Ingen sammenlignbare aktive eBay-annonser ble funnet for dette søket.</div>';return}const fmt=v=>Number(v).toLocaleString('no-NO')+' kr',low=Number(ebay.low_nok)||0,high=Number(ebay.high_nok)||0,median=Number(ebay.median_nok)||0;const listings=(ebay.listings||[]).slice(0,5).map(x=>'<div class="ebay-listing"><div class="ebay-listing-title">'+esc(x.title||'eBay-annonse')+'</div><div class="ebay-listing-price">'+(Number(x.price_nok)>0?fmt(x.price_nok):'Pris ikke oppgitt')+'</div>'+(x.url&&x.url.startsWith('https://')?'<a class="ebay-link" href="'+esc(x.url)+'" target="_blank" rel="noopener noreferrer">Se annonsen på eBay →</a>':'')+'</div>').join('');c.innerHTML='<div class="ebay-title">🛒 eBay markedsreferanser</div>'+(searchQuery?'<div class="muted">Søkt etter: <strong>'+esc(searchQuery)+'</strong></div>':'')+'<div class="ebay-summary"><div class="muted">'+ebay.sample_size+' sammenlignbare annonser</div>'+(low&&high?'<div class="ebay-price-range">'+fmt(low)+' – '+fmt(high)+'</div>':'')+(median?'<div style="margin-top:5px">Median: <strong>'+fmt(median)+'</strong></div>':'')+'</div>'+(listings?'<div style="margin-top:12px"><strong>Eksempler fra eBay</strong>'+listings+'</div>':'')+'<div class="ebay-note">eBay-prisene er aktive annonsepriser og er derfor ikke nødvendigvis det samme som faktisk salgspris.</div>'}
+function infoValue(value){if(value===null||value===undefined||value==='')return'Ukjent';if(Array.isArray(value))return value.length?value.map(x=>String(x)).join(', '):'Ingen opplysninger';return String(value)}
+function renderItemInfo(info,data){const modal=document.getElementById('itemInfoModal'),content=document.getElementById('itemInfoContent');if(!modal||!content)return;info=info||{};const list=arr=>!Array.isArray(arr)||!arr.length?'<div class="muted">Ingen opplysninger</div>':'<ul class="info-list">'+arr.map(x=>'<li>'+esc(String(x))+'</li>').join('')+'</ul>';content.innerHTML='<div class="info-section"><div class="info-grid"><div class="info-field"><span class="info-field-label">Merke</span><div class="info-field-value">'+esc(infoValue(info.brand))+'</div></div><div class="info-field"><span class="info-field-label">Modell</span><div class="info-field-value">'+esc(infoValue(info.model))+'</div></div><div class="info-field"><span class="info-field-label">Produsent</span><div class="info-field-value">'+esc(infoValue(info.manufacturer))+'</div></div><div class="info-field"><span class="info-field-label">Type</span><div class="info-field-value">'+esc(infoValue(info.type))+'</div></div><div class="info-field"><span class="info-field-label">År / periode</span><div class="info-field-value">'+esc(infoValue(info.year_or_period))+'</div></div><div class="info-field"><span class="info-field-label">Materiale</span><div class="info-field-value">'+esc(infoValue(info.material))+'</div></div><div class="info-field"><span class="info-field-label">Serienummer</span><div class="info-field-value">'+esc(infoValue(info.serial_number))+'</div></div><div class="info-field"><span class="info-field-label">Tilstand</span><div class="info-field-value">'+esc(infoValue(info.condition_details||data?.condition))+'</div></div></div></div><div class="info-section"><h4>🔎 Kjennetegn</h4>'+list(info.identifying_features)+'</div><div class="info-section"><h4>🛠️ Modifikasjoner</h4><div class="note">'+esc(infoValue(info.modifications))+'</div></div><div class="info-section"><h4>💰 Hva påvirker verdien?</h4>'+list(info.value_factors)+'</div><div class="info-section"><h4>⚠️ Usikkerhet</h4>'+list(info.uncertainties)+'</div><div class="info-section"><h4>📊 Kistefunnets vurdering</h4><div class="note">Estimert verdi: <strong>'+((Number(data?.estimated_value_nok)>0)?Number(data.estimated_value_nok).toLocaleString('no-NO')+' kr':'Ikke fastslått')+'</strong><br>Lav pris: '+((Number(data?.low_value_nok)>0)?Number(data.low_value_nok).toLocaleString('no-NO')+' kr':'Ikke fastslått')+'<br>Høy pris: '+((Number(data?.high_value_nok)>0)?Number(data.high_value_nok).toLocaleString('no-NO')+' kr':'Ikke fastslått')+'<br>Identifiseringssikkerhet: '+esc(infoValue(data?.confidence))+'</div></div>';modal.classList.remove('hidden')}
+const itemInfoButton=document.getElementById('itemInfoButton'),itemInfoModal=document.getElementById('itemInfoModal'),closeItemInfo=document.getElementById('closeItemInfo');
+if(itemInfoButton)itemInfoButton.addEventListener('click',()=>renderItemInfo(current?.item_info,current||{}));if(closeItemInfo)closeItemInfo.addEventListener('click',()=>itemInfoModal?.classList.add('hidden'));if(itemInfoModal)itemInfoModal.addEventListener('click',e=>{if(e.target===itemInfoModal)itemInfoModal.classList.add('hidden')});
+function numericValue(value){if(typeof value==='number'&&Number.isFinite(value))return value;if(typeof value!=='string')return 0;const nums=value.match(/\d[\d\s.]*/g);if(!nums)return 0;const p=nums.map(x=>Number(x.replace(/\s/g,'').replace(/\./g,''))).filter(Number.isFinite);if(!p.length)return 0;return p.length>=2?Math.round((p[0]+p[1])/2):p[0]}
+async function saveCurrent(){if(!current)return alert('Ingen gjenstand å lagre.');if(!currentUser){alert('Logg inn på Min side før du lagrer gjenstanden.');show('account');return}const row={user_id:currentUser.id,name:current.name||'Ukjent gjenstand',description:current.description||'',condition:current.condition||'Ukjent',confidence:current.confidence||'',estimated_value_nok:current.estimated_value_nok||0,image_url:current.img||''};try{const {data,error}=await supabaseClient.from('collection_items').insert(row).select().single();if(error)throw error;const initial=numericValue(data.estimated_value_nok||0);if(initial>0){const {error:e}=await supabaseClient.from('value_history').insert({user_id:currentUser.id,item_id:data.id,value:initial,source:'AI + eBay-estimat'});if(e)throw e}items.unshift({id:data.id,name:data.name,value:data.estimated_value_nok,condition:data.condition,description:data.description,userDescription:current.userDescription||'',confidence:data.confidence,img:data.image_url,history:[{date:new Date(data.created_at).toLocaleDateString('no-NO'),value:data.estimated_value_nok||0}],marketplaceListingId:null});localStorage.setItem('vk_items',JSON.stringify(items));alert('Gjenstanden er lagret på kontoen din.');show('collection')}catch(err){console.error(err);alert('Kunne ikke lagre gjenstanden. '+(err.message||''))}}
+function renderItems(){const count=document.getElementById('count'),total=document.getElementById('total'),container=document.getElementById('items');if(!count||!total||!container)return;count.textContent=items.length;total.textContent=items.reduce((s,i)=>s+numericValue(i.value),0).toLocaleString('no-NO')+' kr';if(!items.length){container.innerHTML='<div class="card"><p>Samlingen er tom.</p></div>';return}container.innerHTML=items.map(item=>'<div class="card item">'+(item.img?'<img class="thumb" src="'+esc(item.img)+'" alt="">':'<div class="thumb"></div>')+'<div style="flex:1"><b>'+esc(item.name)+'</b><div class="price">'+esc(String(item.value||'Verdi ikke fastslått'))+'</div><div class="muted">'+esc(item.condition||'Ukjent')+'</div><button class="secondary" style="margin-top:9px;width:100%" onclick="showHistory(\''+item.id+'\')">📈 Verdiutvikling</button><button class="'+(item.marketplaceListingId?'danger':'secondary')+'" style="margin-top:8px;width:100%" onclick="'+(item.marketplaceListingId?'removeMarketplaceListing(\''+item.marketplaceListingId+'\')':'publishCollectionItem(\''+item.id+'\')')+'">'+(item.marketplaceListingId?'🗑️ Fjern fra markedsplassen':'💰 Legg ut for salg')+'</button><button class="danger" style="margin-top:8px;width:100%" onclick="deleteItem(\''+item.id+'\')">🗑️ Slett gjenstand</button></div></div>').join('')}
+async function deleteItem(id){if(!currentUser)return alert('Du må være logget inn.');const item=items.find(x=>x.id===id);if(!item)return;if(!confirm('Er du sikker på at du vil slette "'+(item.name||'denne gjenstanden')+'"?'))return;try{let r=await supabaseClient.from('value_history').delete().eq('user_id',currentUser.id).eq('item_id',id);if(r.error)throw r.error;r=await supabaseClient.from('collection_items').delete().eq('user_id',currentUser.id).eq('id',id);if(r.error)throw r.error;items=items.filter(x=>x.id!==id);localStorage.setItem('vk_items',JSON.stringify(items));closeHistory();renderItems();alert('Gjenstanden er slettet.')}catch(err){console.error(err);alert('Kunne ikke slette gjenstanden. '+(err.message||''))}}
 function deleteCurrentItem(){const name=document.getElementById('historyTitle').textContent,item=items.find(x=>x.name===name);if(item)deleteItem(item.id)}
-
-async function showHistory(id){
-const item=items.find(x=>x.id===id);if(!item)return;
-document.getElementById('historyTitle').textContent=item.name||'Gjenstand';document.getElementById('historyPanel').classList.remove('hidden');
-try{
-const {data,error}=await supabaseClient.from('value_history').select('*').eq('user_id',currentUser.id).eq('item_id',id).order('created_at',{ascending:true});if(error)throw error;
-const history=(data||[]).map(x=>({value:Number(x.value)||0,date:new Date(x.created_at).toLocaleDateString('no-NO'),createdAt:x.created_at,source:x.source||'Ukjent'}));if(!history.length){document.getElementById('historyPanel').classList.add('hidden');return alert('Det finnes ingen verdi-historikk ennå.')}
-item.history=history;const latest=history.at(-1).value,first=history[0].value,diff=latest-first,pct=first>0?diff/first*100:0;
-document.getElementById('historyCurrent').textContent=latest.toLocaleString('no-NO')+' kr';document.getElementById('historyChange').textContent='Fra første registrerte verdi: '+(diff>=0?'+':'')+diff.toLocaleString('no-NO')+' kr ('+(pct>=0?'+':'')+pct.toFixed(1)+'%)';
-renderHistoryChart(history,document.getElementById('historyChart'));document.getElementById('historyList').innerHTML=history.slice().reverse().map(h=>'<div class="history-row"><span>'+esc(h.date)+'<div class="muted">'+esc(h.source)+'</div></span><strong>'+h.value.toLocaleString('no-NO')+' kr</strong></div>').join('');
-document.getElementById('historyPanel').scrollIntoView({behavior:'smooth',block:'start'});
-}catch(err){console.error(err);alert('Kunne ikke hente verdi-historikken. '+(err.message||''))}
-}
-
-function renderHistoryChart(history,c){
-if(!history.length){c.innerHTML='';return}
-const width=700,height=230,pad=40,values=history.map(h=>h.value),min=Math.min(...values),max=Math.max(...values),range=max-min||1;
-const points=history.map((h,i)=>({x:history.length===1?width/2:pad+i*((width-pad*2)/(history.length-1)),y:height-pad-((h.value-min)/range)*(height-pad*2)}));
-c.innerHTML='<svg class="history-svg" viewBox="0 0 '+width+' '+height+'" preserveAspectRatio="none"><polyline class="history-line" points="'+points.map(p=>p.x+','+p.y).join(' ')+'"></polyline>'+points.map(p=>'<circle class="history-point" cx="'+p.x+'" cy="'+p.y+'" r="5"></circle>').join('')+'</svg>';
-}
+async function showHistory(id){const item=items.find(x=>x.id===id);if(!item)return;document.getElementById('historyTitle').textContent=item.name||'Gjenstand';document.getElementById('historyPanel').classList.remove('hidden');try{const {data,error}=await supabaseClient.from('value_history').select('*').eq('user_id',currentUser.id).eq('item_id',id).order('created_at',{ascending:true});if(error)throw error;const history=(data||[]).map(x=>({value:Number(x.value)||0,date:new Date(x.created_at).toLocaleDateString('no-NO'),createdAt:x.created_at,source:x.source||'Ukjent'}));if(!history.length){document.getElementById('historyPanel').classList.add('hidden');return alert('Det finnes ingen verdi-historikk ennå.')}item.history=history;const latest=history.at(-1).value,first=history[0].value,diff=latest-first,pct=first>0?diff/first*100:0;document.getElementById('historyCurrent').textContent=latest.toLocaleString('no-NO')+' kr';document.getElementById('historyChange').textContent='Fra første registrerte verdi: '+(diff>=0?'+':'')+diff.toLocaleString('no-NO')+' kr ('+(pct>=0?'+':'')+pct.toFixed(1)+'%)';renderHistoryChart(history,document.getElementById('historyChart'));document.getElementById('historyList').innerHTML=history.slice().reverse().map(h=>'<div class="history-row"><span>'+esc(h.date)+'<div class="muted">'+esc(h.source)+'</div></span><strong>'+h.value.toLocaleString('no-NO')+' kr</strong></div>').join('');document.getElementById('historyPanel').scrollIntoView({behavior:'smooth',block:'start'})}catch(err){console.error(err);alert('Kunne ikke hente verdi-historikken. '+(err.message||''))}}
+function renderHistoryChart(history,c){if(!history.length){c.innerHTML='';return}const width=700,height=230,pad=40,values=history.map(h=>h.value),min=Math.min(...values),max=Math.max(...values),range=max-min||1;const points=history.map((h,i)=>({x:history.length===1?width/2:pad+i*((width-pad*2)/(history.length-1)),y:height-pad-((h.value-min)/range)*(height-pad*2)}));c.innerHTML='<svg class="history-svg" viewBox="0 0 '+width+' '+height+'" preserveAspectRatio="none"><polyline class="history-line" points="'+points.map(p=>p.x+','+p.y).join(' ')+'"></polyline>'+points.map(p=>'<circle class="history-point" cx="'+p.x+'" cy="'+p.y+'" r="5"></circle>').join('')+'</svg>'}
 function closeHistory(){document.getElementById('historyPanel')?.classList.add('hidden')}
-
-async function refreshCurrentValue(){
-if(!currentUser)return alert('Du må være logget inn.');
-const name=document.getElementById('historyTitle').textContent,item=items.find(x=>x.name===name);if(!item?.img)return alert('Fant ikke bildet til denne gjenstanden.');
-const b=document.getElementById('refreshValueButton');b.disabled=true;b.textContent='🔄 Henter ny verdi …';
-try{
-const r=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image:item.img,description:item.userDescription||item.description||''})});
-const data=await r.json();if(!r.ok)throw new Error(data.error||'Kunne ikke oppdatere verdien.');
-const value=numericValue(data.estimated_value_nok);if(!value)throw new Error('AI-en returnerte ingen gyldig verdi.');
-let u=await supabaseClient.from('collection_items').update({estimated_value_nok:value}).eq('id',item.id).eq('user_id',currentUser.id);if(u.error)throw u.error;
-u=await supabaseClient.from('value_history').insert({user_id:currentUser.id,item_id:item.id,value,source:'AI + eBay-estimat'});if(u.error)throw u.error;
-item.value=value;item.history=item.history||[];item.history.push({date:new Date().toLocaleDateString('no-NO'),value,source:'AI + eBay-estimat'});localStorage.setItem('vk_items',JSON.stringify(items));renderItems();await showHistory(item.id);alert('Verdien er oppdatert og lagret i historikken.');
-}catch(err){console.error(err);alert(err.message||'Kunne ikke oppdatere verdien.')}finally{b.disabled=false;b.textContent='🔄 Oppdater verdi'}
-}
-
-async function saveWant(){
-if(!currentUser){alert('Logg inn på Min side før du lagrer et kjøpsønske.');show('account');return}
-const name=document.getElementById('wantName').value.trim();if(!name)return alert('Skriv hva du ønsker å kjøpe.');
-const price=Number(document.getElementById('wantPrice').value)||0,note=document.getElementById('wantNote').value.trim();
-try{
-const {data,error}=await supabaseClient.from('wanted_items').insert({user_id:currentUser.id,name,target_price_nok:price,description:note}).select().single();if(error)throw error;
-wants.unshift({id:data.id,name:data.name,price:data.target_price_nok||0,note:data.description||'',marketplaceListingId:null});localStorage.setItem('vk_wants',JSON.stringify(wants));
-document.getElementById('wantName').value='';document.getElementById('wantPrice').value='';document.getElementById('wantNote').value='';renderWants();
-}catch(err){console.error(err);alert('Kunne ikke lagre kjøpsønsket. '+(err.message||''))}
-}
-
-function renderWants(){
-const c=document.getElementById('wants');if(!c)return;if(!wants.length){c.innerHTML='<div class="card"><p>Ingen kjøpsønsker ennå.</p></div>';return}
-c.innerHTML=wants.map(w=>'<div class="card"><b>🔎 '+esc(w.name)+'</b><div>Opptil '+(Number(w.price)||0).toLocaleString('no-NO')+' kr</div><div class="muted">'+esc(w.note||'Ingen kommentar')+'</div><button class="'+(w.marketplaceListingId?'danger':'secondary')+'" style="margin-top:10px;width:100%" onclick="'+(w.marketplaceListingId?'removeMarketplaceListing(\''+w.marketplaceListingId+'\')':'publishWantedItem(\''+w.id+'\')')+'">'+(w.marketplaceListingId?'🗑️ Fjern fra markedsplassen':'🌐 Vis på markedsplassen')+'</button></div>').join('');
-}
-
-function renderMarketplaceLogin(){
-document.getElementById('marketplaceResults').innerHTML='<div class="card"><h3>👤 Logg inn for å bruke markedsplassen</h3><p class="muted">Du må være logget inn for å søke og se offentlige markedsplassoppføringer.</p><button class="primary" style="width:100%" onclick="show(\'account\')">👤 Gå til Min side</button></div>';
-}
-
-async function searchMarketplace(){
-const c=document.getElementById('marketplaceResults');if(!currentUser)return renderMarketplaceLogin();
-const term=document.getElementById('marketplaceSearch').value.trim(),type=document.getElementById('marketplaceType').value;c.innerHTML='<div class="card">🔎 Søker i markedsplassen …</div>';
-try{
-let q=supabaseClient.from('marketplace_listings').select('*').order('created_at',{ascending:false}).limit(50);if(type!=='all')q=q.eq('listing_type',type);
-if(term){const safe=term.replace(/[%(),]/g,' ').trim();if(safe)q=q.or('title.ilike.%'+safe+'%,description.ilike.%'+safe+'%')}
-const {data,error}=await q;if(error)throw error;renderMarketplaceResults(data||[]);
-}catch(err){console.error(err);c.innerHTML='<div class="card"><p>Kunne ikke hente markedsplassen.</p><div class="muted">'+esc(err.message||'')+'</div></div>'}
-}
-
-function renderMarketplaceResults(listings){
-const c=document.getElementById('marketplaceResults');if(!listings.length){c.innerHTML='<div class="card"><h3>Ingen treff</h3><p class="muted">Det finnes ingen offentlige oppføringer som passer søket.</p></div>';return}
-c.innerHTML=listings.map(l=>{const sale=l.listing_type==='sale',price=Number(l.price_nok)||0;return '<div class="card marketplace-card">'+(l.image_url?'<img class="marketplace-thumb" src="'+esc(l.image_url)+'" alt="">':'<div class="marketplace-thumb"></div>')+'<div style="flex:1"><span class="marketplace-badge">'+(sale?'📦 Til salgs':'🔎 Ønsker å kjøpe')+'</span><div class="result-title" style="margin-top:7px">'+esc(l.title)+'</div><div class="marketplace-price">'+(price?price.toLocaleString('no-NO')+' kr':'Pris ikke oppgitt')+'</div><p class="muted">'+esc(l.description||'Ingen beskrivelse')+'</p><div class="muted">'+(l.user_id===currentUser.id?'Din oppføring':'Annen bruker')+' · '+new Date(l.created_at).toLocaleDateString('no-NO')+'</div>'+(l.user_id===currentUser.id?'<button class="danger" style="margin-top:10px;width:100%" onclick="removeMarketplaceListing(\''+l.id+'\')">🗑️ Fjern fra markedsplassen</button>':'')+'</div></div>'}).join('');
-}
-
-async function publishCollectionItem(id){
-if(!currentUser)return alert('Du må være logget inn.');
-const item=items.find(x=>x.id===id);if(!item)return;
-if(!confirm('Vil du legge "'+(item.name||'gjenstanden')+'" ut på markedsplassen?\n\nAndre innloggede brukere vil kunne se oppføringen.'))return;
-try{
-const existing=await supabaseClient.from('marketplace_listings').select('id').eq('user_id',currentUser.id).eq('collection_item_id',id).eq('listing_type','sale').maybeSingle();if(existing.error)throw existing.error;if(existing.data)return alert('Denne gjenstanden ligger allerede på markedsplassen.');
-const {error}=await supabaseClient.from('marketplace_listings').insert({user_id:currentUser.id,listing_type:'sale',collection_item_id:id,title:item.name||'Ukjent gjenstand',description:item.description||'',price_nok:numericValue(item.value),image_url:item.img||''});if(error)throw error;alert('Gjenstanden er nå synlig på markedsplassen.');await loadCloudData();show('marketplace');
-}catch(err){console.error(err);alert('Kunne ikke legge ut gjenstanden. '+(err.message||''))}
-}
-
-async function publishWantedItem(id){
-if(!currentUser)return alert('Du må være logget inn.');
-const wanted=wants.find(x=>x.id===id);if(!wanted)return;
-if(!confirm('Vil du gjøre kjøpsønsket "'+(wanted.name||'dette ønsket')+'" synlig på markedsplassen?'))return;
-try{
-const existing=await supabaseClient.from('marketplace_listings').select('id').eq('user_id',currentUser.id).eq('wanted_item_id',id).eq('listing_type','wanted').maybeSingle();if(existing.error)throw existing.error;if(existing.data)return alert('Dette kjøpsønsket ligger allerede på markedsplassen.');
-const {error}=await supabaseClient.from('marketplace_listings').insert({user_id:currentUser.id,listing_type:'wanted',wanted_item_id:id,title:wanted.name,description:wanted.note||'',price_nok:Number(wanted.price)||0});if(error)throw error;alert('Kjøpsønsket er nå synlig på markedsplassen.');await loadCloudData();show('marketplace');
-}catch(err){console.error(err);alert('Kunne ikke publisere kjøpsønsket. '+(err.message||''))}
-}
-
-async function removeMarketplaceListing(id){
-if(!currentUser)return;if(!confirm('Vil du fjerne denne oppføringen fra markedsplassen?'))return;
-try{const {error}=await supabaseClient.from('marketplace_listings').delete().eq('id',id).eq('user_id',currentUser.id);if(error)throw error;await loadCloudData();searchMarketplace()}catch(err){console.error(err);alert('Kunne ikke fjerne oppføringen. '+(err.message||''))}
-}
-
-async function start(){
-updateAuthUI();
-const {data,error}=await supabaseClient.auth.getSession();if(error){console.error(error);return}
-await handleAuthSession(data.session);show('marketplace');
-}
-start();
+async function refreshCurrentValue(){if(!currentUser)return alert('Du må være logget inn.');const name=document.getElementById('historyTitle').textContent,item=items.find(x=>x.name===name);if(!item?.img)return alert('Fant ikke bildet til denne gjenstanden.');const b=document.getElementById('refreshValueButton');b.disabled=true;b.textContent='🔄 Henter ny verdi …';try{const r=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image:item.img,description:item.userDescription||item.description||''})});const data=await r.json();if(!r.ok)throw new Error(data.error||'Kunne ikke oppdatere verdien.');const value=numericValue(data.estimated_value_nok);if(!value)throw new Error('AI-en returnerte ingen gyldig verdi.');let u=await supabaseClient.from('collection_items').update({estimated_value_nok:value}).eq('id',item.id).eq('user_id',currentUser.id);if(u.error)throw u.error;u=await supabaseClient.from('value_history').insert({user_id:currentUser.id,item_id:item.id,value,source:'AI + eBay-estimat'});if(u.error)throw u.error;item.value=value;item.history=item.history||[];item.history.push({date:new Date().toLocaleDateString('no-NO'),value,source:'AI + eBay-estimat'});localStorage.setItem('vk_items',JSON.stringify(items));renderItems();await showHistory(item.id);alert('Verdien er oppdatert og lagret i historikken.')}catch(err){console.error(err);alert(err.message||'Kunne ikke oppdatere verdien.')}finally{b.disabled=false;b.textContent='🔄 Oppdater verdi'}}
+async function saveWant(){if(!currentUser){alert('Logg inn på Min side før du lagrer et kjøpsønske.');show('account');return}const name=document.getElementById('wantName').value.trim();if(!name)return alert('Skriv hva du ønsker å kjøpe.');const price=Number(document.getElementById('wantPrice').value)||0,note=document.getElementById('wantNote').value.trim();try{const {data,error}=await supabaseClient.from('wanted_items').insert({user_id:currentUser.id,name,target_price_nok:price,description:note}).select().single();if(error)throw error;wants.unshift({id:data.id,name:data.name,price:data.target_price_nok||0,note:data.description||'',marketplaceListingId:null});localStorage.setItem('vk_wants',JSON.stringify(wants));document.getElementById('wantName').value='';document.getElementById('wantPrice').value='';document.getElementById('wantNote').value='';renderWants()}catch(err){console.error(err);alert('Kunne ikke lagre kjøpsønsket. '+(err.message||''))}}
+function renderWants(){const c=document.getElementById('wants');if(!c)return;if(!wants.length){c.innerHTML='<div class="card"><p>Ingen kjøpsønsker ennå.</p></div>';return}c.innerHTML=wants.map(w=>'<div class="card"><b>🔎 '+esc(w.name)+'</b><div>Opptil '+(Number(w.price)||0).toLocaleString('no-NO')+' kr</div><div class="muted">'+esc(w.note||'Ingen kommentar')+'</div><button class="'+(w.marketplaceListingId?'danger':'secondary')+'" style="margin-top:10px;width:100%" onclick="'+(w.marketplaceListingId?'removeMarketplaceListing(\''+w.marketplaceListingId+'\')':'publishWantedItem(\''+w.id+'\')')+'">'+(w.marketplaceListingId?'🗑️ Fjern fra markedsplassen':'🌐 Vis på markedsplassen')+'</button></div>').join('')}
+function renderMarketplaceLogin(){document.getElementById('marketplaceResults').innerHTML='<div class="card"><h3>👤 Logg inn for å bruke markedsplassen</h3><p class="muted">Du må være logget inn for å søke og se offentlige markedsplassoppføringer.</p><button class="primary" style="width:100%" onclick="show(\'account\')">👤 Gå til Min side</button></div>'}
+async function searchMarketplace(){const c=document.getElementById('marketplaceResults');if(!currentUser)return renderMarketplaceLogin();const term=document.getElementById('marketplaceSearch').value.trim(),type=document.getElementById('marketplaceType').value;c.innerHTML='<div class="card">🔎 Søker i markedsplassen …</div>';try{let q=supabaseClient.from('marketplace_listings').select('*').order('created_at',{ascending:false}).limit(50);if(type!=='all')q=q.eq('listing_type',type);if(term){const safe=term.replace(/[%(),]/g,' ').trim();if(safe)q=q.or('title.ilike.%'+safe+'%,description.ilike.%'+safe+'%')}const {data,error}=await q;if(error)throw error;renderMarketplaceResults(data||[])}catch(err){console.error(err);c.innerHTML='<div class="card"><p>Kunne ikke hente markedsplassen.</p><div class="muted">'+esc(err.message||'')+'</div></div>'}}
+function renderMarketplaceResults(listings){const c=document.getElementById('marketplaceResults');if(!listings.length){c.innerHTML='<div class="card"><h3>Ingen treff</h3><p class="muted">Det finnes ingen offentlige oppføringer som passer søket.</p></div>';return}c.innerHTML=listings.map(l=>{const sale=l.listing_type==='sale',price=Number(l.price_nok)||0;return '<div class="card marketplace-card">'+(l.image_url?'<img class="marketplace-thumb" src="'+esc(l.image_url)+'" alt="">':'<div class="marketplace-thumb"></div>')+'<div style="flex:1"><span class="marketplace-badge">'+(sale?'📦 Til salgs':'🔎 Ønsker å kjøpe')+'</span><div class="result-title" style="margin-top:7px">'+esc(l.title)+'</div><div class="marketplace-price">'+(price?price.toLocaleString('no-NO')+' kr':'Pris ikke oppgitt')+'</div><p class="muted">'+esc(l.description||'Ingen beskrivelse')+'</p><div class="muted">'+(l.user_id===currentUser.id?'Din oppføring':'Annen bruker')+' · '+new Date(l.created_at).toLocaleDateString('no-NO')+'</div>'+(l.user_id===currentUser.id?'<button class="danger" style="margin-top:10px;width:100%" onclick="removeMarketplaceListing(\''+l.id+'\')">🗑️ Fjern fra markedsplassen</button>':'')+'</div></div>'}).join('')}
+async function publishCollectionItem(id){if(!currentUser)return alert('Du må være logget inn.');const item=items.find(x=>x.id===id);if(!item)return;if(!confirm('Vil du legge "'+(item.name||'gjenstanden')+'" ut på markedsplassen?\n\nAndre innloggede brukere vil kunne se oppføringen.'))return;try{const existing=await supabaseClient.from('marketplace_listings').select('id').eq('user_id',currentUser.id).eq('collection_item_id',id).eq('listing_type','sale').maybeSingle();if(existing.error)throw existing.error;if(existing.data)return alert('Denne gjenstanden ligger allerede på markedsplassen.');const {error}=await supabaseClient.from('marketplace_listings').insert({user_id:currentUser.id,listing_type:'sale',collection_item_id:id,title:item.name||'Ukjent gjenstand',description:item.description||'',price_nok:numericValue(item.value),image_url:item.img||''});if(error)throw error;alert('Gjenstanden er nå synlig på markedsplassen.');await loadCloudData();show('marketplace')}catch(err){console.error(err);alert('Kunne ikke legge ut gjenstanden. '+(err.message||''))}}
+async function publishWantedItem(id){if(!currentUser)return alert('Du må være logget inn.');const wanted=wants.find(x=>x.id===id);if(!wanted)return;if(!confirm('Vil du gjøre kjøpsønsket "'+(wanted.name||'dette ønsket')+'" synlig på markedsplassen?'))return;try{const existing=await supabaseClient.from('marketplace_listings').select('id').eq('user_id',currentUser.id).eq('wanted_item_id',id).eq('listing_type','wanted').maybeSingle();if(existing.error)throw existing.error;if(existing.data)return alert('Dette kjøpsønsket ligger allerede på markedsplassen.');const {error}=await supabaseClient.from('marketplace_listings').insert({user_id:currentUser.id,listing_type:'wanted',wanted_item_id:id,title:wanted.name,description:wanted.note||'',price_nok:Number(wanted.price)||0});if(error)throw error;alert('Kjøpsønsket er nå synlig på markedsplassen.');await loadCloudData();show('marketplace')}catch(err){console.error(err);alert('Kunne ikke publisere kjøpsønsket. '+(err.message||''))}}
+async function removeMarketplaceListing(id){if(!currentUser)return;if(!confirm('Vil du fjerne denne oppføringen fra markedsplassen?'))return;try{const {error}=await supabaseClient.from('marketplace_listings').delete().eq('id',id).eq('user_id',currentUser.id);if(error)throw error;await loadCloudData();searchMarketplace()}catch(err){console.error(err);alert('Kunne ikke fjerne oppføringen. '+(err.message||''))}}
+async function start(){updateAuthUI();const {data,error}=await supabaseClient.auth.getSession();if(error){console.error(error);return}await handleAuthSession(data.session);show('marketplace')}start();
 </script>
-
-<div id="itemInfoModal" class="info-modal hidden" role="dialog" aria-modal="true" aria-labelledby="itemInfoTitle">
-  <div class="info-sheet">
-    <div class="info-head">
-      <div>
-        <div class="muted">Verdikart</div>
-        <h2 id="itemInfoTitle" style="margin:3px 0 0">Informasjon om gjenstanden</h2>
-      </div>
-      <button class="info-close" id="closeItemInfo" type="button" onclick="document.getElementById('itemInfoModal').classList.add('hidden')">Lukk</button>
-    </div>
-    <div id="itemInfoContent"></div>
-  </div>
-</div>
-
+<div id="itemInfoModal" class="info-modal hidden" role="dialog" aria-modal="true" aria-labelledby="itemInfoTitle"><div class="info-sheet"><div class="info-head"><div><div class="muted">Kistefunn</div><h2 id="itemInfoTitle" style="margin:3px 0 0">Informasjon om gjenstanden</h2></div><button class="info-close" id="closeItemInfo" type="button" onclick="document.getElementById('itemInfoModal').classList.add('hidden')">Lukk</button></div><div id="itemInfoContent"></div></div></div>
 </body>
 </html>
