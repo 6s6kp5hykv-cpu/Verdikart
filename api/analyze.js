@@ -1,157 +1,169 @@
 export default async function handler(req, res) {
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
+    return res.status(405).json({
+      error: "Method not allowed"
+    });
   }
 
   try {
-    const { image, description } = req.body || {};
+    const { image, description = "" } = req.body || {};
 
-    if (!image || typeof image !== "string") {
-      return res.status(400).json({ error: "Mangler bilde" });
+    if (
+      !image ||
+      typeof image !== "string" ||
+      !image.startsWith("data:image/")
+    ) {
+      return res.status(400).json({
+        error: "Mangler eller ugyldig bilde"
+      });
     }
 
-    if (!image.startsWith("data:image/")) {
-      return res.status(400).json({ error: "Ugyldig bildeformat" });
-    }
+    const context = String(description).trim();
 
-    const userDescription =
-      typeof description === "string" ? description.trim() : "";
-
-    const contextText = userDescription
-      ? `
-Brukeren har også skrevet følgende informasjon om gjenstanden:
-
-"${userDescription}"
-
-Bruk dette som ekstra informasjon. Hvis opplysningene virker feil i forhold til bildet, skal du ikke stole blindt på dem.
-`
-      : `
-Brukeren har ikke gitt noen ekstra informasjon om gjenstanden.
-`;
-
-    const response = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: "gpt-5.6-luna",
-        input: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "input_text",
-                text: `
-Du er ekspert på identifisering og verdivurdering av gjenstander.
+    const prompt = `
+Du er Kistefunn, ekspert på identifisering og verdivurdering av fysiske gjenstander.
 
 Identifiser gjenstanden på bildet så presist som mulig.
+Ikke finn på detaljer.
 
-${contextText}
+${
+  context
+    ? `Brukerens ekstra informasjon: "${context}"`
+    : "Ingen ekstra informasjon fra brukeren."
+}
 
-Vurder spesielt:
+Vurder:
+
 - merke
 - modell
 - produsent
-- type gjenstand
+- type
 - alder eller produksjonsperiode
 - materiale
 - spesielle kjennetegn
 - eventuell samlerverdi
-- tilstand dersom dette kan vurderes fra bildet
+- synlig tilstand
 
-Gi et forsiktig og realistisk verdiestimat i norske kroner.
+Vær spesielt forsiktig dersom identifikasjonen er usikker.
+Lav sikkerhet skal gi et forsiktig verdiestimat.
 
-Du skal returnere TRE prisverdier:
-1. estimated_value_nok – mest sannsynlige markedsverdi.
-2. low_value_nok – realistisk lav pris.
-3. high_value_nok – realistisk høy pris.
-
-Prisintervallet skal være realistisk for akkurat denne gjenstanden.
-Ikke bruk ekstreme verdier uten tydelig grunnlag.
-Hvis du er usikker på identifikasjonen, skal du være forsiktig med verdien.
-
-VIKTIG:
-Returner prisene som NUMERISKE VERDIER uten "kr", punktum eller mellomrom som tusenskiller.
-
-Ikke finn på detaljer som ikke kan underbygges av bildet eller brukerens informasjon.
-
-Lag også et presist søkeord som kan brukes til å finne tilsvarende gjenstander på eBay.
-eBay-søket skal helst inneholde merke, modell, type, relevant modellnummer og relevante kjennetegn.
-
-Returner KUN gyldig JSON:
+Returner KUN gyldig JSON med denne strukturen:
 
 {
-  "name": "navn på gjenstanden",
+  "name": "navn",
   "description": "kort beskrivelse",
-  "estimated_value_nok": 175,
-  "low_value_nok": 100,
-  "high_value_nok": 250,
-  "confidence": "lav, middels eller høy",
-  "condition": "kort vurdering av tilstanden",
+  "estimated_value_nok": 500,
+  "low_value_nok": 150,
+  "high_value_nok": 1200,
+  "confidence": "lav",
+  "condition": "kort tilstandsvurdering",
   "item_info": {
-    "brand": "merke eller ukjent",
-    "model": "modell eller ukjent",
-    "manufacturer": "produsent eller ukjent",
-    "type": "type gjenstand",
-    "year_or_period": "år eller periode eller ukjent",
-    "material": "materiale eller ukjent",
-    "serial_number": "serienummer hvis synlig, ellers ukjent",
-    "identifying_features": ["viktig synlig kjennetegn"],
-    "modifications": "synlige modifikasjoner eller ingen synlig",
-    "condition_details": "detaljert tilstandsvurdering",
-    "value_factors": ["konkret forhold som påvirker verdien"],
-    "uncertainties": ["det som ikke kan bekreftes sikkert"]
+    "brand": "ukjent",
+    "model": "ukjent",
+    "manufacturer": "ukjent",
+    "type": "type",
+    "year_or_period": "ukjent",
+    "material": "ukjent",
+    "serial_number": "ukjent",
+    "identifying_features": [
+      "synlig kjennetegn"
+    ],
+    "modifications": "ingen sikre modifikasjoner",
+    "condition_details": "detaljert tilstand",
+    "value_factors": [
+      "forhold som påvirker verdien"
+    ],
+    "uncertainties": [
+      "det som ikke kan bekreftes"
+    ]
   },
-  "ebay_search_query": "kort eBay-søk med 3-8 sikre søkeord"
+  "ebay_search_query": "3-8 presise søkeord"
 }
 
-Hvis du ikke kan identifisere gjenstanden sikkert, si det tydelig og bruk et forsiktig verdiestimat.
-`
-              },
-              {
-                type: "input_image",
-                image_url: image,
-                detail: "high"
-              }
-            ]
-          }
-        ]
-      })
-    });
+Prisene skal være numeriske NOK-verdier uten "kr".
 
-    const data = await response.json();
+Hvis du ikke kan identifisere gjenstanden sikkert,
+skal du si det tydelig og bruke et forsiktig verdiestimat.
+`;
 
-    if (!response.ok) {
+    // ---------------------------------------------------------
+    // 1. OPENAI-ANALYSE
+    // ---------------------------------------------------------
+
+    const aiResponse = await fetch(
+      "https://api.openai.com/v1/responses",
+      {
+        method: "POST",
+
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization":
+            `Bearer ${process.env.OPENAI_API_KEY}`
+        },
+
+        body: JSON.stringify({
+          model: "gpt-5.6-luna",
+
+          input: [
+            {
+              role: "user",
+
+              content: [
+                {
+                  type: "input_text",
+                  text: prompt
+                },
+
+                {
+                  type: "input_image",
+                  image_url: image,
+                  detail: "high"
+                }
+              ]
+            }
+          ]
+        })
+      }
+    );
+
+    const aiData = await aiResponse.json();
+
+    if (!aiResponse.ok) {
       return res.status(500).json({
-        error: data?.error?.message || "OpenAI-feil"
+        error:
+          aiData?.error?.message ||
+          "OpenAI-feil"
       });
     }
 
     const text =
-      data.output
-        ?.find(item => item.type === "message")
+      aiData.output
+        ?.find(x => x.type === "message")
         ?.content
-        ?.find(item => item.type === "output_text")
+        ?.find(x => x.type === "output_text")
         ?.text || "";
 
     if (!text) {
-      return res.status(500).json({ error: "AI returnerte ikke noe svar" });
+      return res.status(500).json({
+        error: "AI returnerte ikke noe svar"
+      });
     }
 
-    let parsed;
+    // ---------------------------------------------------------
+    // 2. LES JSON FRA AI
+    // ---------------------------------------------------------
+
+    let parsed = null;
 
     try {
       parsed = JSON.parse(text);
     } catch {
       const match = text.match(/\{[\s\S]*\}/);
+
       if (match) {
         try {
           parsed = JSON.parse(match[0]);
-        } catch {
-          parsed = null;
-        }
+        } catch {}
       }
     }
 
@@ -159,34 +171,49 @@ Hvis du ikke kan identifisere gjenstanden sikkert, si det tydelig og bruk et for
       parsed = {
         name: "Ukjent",
         description: text,
-        estimated_value_nok: null,
-        low_value_nok: null,
-        high_value_nok: null,
-        confidence: "lav",
-        condition: "",
-        ebay_search_query: ""
+        confidence: "lav"
       };
     }
 
-    if (!parsed.item_info || typeof parsed.item_info !== "object") {
-      parsed.item_info = {};
-    }
+    // ---------------------------------------------------------
+    // 3. INFORMASJON TIL FUNNRAPPORT
+    // ---------------------------------------------------------
 
-    const info = parsed.item_info;
+    const info =
+      parsed.item_info &&
+      typeof parsed.item_info === "object"
+        ? parsed.item_info
+        : {};
 
-    const infoText = (value, fallback = "Ukjent") => {
-      if (typeof value === "string" && value.trim()) return value.trim();
+    const str = (
+      value,
+      fallback = "Ukjent"
+    ) => {
+      if (
+        typeof value === "string" &&
+        value.trim()
+      ) {
+        return value.trim();
+      }
+
       return fallback;
     };
 
-    const infoList = value => {
+    const list = value => {
       if (Array.isArray(value)) {
         return value
-          .filter(v => typeof v === "string" && v.trim())
-          .map(v => v.trim());
+          .filter(
+            x =>
+              typeof x === "string" &&
+              x.trim()
+          )
+          .map(x => x.trim());
       }
 
-      if (typeof value === "string" && value.trim()) {
+      if (
+        typeof value === "string" &&
+        value.trim()
+      ) {
         return [value.trim()];
       }
 
@@ -194,454 +221,863 @@ Hvis du ikke kan identifisere gjenstanden sikkert, si det tydelig og bruk et for
     };
 
     const itemInfo = {
-      brand: infoText(info.brand),
-      model: infoText(info.model),
-      manufacturer: infoText(info.manufacturer),
-      type: infoText(info.type, parsed.name || "Ukjent"),
-      year_or_period: infoText(info.year_or_period),
-      material: infoText(info.material),
-      serial_number: infoText(info.serial_number),
-      identifying_features: infoList(info.identifying_features),
-      modifications: infoText(
-        info.modifications,
-        "Ingen sikre modifikasjoner bekreftet."
-      ),
-      condition_details: infoText(
-        info.condition_details,
-        parsed.condition ||
-          "Tilstanden kan ikke vurderes sikkert fra bildene."
-      ),
-      value_factors: infoList(info.value_factors),
-      uncertainties: infoList(info.uncertainties)
+      brand:
+        str(info.brand),
+
+      model:
+        str(info.model),
+
+      manufacturer:
+        str(info.manufacturer),
+
+      type:
+        str(
+          info.type,
+          parsed.name || "Ukjent"
+        ),
+
+      year_or_period:
+        str(info.year_or_period),
+
+      material:
+        str(info.material),
+
+      serial_number:
+        str(info.serial_number),
+
+      identifying_features:
+        list(info.identifying_features),
+
+      modifications:
+        str(
+          info.modifications,
+          "Ingen sikre modifikasjoner bekreftet."
+        ),
+
+      condition_details:
+        str(
+          info.condition_details,
+          str(
+            parsed.condition,
+            "Tilstanden kan ikke vurderes sikkert fra bildene."
+          )
+        ),
+
+      value_factors:
+        list(info.value_factors),
+
+      uncertainties:
+        list(info.uncertainties)
     };
 
     if (
-      itemInfo.identifying_features.length === 0 &&
-      typeof parsed.description === "string" &&
-      parsed.description.trim()
+      !itemInfo.identifying_features.length &&
+      parsed.description
     ) {
-      itemInfo.identifying_features = [parsed.description.trim()];
+      itemInfo.identifying_features = [
+        String(parsed.description)
+      ];
     }
 
     if (
-      itemInfo.uncertainties.length === 0 &&
-      String(parsed.confidence || "").toLowerCase() !== "høy"
+      !itemInfo.uncertainties.length &&
+      String(parsed.confidence).toLowerCase() !==
+        "høy"
     ) {
       itemInfo.uncertainties = [
-        "Identifikasjonen er ikke helt sikker og bør kontrolleres mot bilder, merking og eventuelt serienummer."
+        "Identifikasjonen er ikke sikkert bekreftet.",
+        "Merke, modell, signatur eller produksjonsår kan ikke fastslås sikkert fra tilgjengelig materiale."
       ];
     }
 
-    if (itemInfo.value_factors.length === 0) {
-      itemInfo.value_factors = [
-        "Merke, modell, alder, tilstand, originalitet og dokumentert markedspris kan påvirke verdien."
-      ];
-    }
+    // ---------------------------------------------------------
+    // 4. HJELPEFUNKSJONER FOR PRIS
+    // ---------------------------------------------------------
 
-    function parseNok(value) {
-      if (typeof value === "number") {
-        return Number.isFinite(value) ? value : null;
+    const number = value => {
+      if (
+        typeof value === "number" &&
+        Number.isFinite(value)
+      ) {
+        return value;
       }
 
-      if (typeof value !== "string") return null;
-
-      let textValue = value.toLowerCase().replace(/kr/g, "").trim();
-
-      const rangeMatch = textValue.match(
-        /(\d+(?:[.,]\d+)?)\s*(?:-|–|—|til)\s*(\d+(?:[.,]\d+)?)/i
-      );
-
-      if (rangeMatch) {
-        const low = Number(rangeMatch[1].replace(",", "."));
-        const high = Number(rangeMatch[2].replace(",", "."));
-
-        if (Number.isFinite(low) && Number.isFinite(high)) {
-          return Math.round((low + high) / 2);
-        }
+      if (typeof value !== "string") {
+        return null;
       }
 
-      let cleaned = textValue
-        .replace(/\s/g, "")
-        .replace(/[^\d,.-]/g, "");
+      const cleaned =
+        value
+          .replace(/[^0-9,.-]/g, "")
+          .replace(
+            /\.(?=.*\.)/g,
+            ""
+          )
+          .replace(",", ".");
 
-      if (cleaned.includes(",") && cleaned.includes(".")) {
-        const lastComma = cleaned.lastIndexOf(",");
-        const lastDot = cleaned.lastIndexOf(".");
+      const n = Number(cleaned);
 
-        if (lastComma > lastDot) {
-          cleaned = cleaned.replace(/\./g, "").replace(",", ".");
-        } else {
-          cleaned = cleaned.replace(/,/g, "");
-        }
-      } else if (cleaned.includes(",")) {
-        const parts = cleaned.split(",");
+      return Number.isFinite(n)
+        ? n
+        : null;
+    };
 
-        if (parts.length === 2 && parts[1].length <= 2) {
-          cleaned = parts[0] + "." + parts[1];
-        } else {
-          cleaned = parts.join("");
-        }
-      } else if (cleaned.includes(".")) {
-        const parts = cleaned.split(".");
-
-        if (parts.length === 2 && parts[1].length <= 2) {
-          cleaned = parts[0] + "." + parts[1];
-        } else {
-          cleaned = parts.join("");
-        }
+    const median = values => {
+      if (!values.length) {
+        return null;
       }
 
-      const number = Number(cleaned);
-      return Number.isFinite(number) ? number : null;
-    }
+      const sorted =
+        [...values].sort(
+          (a, b) => a - b
+        );
 
-    function median(values) {
-      if (!values.length) return null;
+      const middle =
+        Math.floor(
+          sorted.length / 2
+        );
 
-      const sorted = [...values].sort((a, b) => a - b);
-      const middle = Math.floor(sorted.length / 2);
-
-      if (sorted.length % 2 === 0) {
-        return (sorted[middle - 1] + sorted[middle]) / 2;
+      if (
+        sorted.length % 2
+      ) {
+        return sorted[middle];
       }
 
-      return sorted[middle];
-    }
+      return (
+        sorted[middle - 1] +
+        sorted[middle]
+      ) / 2;
+    };
 
-    function percentile(values, p) {
-      if (!values.length) return null;
+    const percentile = (
+      values,
+      p
+    ) => {
+      if (!values.length) {
+        return null;
+      }
 
-      const sorted = [...values].sort((a, b) => a - b);
-      const index = (sorted.length - 1) * p;
-      const lower = Math.floor(index);
-      const upper = Math.ceil(index);
+      const sorted =
+        [...values].sort(
+          (a, b) => a - b
+        );
 
-      if (lower === upper) return sorted[lower];
+      const index =
+        (sorted.length - 1) * p;
+
+      const lower =
+        Math.floor(index);
+
+      const upper =
+        Math.ceil(index);
+
+      if (lower === upper) {
+        return sorted[lower];
+      }
 
       return (
         sorted[lower] +
-        (sorted[upper] - sorted[lower]) * (index - lower)
+        (sorted[upper] -
+          sorted[lower]) *
+          (index - lower)
       );
-    }
+    };
 
-    function removeOutliers(items) {
-      if (items.length < 5) return items;
-
-      const prices = items.map(item => item.nok);
-      const q1 = percentile(prices, 0.25);
-      const q3 = percentile(prices, 0.75);
-      const iqr = q3 - q1;
-      const minimum = q1 - 1.5 * iqr;
-      const maximum = q3 + 1.5 * iqr;
-
-      return items.filter(
-        item => item.nok >= minimum && item.nok <= maximum
-      );
-    }
-
-    let aiEstimated = parseNok(parsed.estimated_value_nok);
-    let aiLow = parseNok(parsed.low_value_nok);
-    let aiHigh = parseNok(parsed.high_value_nok);
-
-    if (!Number.isFinite(aiEstimated)) {
-      if (Number.isFinite(aiLow) && Number.isFinite(aiHigh)) {
-        aiEstimated = Math.round((aiLow + aiHigh) / 2);
-      }
-    }
-
-    if (Number.isFinite(aiEstimated)) {
-      if (!Number.isFinite(aiLow)) {
-        aiLow = Math.round(aiEstimated * 0.7);
-      }
-
-      if (!Number.isFinite(aiHigh)) {
-        aiHigh = Math.round(aiEstimated * 1.3);
-      }
-    }
-
-    if (
-      Number.isFinite(aiEstimated) &&
-      Number.isFinite(aiLow) &&
-      aiLow > aiEstimated
-    ) {
-      aiLow = aiEstimated;
-    }
-
-    if (
-      Number.isFinite(aiEstimated) &&
-      Number.isFinite(aiHigh) &&
-      aiHigh < aiEstimated
-    ) {
-      aiHigh = aiEstimated;
-    }
-
-    if (
-      Number.isFinite(aiLow) &&
-      Number.isFinite(aiHigh) &&
-      Number.isFinite(aiEstimated)
-    ) {
-      aiEstimated = Math.min(
-        Math.max(aiEstimated, aiLow),
-        aiHigh
-      );
-    }
-
-    async function getEbayToken() {
-      const clientId = process.env.EBAY_CLIENT_ID;
-      const clientSecret = process.env.EBAY_CLIENT_SECRET;
-
-      if (!clientId || !clientSecret) return null;
-
-      const credentials = Buffer.from(
-        `${clientId}:${clientSecret}`
-      ).toString("base64");
-
-      const tokenResponse = await fetch(
-        "https://api.ebay.com/identity/v1/oauth2/token",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-            "Authorization": `Basic ${credentials}`
-          },
-          body:
-            "grant_type=client_credentials" +
-            "&scope=https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope"
+    const removeOutliers =
+      items => {
+        if (items.length < 5) {
+          return items;
         }
+
+        const prices =
+          items.map(
+            x => x.nok
+          );
+
+        const q1 =
+          percentile(
+            prices,
+            0.25
+          );
+
+        const q3 =
+          percentile(
+            prices,
+            0.75
+          );
+
+        const iqr =
+          q3 - q1;
+
+        return items.filter(
+          x =>
+            x.nok >=
+              q1 - 1.5 * iqr &&
+            x.nok <=
+              q3 + 1.5 * iqr
+        );
+      };
+
+    // ---------------------------------------------------------
+    // 5. AI-VERDI
+    // ---------------------------------------------------------
+
+    let aiEstimated =
+      number(
+        parsed.estimated_value_nok
       );
 
-      const tokenData = await tokenResponse.json();
+    let aiLow =
+      number(
+        parsed.low_value_nok
+      );
 
-      if (!tokenResponse.ok) return null;
+    let aiHigh =
+      number(
+        parsed.high_value_nok
+      );
 
-      return tokenData.access_token || null;
+    if (
+      !Number.isFinite(
+        aiEstimated
+      ) &&
+      Number.isFinite(aiLow) &&
+      Number.isFinite(aiHigh)
+    ) {
+      aiEstimated =
+        Math.round(
+          (aiLow + aiHigh) / 2
+        );
     }
 
-    async function getExchangeRate(fromCurrency, toCurrency = "NOK") {
-      if (fromCurrency === toCurrency) return 1;
+    if (
+      Number.isFinite(
+        aiEstimated
+      )
+    ) {
+      if (
+        !Number.isFinite(aiLow)
+      ) {
+        aiLow =
+          Math.round(
+            aiEstimated * 0.7
+          );
+      }
 
-      try {
-        const response = await fetch(
-          `https://api.frankfurter.app/latest?from=${encodeURIComponent(
-            fromCurrency
-          )}&to=${encodeURIComponent(toCurrency)}`
+      if (
+        !Number.isFinite(aiHigh)
+      ) {
+        aiHigh =
+          Math.round(
+            aiEstimated * 1.3
+          );
+      }
+
+      aiLow =
+        Math.min(
+          aiLow,
+          aiEstimated
         );
 
-        if (!response.ok) return null;
+      aiHigh =
+        Math.max(
+          aiHigh,
+          aiEstimated
+        );
+    }
 
-        const data = await response.json();
-        return data?.rates?.[toCurrency] || null;
+    // ---------------------------------------------------------
+    // 6. eBAY TOKEN
+    // ---------------------------------------------------------
+
+    async function ebayToken() {
+      const id =
+        process.env.EBAY_CLIENT_ID;
+
+      const secret =
+        process.env.EBAY_CLIENT_SECRET;
+
+      if (!id || !secret) {
+        return null;
+      }
+
+      const auth =
+        Buffer
+          .from(
+            `${id}:${secret}`
+          )
+          .toString("base64");
+
+      const response =
+        await fetch(
+          "https://api.ebay.com/identity/v1/oauth2/token",
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type":
+                "application/x-www-form-urlencoded",
+
+              "Authorization":
+                `Basic ${auth}`
+            },
+
+            body:
+              "grant_type=client_credentials" +
+              "&scope=https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope"
+          }
+        );
+
+      const data =
+        await response.json();
+
+      if (!response.ok) {
+        return null;
+      }
+
+      return (
+        data.access_token ||
+        null
+      );
+    }
+
+    // ---------------------------------------------------------
+    // 7. VALUTAKURS
+    // ---------------------------------------------------------
+
+    async function exchangeRate(
+      from
+    ) {
+      if (
+        !from ||
+        from === "NOK"
+      ) {
+        return 1;
+      }
+
+      try {
+        const response =
+          await fetch(
+            `https://api.frankfurter.app/latest?from=${encodeURIComponent(
+              from
+            )}&to=NOK`
+          );
+
+        const data =
+          await response.json();
+
+        if (!response.ok) {
+          return null;
+        }
+
+        return (
+          data?.rates?.NOK ||
+          null
+        );
       } catch {
         return null;
       }
     }
 
-    async function searchEbay(query) {
-      if (!query || query.trim().length < 2) {
+    // ---------------------------------------------------------
+    // 8. eBAY-SØK
+    // ---------------------------------------------------------
+
+    async function searchEbay(
+      query
+    ) {
+      if (
+        !query ||
+        query.trim().length < 2
+      ) {
         return {
           enabled: false,
-          reason: "Ingen egnet eBay-søkestreng"
+          reason:
+            "Ingen egnet eBay-søkestreng"
         };
       }
 
-      const token = await getEbayToken();
+      const token =
+        await ebayToken();
 
       if (!token) {
         return {
           enabled: false,
-          reason: "eBay-tilkobling er ikke tilgjengelig"
+          reason:
+            "eBay-tilkobling er ikke tilgjengelig"
         };
       }
 
       const url =
         "https://api.ebay.com" +
         "/buy/browse/v1/item_summary/search" +
-        `?q=${encodeURIComponent(query)}` +
+        `?q=${encodeURIComponent(
+          query
+        )}` +
         "&limit=20";
 
-      const ebayResponse = await fetch(url, {
-        method: "GET",
-        headers: {
-          "Authorization": `Bearer ${token}`,
-          "Accept": "application/json",
-          "X-EBAY-C-MARKETPLACE-ID": "EBAY_DE"
-        }
-      });
+      const response =
+        await fetch(
+          url,
+          {
+            headers: {
+              "Authorization":
+                `Bearer ${token}`,
 
-      const ebayData = await ebayResponse.json();
+              "Accept":
+                "application/json",
 
-      if (!ebayResponse.ok) {
+              "X-EBAY-C-MARKETPLACE-ID":
+                "EBAY_DE"
+            }
+          }
+        );
+
+      const data =
+        await response.json();
+
+      if (!response.ok) {
         return {
           enabled: false,
           reason:
-            ebayData?.errors?.[0]?.message || "eBay-søk feilet"
+            data?.errors?.[0]?.message ||
+            "eBay-søk feilet"
         };
       }
 
-      const rawItems = Array.isArray(ebayData.itemSummaries)
-        ? ebayData.itemSummaries
-        : [];
+      const raw =
+        Array.isArray(
+          data.itemSummaries
+        )
+          ? data.itemSummaries
+          : [];
 
-      if (!rawItems.length) {
-        return {
-          enabled: true,
-          marketplace: "EBAY_DE",
-          query,
-          sample_size: 0,
-          listings: []
-        };
-      }
+      const items = [];
 
-      const prepared = [];
+      for (
+        const item of raw
+      ) {
+        const value =
+          Number(
+            item?.price?.value
+          );
 
-      for (const item of rawItems) {
-        const originalPrice = Number(item?.price?.value);
-        const currency = item?.price?.currency;
+        const currency =
+          item?.price?.currency;
 
-        if (!Number.isFinite(originalPrice) || !currency) continue;
+        if (
+          !Number.isFinite(
+            value
+          ) ||
+          !currency
+        ) {
+          continue;
+        }
 
-        const rate = await getExchangeRate(currency, "NOK");
-        if (!rate) continue;
+        const fx =
+          await exchangeRate(
+            currency
+          );
 
-        const nok = originalPrice * rate;
+        if (!fx) {
+          continue;
+        }
 
-        if (!Number.isFinite(nok) || nok <= 0) continue;
+        const nok =
+          value * fx;
 
-        prepared.push({
-          title: item.title || "",
+        if (
+          !Number.isFinite(nok) ||
+          nok <= 0
+        ) {
+          continue;
+        }
+
+        items.push({
+          title:
+            item.title || "",
+
           price: {
-            value: originalPrice,
+            value,
             currency
           },
-          nok: Math.round(nok),
-          url: item.itemWebUrl || ""
+
+          nok:
+            Math.round(nok),
+
+          url:
+            item.itemWebUrl || ""
         });
       }
 
-      const filtered = removeOutliers(prepared);
-      const prices = filtered.map(item => item.nok);
+      const clean =
+        removeOutliers(
+          items
+        );
 
-      const medianNok = median(prices);
-      const ebayLow = percentile(prices, 0.15);
-      const ebayHigh = percentile(prices, 0.85);
+      const prices =
+        clean.map(
+          x => x.nok
+        );
 
       return {
         enabled: true,
-        marketplace: "EBAY_DE",
+
+        marketplace:
+          "EBAY_DE",
+
         query,
-        sample_size: filtered.length,
-        median_nok: Number.isFinite(medianNok)
-          ? Math.round(medianNok)
-          : null,
-        low_nok: Number.isFinite(ebayLow)
-          ? Math.round(ebayLow)
-          : null,
-        high_nok: Number.isFinite(ebayHigh)
-          ? Math.round(ebayHigh)
-          : null,
-        listings: filtered.slice(0, 10).map(item => ({
-          title: item.title,
-          price: item.price,
-          price_nok: item.nok,
-          url: item.url
-        }))
+
+        sample_size:
+          clean.length,
+
+        median_nok:
+          median(prices),
+
+        low_nok:
+          percentile(
+            prices,
+            0.15
+          ),
+
+        high_nok:
+          percentile(
+            prices,
+            0.85
+          ),
+
+        listings:
+          clean
+            .slice(0, 10)
+            .map(x => ({
+              title:
+                x.title,
+
+              price:
+                x.price,
+
+              price_nok:
+                x.nok,
+
+              url:
+                x.url
+            }))
       };
     }
 
-    let ebay = {
-      enabled: false,
-      reason: "eBay-søk ikke utført"
-    };
+    // ---------------------------------------------------------
+    // 9. KJØR eBAY
+    // ---------------------------------------------------------
+
+    let ebay;
 
     try {
-      ebay = await searchEbay(
-        parsed.ebay_search_query || parsed.name || ""
-      );
+      ebay =
+        await searchEbay(
+          parsed.ebay_search_query ||
+          parsed.name ||
+          ""
+        );
     } catch {
       ebay = {
         enabled: false,
-        reason: "eBay-søk kunne ikke gjennomføres"
+        reason:
+          "eBay-søk kunne ikke gjennomføres"
       };
     }
 
-    let finalEstimated = aiEstimated;
-    let finalLow = aiLow;
-    let finalHigh = aiHigh;
+    // ---------------------------------------------------------
+    // 10. KOMBINER AI + eBAY
+    // ---------------------------------------------------------
+
+    let finalEstimated =
+      aiEstimated;
+
+    let finalLow =
+      aiLow;
+
+    let finalHigh =
+      aiHigh;
+
+    let ebayWeight = 0;
+
+    let valuationMethod =
+      "AI-estimat uten eBay-grunnlag";
+
+    const sampleSize =
+      ebay?.enabled
+        ? Number(
+            ebay.sample_size
+          ) || 0
+        : 0;
 
     if (
-      ebay.enabled &&
-      ebay.sample_size >= 3 &&
-      Number.isFinite(ebay.median_nok)
+      sampleSize > 0 &&
+      Number.isFinite(
+        ebay.median_nok
+      )
     ) {
-      if (Number.isFinite(aiEstimated)) {
-        finalEstimated = Math.round(
-          aiEstimated * 0.5 + ebay.median_nok * 0.5
-        );
+      if (
+        sampleSize === 1
+      ) {
+        ebayWeight = 0.15;
+      } else if (
+        sampleSize === 2
+      ) {
+        ebayWeight = 0.25;
+      } else if (
+        sampleSize <= 4
+      ) {
+        ebayWeight = 0.40;
       } else {
-        finalEstimated = Math.round(ebay.median_nok);
+        ebayWeight = 0.50;
       }
 
-      if (Number.isFinite(ebay.low_nok)) {
-        finalLow = Math.round(ebay.low_nok);
+      const aiWeight =
+        1 - ebayWeight;
+
+      if (
+        Number.isFinite(
+          aiEstimated
+        )
+      ) {
+        finalEstimated =
+          Math.round(
+            aiEstimated *
+              aiWeight +
+            ebay.median_nok *
+              ebayWeight
+          );
+      } else {
+        finalEstimated =
+          Math.round(
+            ebay.median_nok
+          );
       }
 
-      if (Number.isFinite(ebay.high_nok)) {
-        finalHigh = Math.round(ebay.high_nok);
+      if (
+        Number.isFinite(aiLow) &&
+        Number.isFinite(
+          ebay.low_nok
+        )
+      ) {
+        finalLow =
+          Math.round(
+            aiLow *
+              aiWeight +
+            ebay.low_nok *
+              ebayWeight
+          );
+      } else if (
+        Number.isFinite(
+          ebay.low_nok
+        )
+      ) {
+        finalLow =
+          Math.round(
+            ebay.low_nok
+          );
       }
+
+      if (
+        Number.isFinite(aiHigh) &&
+        Number.isFinite(
+          ebay.high_nok
+        )
+      ) {
+        finalHigh =
+          Math.round(
+            aiHigh *
+              aiWeight +
+            ebay.high_nok *
+              ebayWeight
+          );
+      } else if (
+        Number.isFinite(
+          ebay.high_nok
+        )
+      ) {
+        finalHigh =
+          Math.round(
+            ebay.high_nok
+          );
+      }
+
+      valuationMethod =
+        `AI + eBay-markedsdata (${Math.round(
+          ebayWeight * 100
+        )} % eBay-vekt, ${sampleSize} treff)`;
     }
 
-    if (Number.isFinite(finalEstimated)) {
-      if (!Number.isFinite(finalLow)) {
-        finalLow = Math.round(finalEstimated * 0.7);
+    // ---------------------------------------------------------
+    // 11. SØRG FOR LOGISK PRISINTERVALL
+    // ---------------------------------------------------------
+
+    if (
+      Number.isFinite(
+        finalEstimated
+      )
+    ) {
+      if (
+        !Number.isFinite(
+          finalLow
+        )
+      ) {
+        finalLow =
+          Math.round(
+            finalEstimated * 0.7
+          );
       }
 
-      if (!Number.isFinite(finalHigh)) {
-        finalHigh = Math.round(finalEstimated * 1.3);
+      if (
+        !Number.isFinite(
+          finalHigh
+        )
+      ) {
+        finalHigh =
+          Math.round(
+            finalEstimated * 1.3
+          );
       }
 
-      if (finalLow > finalEstimated) {
-        finalLow = finalEstimated;
-      }
+      finalLow =
+        Math.min(
+          finalLow,
+          finalEstimated
+        );
 
-      if (finalHigh < finalEstimated) {
-        finalHigh = finalEstimated;
-      }
+      finalHigh =
+        Math.max(
+          finalHigh,
+          finalEstimated
+        );
     }
+
+    // ---------------------------------------------------------
+    // 12. RETURNER ALT TIL KISTEFUNN
+    // ---------------------------------------------------------
 
     return res.status(200).json({
-      name: parsed.name || "Ukjent",
-      description: parsed.description || "",
-      estimated_value_nok: Number.isFinite(finalEstimated)
-        ? finalEstimated
-        : null,
-      low_value_nok: Number.isFinite(finalLow) ? finalLow : null,
-      high_value_nok: Number.isFinite(finalHigh) ? finalHigh : null,
-      ai_estimated_value_nok: Number.isFinite(aiEstimated)
-        ? aiEstimated
-        : null,
-      ai_low_value_nok: Number.isFinite(aiLow) ? aiLow : null,
-      ai_high_value_nok: Number.isFinite(aiHigh) ? aiHigh : null,
-      confidence: parsed.confidence || "lav",
-      condition: parsed.condition || "",
-      brand: itemInfo.brand,
-      model: itemInfo.model,
-      manufacturer: itemInfo.manufacturer,
-      type: itemInfo.type,
-      year_or_period: itemInfo.year_or_period,
-      material: itemInfo.material,
-      serial_number: itemInfo.serial_number,
-      identifying_features: itemInfo.identifying_features,
-      modifications: itemInfo.modifications,
-      condition_details: itemInfo.condition_details,
-      value_factors: itemInfo.value_factors,
-      uncertainties: itemInfo.uncertainties,
-      item_info: itemInfo,
-      ebay_search_query: parsed.ebay_search_query || "",
-      ebay
+      name:
+        parsed.name ||
+        "Ukjent",
+
+      description:
+        parsed.description ||
+        "",
+
+      estimated_value_nok:
+        Number.isFinite(
+          finalEstimated
+        )
+          ? finalEstimated
+          : null,
+
+      low_value_nok:
+        Number.isFinite(
+          finalLow
+        )
+          ? finalLow
+          : null,
+
+      high_value_nok:
+        Number.isFinite(
+          finalHigh
+        )
+          ? finalHigh
+          : null,
+
+      ai_estimated_value_nok:
+        Number.isFinite(
+          aiEstimated
+        )
+          ? aiEstimated
+          : null,
+
+      ai_low_value_nok:
+        Number.isFinite(
+          aiLow
+        )
+          ? aiLow
+          : null,
+
+      ai_high_value_nok:
+        Number.isFinite(
+          aiHigh
+        )
+          ? aiHigh
+          : null,
+
+      confidence:
+        parsed.confidence ||
+        "lav",
+
+      condition:
+        parsed.condition ||
+        "",
+
+      brand:
+        itemInfo.brand,
+
+      model:
+        itemInfo.model,
+
+      manufacturer:
+        itemInfo.manufacturer,
+
+      type:
+        itemInfo.type,
+
+      year_or_period:
+        itemInfo.year_or_period,
+
+      material:
+        itemInfo.material,
+
+      serial_number:
+        itemInfo.serial_number,
+
+      identifying_features:
+        itemInfo.identifying_features,
+
+      modifications:
+        itemInfo.modifications,
+
+      condition_details:
+        itemInfo.condition_details,
+
+      value_factors:
+        itemInfo.value_factors,
+
+      uncertainties:
+        itemInfo.uncertainties,
+
+      item_info:
+        itemInfo,
+
+      ebay_search_query:
+        parsed.ebay_search_query ||
+        "",
+
+      ebay:
+        ebay,
+
+      valuation_method:
+        valuationMethod,
+
+      ebay_weight_percent:
+        Math.round(
+          ebayWeight * 100
+        )
     });
+
   } catch (e) {
+    console.error(e);
+
     return res.status(500).json({
-      error: e.message || "Ukjent feil"
+      error:
+        e?.message ||
+        "Ukjent feil"
     });
   }
 }
