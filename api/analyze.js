@@ -1,4 +1,4 @@
- export default async function handler(req, res) {
+  export default async function handler(req, res) {
           if (req.method !== "POST") {
             return res.status(405).json({
               error: "Method not allowed"
@@ -52,7 +52,7 @@
                   "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
                 },
                 body: JSON.stringify({
-                  model: "gpt-5.6-luna",
+                  model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
                   input: [
                     {
                       role: "user",
@@ -179,6 +179,7 @@
 
             if (!response.ok) {
               const openaiError = data?.error || {};
+
               const requestId =
                 response.headers.get("x-request-id") ||
                 response.headers.get("request-id") ||
