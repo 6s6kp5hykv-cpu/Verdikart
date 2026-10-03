@@ -70,7 +70,7 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:18px 0}.history-chart{width:100%
 <p class="muted" style="margin-top:10px">Dette sletter kontoen, samlingen og kjøpsønskene dine permanent.</p></div>
 </section>
 
-<section id="scan"><div class="card"><h2>Skann en gjenstand</h2>
+<section id="scan" class="hidden"><div class="card"><h2>Skann en gjenstand</h2>
 <p class="muted">Ta bilde av gjenstanden og fortell gjerne litt om den. Kistefunn bruker både bildet og informasjonen du skriver for å forsøke å identifisere riktig gjenstand og beregne verdi.</p>
 <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px">
 <label class="primary" style="margin:0;flex:1;min-width:150px;text-align:center;cursor:pointer">📷 Ta bilde<input id="cameraInput" type="file" accept="image/*" capture="environment" hidden></label>
@@ -104,7 +104,7 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:18px 0}.history-chart{width:100%
 <div id="wantedContent" class="hidden"><div class="card"><h2>🔎 Jeg ønsker å kjøpe</h2><label>Hva leter du etter?<input id="wantName" placeholder="F.eks. Sony Walkman WM-3"></label><label style="margin-top:12px">Makspris<input id="wantPrice" type="number" placeholder="2500"></label><label style="margin-top:12px">Kommentar<input id="wantNote" placeholder="Helst komplett og fungerende"></label><button class="primary" style="margin-top:14px;width:100%" onclick="saveWant()">🔔 Lagre kjøpsønske</button></div><div id="wants"></div></div>
 </section>
 
-<section id="marketplace" class="hidden"><div class="card" style="border:2px solid #111827"><h2 style="font-size:30px">🏪 Markedsplass</h2><p class="muted">Søk blant gjenstander og kjøpsønsker som brukere selv har valgt å gjøre offentlige.</p><label style="margin-top:14px">🔎 Søk<input id="marketplaceSearch" type="search" placeholder="F.eks. Sony Walkman WM-3" onkeydown="if(event.key==='Enter'){searchMarketplace()}"></label><label style="margin-top:12px">Type<select id="marketplaceType"><option value="all">Alle</option><option value="sale">📦 Til salgs</option><option value="wanted">🔎 Ønsker å kjøpe</option></select></label><button class="primary" style="margin-top:14px;width:100%" onclick="searchMarketplace()">🔎 Søk i markedsplassen</button></div><div id="marketplaceResults"><div class="card"><p class="muted">Søk etter noe for å finne gjenstander og kjøpsønsker.</p></div></div></section>
+<section id="marketplace"><div class="card" style="border:2px solid #111827"><h2 style="font-size:30px">🏪 Markedsplass</h2><p class="muted">Søk blant gjenstander og kjøpsønsker som brukere selv har valgt å gjøre offentlige.</p><label style="margin-top:14px">🔎 Søk<input id="marketplaceSearch" type="search" placeholder="F.eks. Sony Walkman WM-3" onkeydown="if(event.key==='Enter'){searchMarketplace()}"></label><label style="margin-top:12px">Type<select id="marketplaceType"><option value="all">Alle</option><option value="sale">📦 Til salgs</option><option value="wanted">🔎 Ønsker å kjøpe</option></select></label><button class="primary" style="margin-top:14px;width:100%" onclick="searchMarketplace()">🔎 Søk i markedsplassen</button></div><div id="marketplaceResults"><div class="card"><p class="muted">Søk etter noe for å finne gjenstander og kjøpsønsker.</p></div></div></section>
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
