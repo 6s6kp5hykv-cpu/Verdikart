@@ -168,12 +168,13 @@ hr{border:0;border-top:1px solid var(--line);margin:18px 0}
 <button class="secondary" style="margin-top:14px;width:100%" onclick="logout()">🚪 Logg ut</button>
 <button class="danger" style="margin-top:10px;width:100%" onclick="deleteAccount()">🗑️ Slett konto og alle data</button><div class="profile-grid">
 <div class="profile-tile" onclick="renderFavorites();document.getElementById('favoritesPanel').classList.remove('hidden')" style="cursor:pointer"><div class="profile-tile-icon">❤️</div><div class="profile-tile-title">Mine favoritter</div><div class="profile-tile-count" id="favoriteCount">0 lagret</div></div>
-<div class="profile-tile" onclick="renderFinds();document.getElementById('findsPanel').classList.remove('hidden')" style="cursor:pointer"><div class="profile-tile-icon">💎</div><div class="profile-tile-title">Mine funn</div><div class="profile-tile-count" id="findCount">0 funn</div></div>
-<div class="profile-tile" onclick="show('collection')" style="cursor:pointer"><div class="profile-tile-icon">📦</div><div class="profile-tile-title">Min samling</div><div class="profile-tile-count">Se lagrede gjenstander</div></div>
+<div class="profile-tile" onclick="renderFinds();document.getElementById('findsPanel').classList.remove('hidden')" style="cursor:pointer"><div class="profile-tile-icon">💎</div><div class="profile-tile-title">Mine funn</div><div class="profile-tile-count" id="findCount">0 funn</div><div class="muted" style="margin-top:5px;font-size:12px">Alt du har undersøkt</div></div>
+<div class="profile-tile" onclick="show('collection')" style="cursor:pointer"><div class="profile-tile-icon">📦</div><div class="profile-tile-title">Min samling</div><div class="profile-tile-count">Gjenstander du følger</div><div class="muted" style="margin-top:5px;font-size:12px">Verdi og utvikling over tid</div></div>
 <div class="profile-tile" onclick="show('wanted')" style="cursor:pointer"><div class="profile-tile-icon">🔎</div><div class="profile-tile-title">Mine kjøpsønsker</div><div class="profile-tile-count">Se ønskene dine</div></div>
 </div>
 <div id="favoritesPanel" class="card profile-section hidden"><h3>❤️ Mine favoritter</h3><div id="favoritesList"></div></div>
-<div id="findsPanel" class="card profile-section hidden"><h3>💎 Mine funn</h3><div id="findsList"></div></div>
+<div id="findsPanel" class="card profile-section hidden"><h3>💎 Mine funn</h3><div class="note" style="margin-top:0">Her finner du gjenstander du har <strong>undersøkt med Kistefunn</strong>. Vil du følge verdien over tid, åpner du gjenstanden og lagrer den i <strong>Min samling</strong>.</div><div id="findsList" style="margin-top:12px"></div></div>
+<div id="findsPanel" class="card profile-section hidden"><h3>💎 Mine funn</h3><div class="note" style="margin-top:0">Her finner du gjenstander du har <strong>undersøkt med Kistefunn</strong>. Vil du følge verdien over tid, lagrer du gjenstanden i <strong>Min samling</strong>.</div><div id="findsList" style="margin-top:12px"></div></div>
 
 <p class="muted" style="margin-top:10px">Dette sletter kontoen, samlingen og kjøpsønskene dine permanent.</p></div>
 </section>
@@ -198,11 +199,11 @@ hr{border:0;border-top:1px solid var(--line);margin:18px 0}
 <div class="grounding-row"><div class="grounding-title">💰 Verdiestimat</div><div class="grounding-value">Verdien er et estimat basert på identifikasjonen og tilgjengelig markedsinformasjon.</div></div>
 <div class="grounding-row"><div class="grounding-title">🛒 Markedsdata</div><div class="grounding-value" id="marketDataSummary">Sammenlignbare annonser vises når Kistefunn finner relevante treff.</div></div></div>
 <div class="note">ℹ️ Verdien er et foreløpig AI-estimat. eBay-data er aktive annonsepriser og kan avvike fra faktisk salgspris.</div>
-<button class="primary" style="margin-top:14px;width:100%" onclick="saveCurrent()">💾 Lagre i samlingen</button></div></div></section>
+<div class="note" style="margin-top:14px">💎 Dette er et funn. Trykk <strong>Lagre i samlingen</strong> hvis du vil følge verdien over tid.</div><button class="primary" style="margin-top:10px;width:100%" onclick="saveCurrent()">💾 Lagre i samlingen</button></div></div></section>
 
 <section id="collection" class="hidden">
 <div id="collectionLoginCard" class="card hidden"><h2>📦 Min samling</h2><p>Logg inn for å se og lagre din personlige samling.</p><button class="primary" style="width:100%" onclick="show('account')">👤 Gå til Min side</button></div>
-<div id="collectionContent" class="hidden"><div class="card"><h2>Min samling</h2><div class="grid"><div><div class="stat" id="total">0 kr</div><div class="muted">Samlet estimert verdi</div></div><div><div class="stat" id="count">0</div><div class="muted">Gjenstander</div></div></div></div><div id="items"></div></div>
+<div id="collectionContent" class="hidden"><div class="card"><h2>Min samling</h2><p class="muted">Her ligger gjenstandene du har valgt å følge. Du kan se verdiutvikling og oppdatere verdien over tid.</p><div class="grid"><div><div class="stat" id="total">0 kr</div><div class="muted">Samlet estimert verdi</div></div><div><div class="stat" id="count">0</div><div class="muted">Gjenstander</div></div></div></div><div id="items"></div></div>
 <div id="historyPanel" class="card hidden"><h2>📈 Verdiutvikling</h2><div id="historyTitle" class="result-title"></div><div id="historyCurrent" class="price"></div><div id="historyChange" class="muted"></div><div id="historyChart" class="history-chart"></div><div id="historyList" class="history-list"></div>
 <button id="refreshValueButton" class="primary" style="margin-top:14px;width:100%" onclick="refreshCurrentValue()">🔄 Oppdater verdi</button><button class="danger" style="margin-top:8px;width:100%" onclick="deleteCurrentItem()">🗑️ Slett gjenstand</button><button class="secondary" style="margin-top:8px;width:100%" onclick="closeHistory()">Lukk</button></div>
 </section>
