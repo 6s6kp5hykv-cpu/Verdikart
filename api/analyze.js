@@ -1229,6 +1229,73 @@ Returner KUN gyldig JSON:
          ------------------------------------------------------- */
 
       if (category === "guitar") {
+        // En markedsreferanse for gitar må være en faktisk komplett gitar.
+        // eBay kan ellers tolke "Fender Stratocaster 1995" som relevante
+        // treff selv om annonsen gjelder en arm, kropp, hals eller annen del.
+        const guitarNonCompletePatterns = [
+          /\btremolo\s+arm\b/,
+          /\bvibrato\s+arm\b/,
+          /\bwhammy\s+bar\b/,
+          /\bneck\s+plate\b/,
+          /\bbackplate\b/,
+          /\bcontrol\s+plate\b/,
+          /\bcontrol\s+knob\b/,
+          /\bknob\b/,
+          /\bstring\s+tree\b/,
+          /\btruss\s+rod\b/,
+          /\bcase\s+only\b/,
+          /\bgig\s*bag\s+only\b/
+        ];
+
+        if (guitarNonCompletePatterns.some(pattern => pattern.test(t))) {
+          return {
+            score: -100,
+            accepted: false,
+            near_match: false,
+            year_match: year ? "missing" : "not_required",
+            reason: "gitar-del/tilbehør"
+          };
+        }
+
+        const guitarObjectWords =
+          /\b(guitar|guitars|electric\s+guitar|e[- ]?guitar|gitar|stratocaster|telecaster|les\s+paul|jazz\s+bass|precision\s+bass)\b/;
+
+        if (!guitarObjectWords.test(t)) {
+          return {
+            score: -100,
+            accepted: false,
+            near_match: false,
+            year_match: year ? "missing" : "not_required",
+            reason: "ikke komplett gitar"
+          };
+        }
+
+        const guitarBadConditionPatterns = [
+          /\bfor\s+parts\b/,
+          /\bparts\s+only\b/,
+          /\bnot\s+working\b/,
+          /\bnon[- ]?working\b/,
+          /\bbroken\b/,
+          /\bneeds?\s+repair\b/,
+          /\bfor\s+repair\b/,
+          /\brepair\s+project\b/,
+          /\bproject\s+guitar\b/,
+          /\bas[- ]?is\b/,
+          /\bincomplete\b/,
+          /\bmissing\s+parts\b/,
+          /\bdamaged\b/
+        ];
+
+        if (guitarBadConditionPatterns.some(pattern => pattern.test(t))) {
+          return {
+            score: -100,
+            accepted: false,
+            near_match: false,
+            year_match: year ? "missing" : "not_required",
+            reason: "skadet/defekt/prosjektgitar"
+          };
+        }
+
         const guitarPartPatterns = [
           /\bbody\s+(?:only|w\/?|with|and)\b/,
           /\bbody\s+w\/\s*hardware\b/,
@@ -2304,6 +2371,13 @@ Returner KUN gyldig JSON:
         !Number.isFinite(nok) ||
         nok <= 0
       ) {
+        return null;
+      }
+
+      // Svært lave gitarpriser er ofte deler, tilbehør eller defekte
+      // instrumenter som har sneket seg gjennom eBays søkerelevans.
+      // De skal ikke få påvirke verdien av en komplett fungerende gitar.
+      if (criteria.category === "guitar" && nok < 1200) {
         return null;
       }
 
