@@ -756,19 +756,8 @@ Returner KUN gyldig JSON:
         }
       }
 
-      const accepted = score >= 45;
-
-      return {
-        score,
-        accepted,
-        near_match: yearMatch === "missing" && score >= 45,
-        year_match: yearMatch,
-        reason: reasons.join(", ") || "lav relevans"
-      };
-
       // Klare modell-/serievarianter skal ikke blandes med målmodellen.
-      // "Vintage" alene kan være et generisk bruktmarked-ord på eBay,
-      // men konkrete serier som Classic 60s skal skilles ut.
+      // Dette må gjøres FØR vi returnerer relevansresultatet.
       const incompatibleSeries = [
         "classic 60s", "classic series", "vintera", "player ii",
         "american professional", "american ultra", "american vintage",
@@ -780,6 +769,8 @@ Returner KUN gyldig JSON:
           return {
             score: -100,
             accepted: false,
+            near_match: false,
+            year_match: yearMatch,
             reason: "annen serie/variant"
           };
         }
@@ -789,16 +780,28 @@ Returner KUN gyldig JSON:
       for (const term of wrongModelTerms) {
         if (!t.includes(term)) continue;
 
-        // "Standard" skal ikke avvises bare fordi tittelen inneholder
-        // "American Standard"; dette håndteres eksplisitt over.
         if (term === "american standard" && country === "mexico") {
-          return { score: -100, accepted: false, reason: "American Standard" };
+          return {
+            score: -100,
+            accepted: false,
+            near_match: false,
+            year_match: yearMatch,
+            reason: "American Standard"
+          };
         }
 
-        // Andre Fender-serier er ikke gode sammenligninger.
         score -= 35;
       }
 
+      const accepted = score >= 45;
+
+      return {
+        score,
+        accepted,
+        near_match: yearMatch === "missing" && accepted,
+        year_match: yearMatch,
+        reason: reasons.join(", ") || "lav relevans"
+      };
     }
 
     async function searchEbaySingle(query) {
