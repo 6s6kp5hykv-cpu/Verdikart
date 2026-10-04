@@ -707,6 +707,13 @@ Returner KUN gyldig JSON:
       }
 
       if (
+        /\b(pokemon|pokémon|pokémon tcg|tcg|trading card|samlekort|black star promo|svp)\b/
+          .test(s)
+      ) {
+        return "pokemon";
+      }
+
+      if (
         /\bbirkenstock\b/.test(s)
       ) {
         return "footwear";
@@ -812,6 +819,44 @@ Returner KUN gyldig JSON:
           info.year_or_period,
           userText
         );
+
+      const searchEvidence =
+        [
+          parsed.name,
+          parsed.description,
+          info.brand,
+          info.model,
+          info.type,
+          info.material,
+          info.year_or_period,
+          parsed.ebay_search_query,
+          userText
+        ]
+          .map(v => String(v || ""))
+          .join(" ");
+
+      // Samlekort: bruk kortnummer som hard markedsidentifikator når det
+      // finnes. Dette hindrer at AI-fritekstsøk varierer så mye fra kjøring
+      // til kjøring og gjør at flere markeder søker på samme kort.
+      const pokemonCardMatch =
+        searchEvidence.match(
+          /\b(SVP\s*(?:EN\s*)?\d{1,4})\b/i
+        );
+
+      const pokemonCardNumber =
+        pokemonCardMatch
+          ? pokemonCardMatch[1]
+              .replace(/\s+/g, " ")
+              .trim()
+          : "";
+
+      const pokemonEnglish =
+        /\b(english|engelsk|engelskspr[aå]klig)\b/i
+          .test(searchEvidence);
+
+      const pokemonPromo =
+        /\b(promo|promokort|black star promo|sv promo|svp)\b/i
+          .test(searchEvidence);
 
       const category =
         detectCategory(
@@ -975,6 +1020,44 @@ Returner KUN gyldig JSON:
             );
           }
         }
+      }
+
+      if (
+        category === "pokemon" &&
+        pokemonCardNumber
+      ) {
+        const cardNumber = pokemonCardNumber;
+        const cardName =
+          compact(parsed.name, 2) ||
+          compact(info.model, 2) ||
+          compact(info.type, 2);
+
+        const languageTerm =
+          pokemonEnglish ? "English" : "";
+
+        const promoTerm =
+          pokemonPromo ? "Black Star Promo" : "";
+
+        candidates.push(
+          compact(
+            `Pokemon ${cardName} ${cardNumber} ${languageTerm} ${promoTerm}`,
+            7
+          )
+        );
+
+        candidates.push(
+          compact(
+            `Pokemon ${cardName} ${cardNumber} ${languageTerm} 2025`,
+            7
+          )
+        );
+
+        candidates.push(
+          compact(
+            `Pokemon ${cardNumber} ${languageTerm} promo`,
+            7
+          )
+        );
       }
 
       if (userModelHint) {
@@ -2336,11 +2419,37 @@ Returner KUN gyldig JSON:
       const sameModelMedian =
         median(sameModelPrices);
 
+      // V10.4: Ikke la ett eBay-marked dominere bare fordi det har
+      // mange flere annonser enn de andre. Når minst to markeder har
+      // >=2 eksakte treff, bruker vi medianen av markedsmedianene.
+      const exactMarketplaceMedians =
+        marketplaces
+          .map(marketplace => {
+            const marketPrices =
+              exactPool
+                .filter(x => x.marketplace === marketplace)
+                .map(x => Number(x.nok))
+                .filter(Number.isFinite)
+                .filter(x => x > 0);
+
+            if (marketPrices.length < 2) {
+              return null;
+            }
+
+            return median(marketPrices);
+          })
+          .filter(Number.isFinite);
+
+      const balancedExactMedian =
+        exactMarketplaceMedians.length >= 2
+          ? median(exactMarketplaceMedians)
+          : exactMedian;
+
       let marketMedian = null;
 
       if (
         built.year &&
-        Number.isFinite(exactMedian)
+        Number.isFinite(balancedExactMedian)
       ) {
         if (
           Number.isFinite(sameModelMedian) &&
@@ -2348,19 +2457,21 @@ Returner KUN gyldig JSON:
         ) {
           marketMedian =
             Math.round(
-              exactMedian * 0.75 +
+              balancedExactMedian * 0.75 +
               sameModelMedian * 0.25
             );
         } else {
           marketMedian =
-            Math.round(exactMedian);
+            Math.round(balancedExactMedian);
         }
       } else if (
-        Number.isFinite(exactMedian)
+        Number.isFinite(balancedExactMedian)
       ) {
         marketMedian =
-          Math.round(exactMedian);
+          Math.round(balancedExactMedian);
       } else if (
+        Number.isFinite(sameModelMedian)
+      ) {
         Number.isFinite(sameModelMedian)
       ) {
         marketMedian =
@@ -2511,6 +2622,14 @@ Returner KUN gyldig JSON:
             ? Math.round(exactMedian)
             : null,
 
+        balanced_exact_median_nok:
+          Number.isFinite(balancedExactMedian)
+            ? Math.round(balancedExactMedian)
+            : null,
+
+        exact_marketplace_median_count:
+          exactMarketplaceMedians.length,
+
         same_model_median_nok:
           Number.isFinite(sameModelMedian)
             ? Math.round(sameModelMedian)
@@ -2534,7 +2653,7 @@ Returner KUN gyldig JSON:
           strict: true,
 
           market_engine_version:
-            "v10.3-multi-ebay-no-de-uk-us",
+            "v10.4-multi-ebay-no-de-uk-us",
 
           minimum_relevance_score:
             45,
