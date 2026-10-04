@@ -1,4 +1,4 @@
-export default async function handler(req, res) {
+ export default async function handler(req, res) {
           if (req.method !== "POST") {
             return res.status(405).json({
               error: "Method not allowed"
@@ -905,7 +905,7 @@ export default async function handler(req, res) {
              * ---------------------------------------------------------
              */
 
-            function cleanEbayTerm(value, maxWords = 4) {
+            function cleanEbayTerm(value, maxWords = 6) {
               if (!value) return "";
 
               const stop = new Set([
@@ -913,7 +913,7 @@ export default async function handler(req, res) {
                 "eller", "med", "og", "av", "for", "fra", "som", "mulig",
                 "antatt", "probably", "likely", "possibly", "the", "a", "an",
                 "treverk", "lakkert", "kropp", "gripebrett", "metallhardware",
-                "plastplekterbrett", "plast"
+                "plastplekterbrett", "plast", "solidbody", "solid"
               ]);
 
               const words = String(value)
@@ -935,6 +935,7 @@ export default async function handler(req, res) {
                 if (seen.has(key)) continue;
                 seen.add(key);
                 unique.push(word);
+
                 if (unique.length >= maxWords) break;
               }
 
@@ -977,111 +978,318 @@ export default async function handler(req, res) {
             }
 
             /*
-             * Bygg søk i prioritert rekkefølge.
-             * Vi bruker aldri bare merke som søk.
+             * ---------------------------------------------------------
+             * SMART eBAY-SØK
+             * ---------------------------------------------------------
+             *
+             * Viktig:
+             * Vi skal ikke gjøre søket så bredt at f.eks. bare
+             * "Fender" eller "Fender elektrisk gitar" brukes.
+             *
+             * AI-søket prioriteres, men vi sørger for at viktige
+             * identifikasjonsord som Mexico/MIM/år ikke blir kuttet bort.
+             * ---------------------------------------------------------
              */
+
             function buildEbayQueries(parsed) {
               const info = parsed?.item_info || {};
 
-              const brand = cleanEbayTerm(info.brand, 1);
-              const model = cleanEbayTerm(info.model, 3);
-              const type = cleanEbayTerm(info.type, 2);
-              const manufacturer = cleanEbayTerm(info.manufacturer, 2);
-              const year = cleanEbayTerm(info.year_or_period, 1);
-              const aiQuery = cleanEbayTerm(parsed?.ebay_search_query, 4);
+              const brand =
+                cleanEbayTerm(info.brand, 1);
 
-              const precise = [];
-              const broader = [];
+              const model =
+                cleanEbayTerm(info.model, 5);
 
-              if (brand && model) {
-                precise.push(`${brand} ${model}`);
-              }
+              const type =
+                cleanEbayTerm(info.type, 3);
 
-              if (brand && model && year) {
-                precise.push(`${brand} ${model} ${year}`);
-              }
+              const manufacturer =
+                cleanEbayTerm(info.manufacturer, 3);
 
-              if (brand && type && model) {
-                precise.push(`${brand} ${model} ${type}`);
-              }
+              const year =
+                cleanEbayTerm(info.year_or_period, 2);
 
-              if (brand && type) {
-                precise.push(`${brand} ${type}`);
-              }
+              const aiQuery =
+                cleanEbayTerm(
+                  parsed?.ebay_search_query,
+                  8
+                );
 
+              const candidates = [];
+
+              /*
+               * 1. AI sitt produktorienterte søk først.
+               */
               if (aiQuery) {
-                precise.push(aiQuery);
+                candidates.push(aiQuery);
               }
 
-              if (manufacturer && model && manufacturer.toLowerCase() !== brand.toLowerCase()) {
-                broader.push(`${manufacturer} ${model}`);
-              }
-
+              /*
+               * 2. Merke + modell.
+               */
               if (brand && model) {
-                broader.push(`${brand} ${model}`);
+                candidates.push(
+                  `${brand} ${model}`
+                );
               }
 
-              if (brand && type) {
-                broader.push(`${brand} ${type}`);
+              /*
+               * 3. Merke + modell + år/periode.
+               */
+              if (brand && model && year) {
+                candidates.push(
+                  `${brand} ${model} ${year}`
+                );
+              }
+
+              /*
+               * 4. Merke + type, men bare hvis modell også er kjent.
+               * Dette hindrer f.eks. "Fender elektrisk gitar".
+               */
+              if (brand && model && type) {
+                candidates.push(
+                  `${brand} ${model} ${type}`
+                );
+              }
+
+              /*
+               * 5. Produsent + modell dersom produsent er forskjellig.
+               */
+              if (
+                manufacturer &&
+                model &&
+                manufacturer.toLowerCase() !== brand.toLowerCase()
+              ) {
+                candidates.push(
+                  `${manufacturer} ${model}`
+                );
+              }
+
+              /*
+               * 6. Kontrollerte bredere søk.
+               * Fortsatt minst merke + produktidentitet.
+               */
+              if (brand && model) {
+                const modelWords =
+                  model.split(/\s+/).filter(Boolean);
+
+                if (modelWords.length > 1) {
+                  candidates.push(
+                    `${brand} ${modelWords.slice(0, 2).join(" ")}`
+                  );
+                }
               }
 
               const seen = new Set();
               const queries = [];
 
-              for (const raw of [...precise, ...broader]) {
-                const q = cleanEbayTerm(raw, 5);
-                if (!q || q.length < 3) continue;
+              for (const raw of candidates) {
+                const q =
+                  cleanEbayTerm(raw, 8);
 
-                const key = q.toLowerCase();
-                if (seen.has(key)) continue;
+                if (!q || q.length < 4) {
+                  continue;
+                }
+
+                const words =
+                  q.split(/\s+/).filter(Boolean);
+
+                /*
+                 * Aldri bruk bare merke.
+                 */
+                if (
+                  brand &&
+                  words.length === 1 &&
+                  q.toLowerCase() === brand.toLowerCase()
+                ) {
+                  continue;
+                }
+
+                /*
+                 * Ikke bruk bare merke + generell type.
+                 */
+                if (
+                  brand &&
+                  type &&
+                  words.length <= 3 &&
+                  q.toLowerCase() ===
+                    `${brand} ${type}`.toLowerCase()
+                ) {
+                  continue;
+                }
+
+                const key =
+                  q.toLowerCase();
+
+                if (seen.has(key)) {
+                  continue;
+                }
+
                 seen.add(key);
                 queries.push(q);
 
-                if (queries.length >= 6) break;
+                if (queries.length >= 6) {
+                  break;
+                }
               }
 
               return {
-                precise: queries.slice(0, 4),
-                broader: queries.slice(4),
                 queries
               };
             }
 
             /*
-             * Lag krav til hva en eBay-annonse må inneholde.
-             * Dette hindrer f.eks. "Fender finish", tunere,
-             * strengepakker, gitarkropper og andre deler fra å
-             * påvirke verdien til selve gjenstanden.
+             * ---------------------------------------------------------
+             * RELEVANSPROFIL
+             * ---------------------------------------------------------
              */
+
             function buildEbayRelevanceProfile(parsed) {
-              const info = parsed?.item_info || {};
+              const info =
+                parsed?.item_info || {};
 
-              const brand = normalizeSearchText(info.brand);
-              const model = normalizeSearchText(info.model);
-              const type = normalizeSearchText(info.type);
-              const manufacturer = normalizeSearchText(info.manufacturer);
-              const year = normalizeSearchText(info.year_or_period);
+              const brand =
+                normalizeSearchText(
+                  info.brand
+                );
 
-              const modelWords = uniqueWords([model]);
-              const typeWords = uniqueWords([type]);
-              const brandWords = uniqueWords([brand, manufacturer]);
+              const model =
+                normalizeSearchText(
+                  info.model
+                );
 
-              const importantModelWords = modelWords.filter(word =>
-                !["standard", "electric", "electrical", "guitar", "instrument", "unknown"].includes(word)
-              );
+              const type =
+                normalizeSearchText(
+                  info.type
+                );
 
-              const importantTypeWords = typeWords.filter(word =>
-                !["electric", "electrical", "instrument", "item", "unknown"].includes(word)
-              );
+              const manufacturer =
+                normalizeSearchText(
+                  info.manufacturer
+                );
 
-              const negativeWords = new Set([
-                "neck", "body", "pickup", "pickups", "tuner", "tuners", "pedal",
-                "pedals", "effect", "effects", "cable", "strings", "string",
-                "bridge", "pickguard", "knobs", "knob", "case", "gigbag", "bag",
-                "strap", "stand", "parts", "part", "replacement", "replacementpart",
-                "finish", "refinish", "decal", "sticker", "manual", "book", "magazine",
-                "shirt", "shirt", "poster", "cover", "sticker", "accessory", "accessories"
-              ]);
+              const year =
+                normalizeSearchText(
+                  info.year_or_period
+                );
+
+              const brandWords =
+                uniqueWords([
+                  brand,
+                  manufacturer
+                ]);
+
+              const modelWords =
+                uniqueWords([
+                  model
+                ]);
+
+              const typeWords =
+                uniqueWords([
+                  type
+                ]);
+
+              /*
+               * For eldre/modellspesifikke gjenstander er årstall og
+               * produksjonsland svært viktige. Vi henter derfor ut
+               * konkrete år og nøkkelord fra identifikasjonen.
+               */
+              const yearMatches =
+                String(
+                  `${year} ${model}`
+                ).match(
+                  /\b(19\d{2}|20\d{2})\b/g
+                ) || [];
+
+              const targetYears =
+                [
+                  ...new Set(
+                    yearMatches
+                  )
+                ];
+
+              const mexicoKeywords =
+                new Set([
+                  "mexico",
+                  "mexican",
+                  "mim",
+                  "madeinmexico"
+                ]);
+
+              const usaKeywords =
+                new Set([
+                  "usa",
+                  "american",
+                  "us",
+                  "madeinusa",
+                  "americanstandard"
+                ]);
+
+              const wrongModelKeywords =
+                new Set([
+                  "player",
+                  "playerplus",
+                  "professional",
+                  "professionalii",
+                  "ultra",
+                  "elite",
+                  "vintera",
+                  "vinteraii",
+                  "performer",
+                  "americanprofessional",
+                  "americanultra",
+                  "americanstandard",
+                  "americanvintage",
+                  "avri",
+                  "customshop",
+                  "customshop",
+                  "specialedition",
+                  "deluxe",
+                  "standardplus"
+                ]);
+
+              const negativeWords =
+                new Set([
+                  "neck", "body", "pickup", "pickups",
+                  "tuner", "tuners", "pedal", "pedals",
+                  "effect", "effects", "cable", "strings",
+                  "string", "bridge", "pickguard", "knobs",
+                  "knob", "case", "gigbag", "bag", "strap",
+                  "stand", "parts", "part", "replacement",
+                  "replacementpart", "finish", "refinish",
+                  "decal", "sticker", "manual", "book",
+                  "magazine", "shirt", "poster", "cover",
+                  "accessory", "accessories", "hardware",
+                  "potentiometer", "switch", "screw", "screws",
+                  "bodyonly", "neckonly", "project", "repair"
+                ]);
+
+              const genericWords =
+                new Set([
+                  "standard",
+                  "electric",
+                  "electrical",
+                  "guitar",
+                  "instrument",
+                  "item",
+                  "unknown",
+                  "made",
+                  "in"
+                ]);
+
+              const importantModelWords =
+                modelWords.filter(
+                  word =>
+                    !genericWords.has(word) &&
+                    word.length >= 3
+                );
+
+              const importantTypeWords =
+                typeWords.filter(
+                  word =>
+                    !genericWords.has(word) &&
+                    word.length >= 3
+                );
 
               return {
                 brandWords,
@@ -1089,80 +1297,314 @@ export default async function handler(req, res) {
                 importantModelWords,
                 typeWords,
                 importantTypeWords,
-                year,
-                negativeWords
+                targetYears,
+                mexicoKeywords,
+                usaKeywords,
+                wrongModelKeywords,
+                negativeWords,
+                genericWords
               };
             }
 
-            function scoreEbayListing(title, profile) {
-              const words = new Set(titleWords(title));
-              const text = normalizeSearchText(title);
+            function scoreEbayListing(
+              title,
+              profile
+            ) {
+              const wordsArray =
+                titleWords(title);
+
+              const words =
+                new Set(wordsArray);
+
+              const text =
+                normalizeSearchText(title);
 
               if (!text) {
-                return { score: 0, relevant: false };
+                return {
+                  score: 0,
+                  relevant: false
+                };
               }
 
               let score = 0;
+
               let brandMatch = false;
               let modelMatch = false;
               let typeMatch = false;
+              let yearMatch = false;
+              let mexicoMatch = false;
+              let usaMatch = false;
+              let wrongModel = false;
 
-              for (const word of profile.brandWords) {
+              /*
+               * MERKE
+               */
+              for (
+                const word of
+                  profile.brandWords
+              ) {
                 if (words.has(word)) {
                   brandMatch = true;
-                  score += 3;
+                  score += 8;
                   break;
                 }
               }
 
-              for (const word of profile.importantModelWords) {
+              /*
+               * MODELL
+               *
+               * Stratocaster/Telecaster osv. skal telle som
+               * produktidentitet. Men vi krever at merke også er
+               * til stede.
+               */
+              for (
+                const word of
+                  profile.importantModelWords
+              ) {
                 if (words.has(word)) {
                   modelMatch = true;
-                  score += 4;
+                  score += 8;
                 }
               }
 
-              for (const word of profile.importantTypeWords) {
+              /*
+               * PRODUKTTYPE
+               */
+              for (
+                const word of
+                  profile.importantTypeWords
+              ) {
                 if (words.has(word)) {
                   typeMatch = true;
                   score += 2;
                 }
               }
 
-              /* Modellord som "Stratocaster" kan være viktig selv om
-               * modellen ellers bare heter Standard Stratocaster. */
-              for (const word of profile.modelWords) {
-                if (word.length >= 4 && words.has(word)) {
-                  modelMatch = true;
-                  score += 2;
-                }
-              }
-
-              const hasYear = profile.year && text.includes(profile.year);
-              if (hasYear) score += 1;
-
-              let negativeHit = false;
-              for (const word of profile.negativeWords) {
-                if (words.has(word)) {
-                  negativeHit = true;
-                  score -= 8;
+              /*
+               * ÅRSTALL
+               *
+               * Eksakt 1995 er mye sterkere enn bare "90s".
+               */
+              for (
+                const targetYear of
+                  profile.targetYears
+              ) {
+                if (
+                  words.has(
+                    targetYear
+                  )
+                ) {
+                  yearMatch = true;
+                  score += 12;
                 }
               }
 
               /*
-               * Hovedregelen:
-               * - merke må finnes når vi kjenner merke
-               * - minst ett ord fra modell/type må finnes
-               * - negative treff får ikke slippe gjennom
+               * PRODUKSJONSLAND
                */
-              const hasProductIdentity =
-                modelMatch || typeMatch;
+              for (
+                const word of
+                  profile.mexicoKeywords
+              ) {
+                if (
+                  words.has(word) ||
+                  text.includes(
+                    word === "madeinmexico"
+                      ? "made in mexico"
+                      : word
+                  )
+                ) {
+                  mexicoMatch = true;
+                  score += 8;
+                  break;
+                }
+              }
 
-              const relevant =
-                !negativeHit &&
-                (!profile.brandWords.length || brandMatch) &&
-                hasProductIdentity &&
-                score >= 5;
+              for (
+                const word of
+                  profile.usaKeywords
+              ) {
+                if (
+                  words.has(word) ||
+                  text.includes(
+                    word === "madeinusa"
+                      ? "made in usa"
+                      : word
+                  )
+                ) {
+                  usaMatch = true;
+                  score -= 12;
+                  break;
+                }
+              }
+
+              /*
+               * FEIL MODELL/SERIE
+               *
+               * Player, American Standard, American Professional
+               * osv. skal ikke få lov til å blandes inn som om de
+               * var samme modell.
+               */
+              for (
+                const word of
+                  profile.wrongModelKeywords
+              ) {
+                if (
+                  words.has(word)
+                ) {
+                  wrongModel = true;
+                  score -= 18;
+                }
+              }
+
+              /*
+               * DELER / TILBEHØR
+               */
+              let negativeHits = 0;
+
+              for (
+                const word of
+                  profile.negativeWords
+              ) {
+                if (words.has(word)) {
+                  negativeHits++;
+                }
+              }
+
+              if (negativeHits > 0) {
+                score -=
+                  25 +
+                  negativeHits * 5;
+              }
+
+              /*
+               * VIKTIG REGLER:
+               *
+               * 1. Merke må finnes.
+               * 2. Modellidentitet må finnes.
+               * 3. Deler/tilbehør forkastes.
+               * 4. Feil Fender-serie forkastes.
+               */
+              if (
+                profile.brandWords.length &&
+                !brandMatch
+              ) {
+                return {
+                  score,
+                  relevant: false
+                };
+              }
+
+              if (
+                !modelMatch
+              ) {
+                return {
+                  score,
+                  relevant: false
+                };
+              }
+
+              if (
+                negativeHits > 0 ||
+                wrongModel
+              ) {
+                return {
+                  score,
+                  relevant: false
+                };
+              }
+
+              /*
+               * Hvis vi kjenner både Mexico og USA er USA-feil.
+               */
+              if (
+                mexicoMatch &&
+                usaMatch
+              ) {
+                return {
+                  score,
+                  relevant: false
+                };
+              }
+
+              /*
+               * For en identifikasjon med kjent produksjonsland:
+               * manglende land er OK, men riktig land gir bonus.
+               */
+              if (
+                profile.mexicoKeywords.size &&
+                !mexicoMatch &&
+                !usaMatch
+              ) {
+                score -= 3;
+              }
+
+              /*
+               * Når eksakt år er kjent:
+               *
+               * - eksakt år = sterk bonus
+               * - annet konkret år = stor straff
+               *
+               * Dette hindrer f.eks. 2008/2012/2019 fra å blandes
+               * inn når bildet viser en 1995-modell.
+               */
+              const listingYears =
+                [
+                  ...new Set(
+                    text.match(
+                      /\b(19\d{2}|20\d{2})\b/g
+                    ) || []
+                  )
+                ];
+
+              if (
+                profile.targetYears.length
+              ) {
+                const exactYear =
+                  profile.targetYears.some(
+                    year =>
+                      listingYears.includes(
+                        year
+                      )
+                  );
+
+                const otherYear =
+                  listingYears.some(
+                    year =>
+                      !profile.targetYears.includes(
+                        year
+                      )
+                  );
+
+                if (
+                  exactYear
+                ) {
+                  score += 18;
+                  yearMatch = true;
+                } else if (
+                  otherYear
+                ) {
+                  score -= 14;
+                }
+              }
+
+              /*
+               * Minimumskrav.
+               *
+               * 1995 Mexico Stratocaster:
+               * merke + modell + Mexico bør normalt være nødvendig.
+               * Hvis Mexico ikke står i tittelen kan treffet fortsatt
+               * slippe gjennom, men med lavere score.
+               */
+              let relevant =
+                score >= 18;
+
+              if (
+                profile.mexicoKeywords.size &&
+                usaMatch
+              ) {
+                relevant = false;
+              }
 
               return {
                 score,
@@ -1170,38 +1612,60 @@ export default async function handler(req, res) {
               };
             }
 
-            function filterRelevantEbayListings(listings, parsed) {
-              const profile = buildEbayRelevanceProfile(parsed);
+            function filterRelevantEbayListings(
+              listings,
+              parsed
+            ) {
+              const profile =
+                buildEbayRelevanceProfile(
+                  parsed
+                );
 
               return listings
                 .map(item => {
-                  const result = scoreEbayListing(
-                    item.title,
-                    profile
-                  );
+                  const result =
+                    scoreEbayListing(
+                      item.title,
+                      profile
+                    );
 
                   return {
                     ...item,
-                    relevance_score: result.score,
-                    relevance_match: result.relevant
+                    relevance_score:
+                      result.score,
+                    relevance_match:
+                      result.relevant
                   };
                 })
-                .filter(item => item.relevance_match)
+                .filter(
+                  item =>
+                    item.relevance_match
+                )
                 .sort(
                   (a, b) =>
-                    Number(b.relevance_score || 0) -
-                    Number(a.relevance_score || 0)
+                    Number(
+                      b.relevance_score || 0
+                    ) -
+                    Number(
+                      a.relevance_score || 0
+                    )
                 );
             }
 
             async function searchEbay(parsed) {
-              const querySet = buildEbayQueries(parsed);
-              const allQueries = querySet.queries;
+              const querySet =
+                buildEbayQueries(
+                  parsed
+                );
+
+              const allQueries =
+                querySet.queries;
 
               if (!allQueries.length) {
                 return {
                   enabled: false,
-                  reason: "Ingen egnet eBay-søkestreng",
+                  reason:
+                    "Ingen egnet eBay-søkestreng",
                   queries: [],
                   successful_queries: []
                 };
@@ -1209,7 +1673,9 @@ export default async function handler(req, res) {
 
               async function runQuery(query) {
                 try {
-                  return await searchEbaySingle(query);
+                  return await searchEbaySingle(
+                    query
+                  );
                 } catch {
                   return {
                     enabled: false,
@@ -1220,28 +1686,56 @@ export default async function handler(req, res) {
                 }
               }
 
-              /* Først de mest presise søkene. */
-              const firstQueries = allQueries.slice(0, 4);
-              const results = await Promise.all(
-                firstQueries.map(query => runQuery(query))
-              );
+              /*
+               * Først tre beste søk.
+               */
+              const firstQueries =
+                allQueries.slice(0, 3);
+
+              const results =
+                await Promise.all(
+                  firstQueries.map(
+                    query =>
+                      runQuery(query)
+                  )
+                );
 
               let rawListings = [];
               const seen = new Set();
 
-              function addResults(resultList) {
-                for (const result of resultList) {
-                  for (const item of result?.listings || []) {
-                    const key = String(
-                      item.url || item.title || ""
-                    ).trim().toLowerCase();
+              function addResults(
+                resultList
+              ) {
+                for (
+                  const result of
+                    resultList
+                ) {
+                  for (
+                    const item of
+                      result?.listings || []
+                  ) {
+                    const key =
+                      String(
+                        item.url ||
+                        item.title ||
+                        ""
+                      )
+                        .trim()
+                        .toLowerCase();
 
-                    if (!key || seen.has(key)) continue;
+                    if (
+                      !key ||
+                      seen.has(key)
+                    ) {
+                      continue;
+                    }
+
                     seen.add(key);
 
                     rawListings.push({
                       ...item,
-                      query: result.query
+                      query:
+                        result.query
                     });
                   }
                 }
@@ -1256,25 +1750,43 @@ export default async function handler(req, res) {
                 );
 
               /*
-               * Hvis vi har færre enn 5 relevante treff,
-               * bruker vi bredere søk som reserve.
+               * Hvis vi har færre enn 5 gode treff,
+               * bruker vi maks tre ekstra søk.
                */
-              if (relevantListings.length < 5) {
-                const remainingQueries = allQueries.filter(query =>
-                  !firstQueries.some(first =>
-                    first.toLowerCase() === query.toLowerCase()
-                  )
-                );
+              if (
+                relevantListings.length < 5
+              ) {
+                const remainingQueries =
+                  allQueries.filter(
+                    query =>
+                      !firstQueries.some(
+                        first =>
+                          first.toLowerCase() ===
+                          query.toLowerCase()
+                      )
+                  );
 
                 const fallbackQueries =
-                  remainingQueries.slice(0, 2);
+                  remainingQueries.slice(
+                    0,
+                    3
+                  );
 
-                const fallbackResults = await Promise.all(
-                  fallbackQueries.map(query => runQuery(query))
+                const fallbackResults =
+                  await Promise.all(
+                    fallbackQueries.map(
+                      query =>
+                        runQuery(query)
+                    )
+                  );
+
+                results.push(
+                  ...fallbackResults
                 );
 
-                results.push(...fallbackResults);
-                addResults(fallbackResults);
+                addResults(
+                  fallbackResults
+                );
 
                 relevantListings =
                   filterRelevantEbayListings(
@@ -1283,72 +1795,170 @@ export default async function handler(req, res) {
                   );
               }
 
-              const attemptedQueries = results
-                .map(result => result?.query)
-                .filter(Boolean);
-
-              const successfulQueries = results
-                .filter(result => result?.enabled && Number(result?.sample_size) > 0)
-                .map(result => result.query);
+              const attemptedQueries =
+                results
+                  .map(
+                    result =>
+                      result?.query
+                  )
+                  .filter(Boolean);
 
               /*
-               * Prisberegningen bruker bare annonser som passer
-               * identifikasjonen – ikke alle eBay-treff.
+               * Viktig:
+               * successful_queries skal bare inneholde søk
+               * som faktisk ga relevante annonser.
                */
-              const priceItems = relevantListings
-                .filter(item =>
-                  Number.isFinite(Number(item.price_nok)) &&
-                  Number(item.price_nok) > 0
-                )
-                .map(item => ({
-                  ...item,
-                  nok: Number(item.price_nok)
-                }));
+              const successfulQueries =
+                [
+                  ...new Set(
+                    relevantListings
+                      .map(
+                        item =>
+                          item.query
+                      )
+                      .filter(Boolean)
+                  )
+                ];
+
+              const priceItems =
+                relevantListings
+                  .filter(
+                    item =>
+                      Number.isFinite(
+                        Number(
+                          item.price_nok
+                        )
+                      ) &&
+                      Number(
+                        item.price_nok
+                      ) > 0
+                  )
+                  .map(
+                    item => ({
+                      ...item,
+                      nok:
+                        Number(
+                          item.price_nok
+                        )
+                    })
+                  );
 
               const filteredPriceItems =
-                removeOutliers(priceItems);
+                removeOutliers(
+                  priceItems
+                );
 
-              const filtered = filteredPriceItems.length
-                ? filteredPriceItems
-                : priceItems;
+              const filtered =
+                filteredPriceItems.length
+                  ? filteredPriceItems
+                  : priceItems;
 
-              const finalPrices = filtered
-                .map(item => Number(item.nok))
-                .filter(Number.isFinite)
-                .filter(value => value > 0);
+              const finalPrices =
+                filtered
+                  .map(
+                    item =>
+                      Number(item.nok)
+                  )
+                  .filter(
+                    Number.isFinite
+                  )
+                  .filter(
+                    value =>
+                      value > 0
+                  );
 
-              const medianNok = median(finalPrices);
-              const ebayLow = percentile(finalPrices, 0.15);
-              const ebayHigh = percentile(finalPrices, 0.85);
+              const medianNok =
+                median(
+                  finalPrices
+                );
+
+              const ebayLow =
+                percentile(
+                  finalPrices,
+                  0.15
+                );
+
+              const ebayHigh =
+                percentile(
+                  finalPrices,
+                  0.85
+                );
 
               return {
                 enabled: true,
-                marketplace: "EBAY_DE",
-                query: attemptedQueries[0] || "",
-                queries: attemptedQueries,
-                successful_queries: successfulQueries,
-                total_candidates: rawListings.length,
-                relevant_candidates: relevantListings.length,
-                sample_size: filtered.length,
-                median_nok: Number.isFinite(medianNok)
-                  ? Math.round(medianNok)
-                  : null,
-                low_nok: Number.isFinite(ebayLow)
-                  ? Math.round(ebayLow)
-                  : null,
-                high_nok: Number.isFinite(ebayHigh)
-                  ? Math.round(ebayHigh)
-                  : null,
-                listings: filtered
-                  .slice(0, 12)
-                  .map(item => ({
-                    title: item.title,
-                    price: item.price,
-                    price_nok: item.nok,
-                    url: item.url,
-                    query: item.query,
-                    relevance_score: item.relevance_score
-                  }))
+                marketplace:
+                  "EBAY_DE",
+
+                query:
+                  attemptedQueries[0] ||
+                  "",
+
+                queries:
+                  attemptedQueries,
+
+                successful_queries:
+                  successfulQueries,
+
+                total_candidates:
+                  rawListings.length,
+
+                relevant_candidates:
+                  relevantListings.length,
+
+                sample_size:
+                  filtered.length,
+
+                median_nok:
+                  Number.isFinite(
+                    medianNok
+                  )
+                    ? Math.round(
+                        medianNok
+                      )
+                    : null,
+
+                low_nok:
+                  Number.isFinite(
+                    ebayLow
+                  )
+                    ? Math.round(
+                        ebayLow
+                      )
+                    : null,
+
+                high_nok:
+                  Number.isFinite(
+                    ebayHigh
+                  )
+                    ? Math.round(
+                        ebayHigh
+                      )
+                    : null,
+
+                listings:
+                  filtered
+                    .slice(0, 12)
+                    .map(
+                      item => ({
+                        title:
+                          item.title,
+
+                        price:
+                          item.price,
+
+                        price_nok:
+                          item.nok,
+
+                        url:
+                          item.url,
+
+                        query:
+                          item.query,
+
+                        relevance_score:
+                          item.relevance_score
+                      })
+                    )
               };
             }
 
