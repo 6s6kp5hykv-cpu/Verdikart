@@ -571,6 +571,14 @@ Returner KUN gyldig JSON:
         }
       }
 
+      // Hvis sykkelmodellen ikke kan bekreftes, søker vi fortsatt etter
+      // komplette sykler av riktig merke/type med flere smale søk.
+      if (category === "bicycle" && brand && !model) {
+        candidates.push(`${brand} trekking e-bike complete`);
+        candidates.push(`${brand} trekking electric bicycle complete`);
+        candidates.push(`${brand} trekking pedelec complete bike`);
+      }
+
       // AI-søket brukes kun hvis det allerede er kort og produktorientert.
       if (aiQuery) {
         candidates.push(aiQuery);
@@ -727,6 +735,36 @@ Returner KUN gyldig JSON:
             near_match: false,
             year_match: year ? "missing" : "not_required",
             reason: "ikke tydelig komplett sykkel"
+          };
+        }
+
+        // Når merket er kjent, men modellen ikke kan bekreftes fra bildet,
+        // kan komplette sykler av samme merke/type brukes som konservativt
+        // markedsgrunnlag. Dette er IKKE et eksakt modelltreff.
+        if (brand && !model) {
+          const bikeTypeWords = /\b(trekking|trekkingrad|trekking e-bike|city bike|pedelec|electric bike|e-bike|ebike|elektrofahrrad|elektro[- ]?fahrrad|sykkel)\b/.test(t);
+          const completeSignals = /\b(complete|komplett|bike|bicycle|e-bike|ebike|fahrrad|elektrofahrrad|pedelec|sykkel)\b/.test(t);
+
+          if (!bikeTypeWords || !completeSignals) {
+            return {
+              score: -100,
+              accepted: false,
+              near_match: false,
+              year_match: year ? "missing" : "not_required",
+              reason: "ikke riktig sykkeltype"
+            };
+          }
+
+          score += 35;
+          reasons.push("komplett sykkel av riktig merke/type");
+
+          return {
+            score,
+            accepted: score >= 55,
+            near_match: false,
+            same_model_fallback: true,
+            year_match: "not_required",
+            reason: "modell ikke bekreftet – merke/type brukt som markedsgrunnlag"
           };
         }
 
@@ -1144,15 +1182,13 @@ Returner KUN gyldig JSON:
         relevance_score: relevance.score,
         relevance_reason: relevance.reason,
         year_match: relevance.year_match || "not_required",
-        match_tier: relevance.near_match ? "near" : "exact",
+        match_tier: relevance.near_match
+          ? "near"
+          : (relevance.same_model_fallback ? "same_model" : "exact"),
         valuation_tier:
           relevance.near_match
-            ? (
-                // Same model + same material is useful market evidence
-                // when the object itself has no concrete year requirement.
-                (criteria.year ? "near" : "same_model")
-              )
-            : "exact"
+            ? (criteria.year ? "near" : "same_model")
+            : (relevance.same_model_fallback ? "same_model" : "exact")
       };
     }
 
@@ -1340,6 +1376,7 @@ Returner KUN gyldig JSON:
           minimum_relevance_score: 45,
           exact_year_required_for_valuation: Boolean(built.year),
           valuation_uses_same_model_when_year_not_required: !built.year,
+          model_confirmed: Boolean(built.model),
           valuation_minimum_relevance_score:
             valuationPool.length >= 3 ? 60 : 50
         },
