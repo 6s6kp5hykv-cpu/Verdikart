@@ -824,6 +824,33 @@ Returner KUN gyldig JSON:
           userText
         );
 
+      const objectText = `${parsed.name || ""} ${parsed.description || ""} ${info.model || ""} ${info.type || ""} ${info.material || ""}`.toLowerCase();
+
+      const targetFingerboard =
+        /\b(rosewood|palisander)\b/.test(objectText)
+          ? "rosewood"
+          : /\b(maple|lønnet)\b.*\b(fingerboard|fretboard|gripebrett)\b/.test(objectText)
+            ? "maple"
+            : null;
+
+      const targetColor =
+        /\b(black|svart|sort)\b/.test(objectText)
+          ? "black"
+          : /\b(white|hvit)\b/.test(objectText)
+            ? "white"
+            : /\b(red|rød)\b/.test(objectText)
+              ? "red"
+              : /\b(blue|blå)\b/.test(objectText)
+                ? "blue"
+                : /\b(sunburst|sun burst)\b/.test(objectText)
+                  ? "sunburst"
+                  : /\b(olympic white)\b/.test(objectText)
+                    ? "olympic_white"
+                    : null;
+
+      const targetSpecial =
+        /\b(anniversary|50th ann|50th anniversary|special edition|62['’]? special)\b/.test(objectText);
+
       const hardYear =
         category === "guitar"
           ? year
@@ -1036,6 +1063,9 @@ Returner KUN gyldig JSON:
         country,
         ageGroup,
         category,
+        target_fingerboard: targetFingerboard,
+        target_color: targetColor,
+        target_special: targetSpecial,
         user_model_hint: userModelHint,
         variant_uncertain: variantUncertain
       };
@@ -1763,6 +1793,85 @@ Returner KUN gyldig JSON:
             accepted: false,
             reason: "Mexico-modell"
           };
+        }
+      }
+
+      /* -------------------------------------------------------
+         GITAR – STRENG VARIANTMATCHING V10.5
+         -------------------------------------------------------
+         År alene er ikke nok for en gitar. Tydelige forskjeller
+         som gripebrett og spesial/anniversary-modell skal ikke
+         havne i puljen for "eksakte" sammenligninger.
+      */
+      if (category === "guitar") {
+        const listingFingerboard =
+          /\b(rosewood|palisander)\b/.test(t)
+            ? "rosewood"
+            : /\b(maple|lønnet)\b\s*(fingerboard|fretboard|gripebrett)\b/.test(t)
+              ? "maple"
+              : /\b(fingerboard|fretboard|gripebrett)\b.*\b(maple|lønnet)\b/.test(t)
+                ? "maple"
+                : null;
+
+        if (criteria.target_fingerboard && listingFingerboard) {
+          if (criteria.target_fingerboard !== listingFingerboard) {
+            return {
+              score: Math.max(0, score - 20),
+              accepted: false,
+              near_match: true,
+              year_match: year ? "missing" : "not_required",
+              reason: "annet gripebrett"
+            };
+          }
+          score += 15;
+          reasons.push("samme gripebrett");
+        }
+
+        const listingSpecial =
+          /\b(anniversary|50th ann|50th anniversary|special edition|62['’]? special)\b/.test(t);
+
+        if (!criteria.target_special && listingSpecial) {
+          return {
+            score: Math.max(0, score - 20),
+            accepted: false,
+            near_match: true,
+            year_match: year ? "missing" : "not_required",
+            reason: "spesial/anniversary-variant"
+          };
+        }
+
+        if (criteria.target_special && listingSpecial) {
+          score += 15;
+          reasons.push("samme spesialvariant");
+        }
+
+        const colorPatterns = {
+          black: /\b(black|svart|sort)\b/,
+          white: /\b(white|hvit|olympic white)\b/,
+          red: /\b(red|rød|candy apple red)\b/,
+          blue: /\b(blue|blå|ocean turquoise|lake placid blue)\b/,
+          sunburst: /\b(sunburst|sun burst|3[- ]tone sunburst|3ts)\b/,
+          olympic_white: /\bolympic white\b/
+        };
+
+        if (criteria.target_color) {
+          const listingColor = Object.entries(colorPatterns)
+            .find(([, pattern]) => pattern.test(t))?.[0] || null;
+
+          if (listingColor && listingColor !== criteria.target_color) {
+            return {
+              score: Math.max(0, score - 15),
+              accepted: false,
+              near_match: true,
+              year_match: year ? "missing" : "not_required",
+              reason: "annen farge"
+            };
+          }
+
+          if (listingColor === criteria.target_color) {
+            score += 8;
+            reasons.push("samme farge");
+          }
         }
       }
 
@@ -3127,7 +3236,7 @@ Returner KUN gyldig JSON:
         "v10-multi-source-market-engine",
 
       market_filter_version:
-        "v10-exact-year-primary-same-model-secondary"
+        "v10.5-exact-year-and-variant-primary-same-model-secondary"
     });
 
   } catch (e) {
