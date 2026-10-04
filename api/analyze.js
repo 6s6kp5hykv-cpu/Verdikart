@@ -2343,6 +2343,42 @@ Returner KUN gyldig JSON:
       const scoringText =
         `${title} ${item._ebay_aspect_text || ""}`.trim();
 
+      /*
+       * V11.4: HARD CONDITION FILTER
+       * -----------------------------
+       * Some eBay results can slip through the normal relevance scorer
+       * even when the title clearly says that the instrument is junk,
+       * untested, broken or sold for repair. Such listings must NEVER
+       * enter the valuation pool for a complete working object.
+       */
+      if (criteria.category === "guitar") {
+        const hardBadConditionPatterns = [
+          /\bjunk\b/i,
+          /\buntested\b/i,
+          /\bnot\s+tested\b/i,
+          /\bno\s+testing\b/i,
+          /\bno\s+test\b/i,
+          /\bnot\s+working\b/i,
+          /\bnon[- ]?working\b/i,
+          /\bbroken\b/i,
+          /\bneeds?\s+repair\b/i,
+          /\bfor\s+repair\b/i,
+          /\brepair\s+project\b/i,
+          /\bproject\s+guitar\b/i,
+          /\bfor\s+parts\b/i,
+          /\bparts\s+only\b/i,
+          /\bas[- ]?is\b/i,
+          /\bincomplete\b/i,
+          /\bmissing\s+parts\b/i,
+          /\bdamaged\b/i,
+          /\buntested\s+condition\b/i
+        ];
+
+        if (hardBadConditionPatterns.some(pattern => pattern.test(scoringText))) {
+          return null;
+        }
+      }
+
       const relevance =
         scoreListing(
           scoringText,
@@ -2357,7 +2393,7 @@ Returner KUN gyldig JSON:
       }
 
       /*
-       * V11.3: STRATOCaster-VARIANTFILTER
+       * V11.4: STRATOCaster-VARIANTFILTER
        * --------------------------------
        * "Stratocaster" alene er for bredt. Player II, Vintera,
        * Special/Limited Edition, Squier osv. kan ellers bli telt som
