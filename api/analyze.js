@@ -2576,7 +2576,7 @@ Returner KUN gyldig JSON:
        * exact kan brukes.
        */
 
-      const exactPool =
+      const rawExactPool =
         all.filter(
           x =>
             x.match_tier === "exact" &&
@@ -2586,6 +2586,17 @@ Returner KUN gyldig JSON:
               x.year_match === "exact"
             )
         );
+
+      /*
+       * V11.1: stabiliser eksakte markedsreferanser.
+       * eBay kan returnere svært ulike resultater fra samme søk mellom
+       * kjøringer, og enkelte aktive annonser kan ha åpenbare prisavvik.
+       * Vi bruker derfor et konservativt IQR-filter på eksakte treff når
+       * vi har nok observasjoner. Ved færre enn 7 treff beholder vi alle
+       * treff slik at vi ikke kaster bort verdifulle små utvalg.
+       */
+      const exactPool =
+        removeOutliers(rawExactPool);
 
       /*
        * Same-model treff:
@@ -2818,6 +2829,12 @@ Returner KUN gyldig JSON:
 
         exact_match_count:
           exactPool.length,
+
+        raw_exact_match_count:
+          rawExactPool.length,
+
+        exact_price_filter_removed:
+          Math.max(0, rawExactPool.length - exactPool.length),
 
         same_model_match_count:
           sameModelPool.length,
@@ -3381,7 +3398,7 @@ Returner KUN gyldig JSON:
       market.source_weights.find(x => x.source === "ebay")?.percent || 0;
 
     const valuationMethod =
-      `V11.0 markedsmotor: ${market.basis}`;
+      `V11.1 markedsmotor: ${market.basis}`;
 
     /* ---------------------------------------------------------
        8. RETURNER
