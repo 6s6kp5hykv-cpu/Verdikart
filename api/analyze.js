@@ -387,20 +387,67 @@ Returner KUN gyldig JSON:
     function removeOutliers(items) {
       if (items.length < 5) return items;
 
-      const prices = items
+      let current = [...items];
+
+      // Two IQR passes remove obvious layers of extreme active-listing prices.
+      for (let pass = 0; pass < 2; pass++) {
+        const prices = current
+          .map(x => Number(x.nok))
+          .filter(Number.isFinite);
+
+        if (prices.length < 5) break;
+
+        const q1 = percentile(prices, 0.25);
+        const q3 = percentile(prices, 0.75);
+        const iqr = q3 - q1;
+
+        if (!Number.isFinite(q1) || !Number.isFinite(q3)) break;
+
+        const low = q1 - 1.5 * iqr;
+        const high = q3 + 1.5 * iqr;
+
+        const next = current.filter(item => {
+          const price = Number(item.nok);
+          return Number.isFinite(price) && price >= low && price <= high;
+        });
+
+        if (next.length === current.length) break;
+        current = next;
+      }
+
+      return current.length >= 2 ? current : items;
+    }
+
+    function robustPriceItems(items, category) {
+      const cleaned = removeOutliers(items);
+
+      // Pokémon active listings often contain sellers asking far above the
+      // normal market. After IQR filtering, protect the core from a second
+      // tier of extreme high-price listings. Displayed comparable counts are
+      // unchanged; this only affects the valuation calculation.
+      if (category !== "pokemon" || cleaned.length < 8) {
+        return cleaned;
+      }
+
+      const values = cleaned
         .map(x => Number(x.nok))
-        .filter(Number.isFinite);
+        .filter(Number.isFinite)
+        .filter(x => x > 0);
 
-      if (prices.length < 5) return items;
+      const center = median(values);
 
-      const q1 = percentile(prices, 0.25);
-      const q3 = percentile(prices, 0.75);
-      const iqr = q3 - q1;
+      if (!Number.isFinite(center) || center <= 0) {
+        return cleaned;
+      }
 
-      return items.filter(item =>
-        Number(item.nok) >= q1 - 1.5 * iqr &&
-        Number(item.nok) <= q3 + 1.5 * iqr
-      );
+      const pokemonCore = cleaned.filter(item => {
+        const price = Number(item.nok);
+        return Number.isFinite(price) &&
+          price >= center * 0.45 &&
+          price <= center * 2.0;
+      });
+
+      return pokemonCore.length >= 5 ? pokemonCore : cleaned;
     }
 
     /* ---------------------------------------------------------
@@ -2367,8 +2414,9 @@ Returner KUN gyldig JSON:
       }
 
       const filteredPool =
-        removeOutliers(
-          valuationPool
+        robustPriceItems(
+          valuationPool,
+          built.category
         );
 
       const finalPool =
@@ -2384,8 +2432,20 @@ Returner KUN gyldig JSON:
           )
           .slice(0, 8);
 
+      const exactPricePool =
+        robustPriceItems(
+          exactPool,
+          built.category
+        );
+
+      const sameModelPricePool =
+        robustPriceItems(
+          sameModelPool,
+          built.category
+        );
+
       const exactPrices =
-        exactPool
+        exactPricePool
           .map(
             x => Number(x.nok)
           )
@@ -2393,7 +2453,7 @@ Returner KUN gyldig JSON:
           .filter(x => x > 0);
 
       const sameModelPrices =
-        sameModelPool
+        sameModelPricePool
           .map(
             x => Number(x.nok)
           )
@@ -2419,15 +2479,21 @@ Returner KUN gyldig JSON:
       const sameModelMedian =
         median(sameModelPrices);
 
-      // V10.4: Ikke la ett eBay-marked dominere bare fordi det har
+      // V10.5: Ikke la ett eBay-marked dominere bare fordi det har
       // mange flere annonser enn de andre. Når minst to markeder har
       // >=2 eksakte treff, bruker vi medianen av markedsmedianene.
       const exactMarketplaceMedians =
         marketplaces
           .map(marketplace => {
-            const marketPrices =
+            const marketPool =
               exactPool
-                .filter(x => x.marketplace === marketplace)
+                .filter(x => x.marketplace === marketplace);
+
+            const marketPrices =
+              robustPriceItems(
+                marketPool,
+                built.category
+              )
                 .map(x => Number(x.nok))
                 .filter(Number.isFinite)
                 .filter(x => x > 0);
@@ -2520,8 +2586,28 @@ Returner KUN gyldig JSON:
         marketplaceStats[marketplace] = {
           exact_match_count: exact.length,
           same_model_match_count: sameModel.length,
-          exact_median_nok: Number.isFinite(median(exactMarketPrices))
-            ? Math.round(median(exactMarketPrices))
+          exact_median_nok: Number.isFinite(
+            median(
+              robustPriceItems(
+                exact,
+                built.category
+              )
+                .map(x => Number(x.nok))
+                .filter(Number.isFinite)
+                .filter(x => x > 0)
+            )
+          )
+            ? Math.round(
+                median(
+                  robustPriceItems(
+                    exact,
+                    built.category
+                  )
+                    .map(x => Number(x.nok))
+                    .filter(Number.isFinite)
+                    .filter(x => x > 0)
+                )
+              )
             : null
         };
       }
