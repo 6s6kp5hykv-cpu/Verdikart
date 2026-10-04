@@ -1,4 +1,4 @@
-// Kistefunn analysebackend v10
+// Kistefunn analysebackend v11.0
 // Strengere identifikasjon + hardere markedsfilter + multi-source markedsmotor
 //
 // Viktige endringer fra v7:
@@ -3012,7 +3012,7 @@ Returner KUN gyldig JSON:
     /* ---------------------------------------------------------
        7. MARKEDSMOTOR
        ---------------------------------------------------------
-       V10 gjør verdiberegningen klar for flere markedsplasser.
+       V11.0 gjør markedsmotoren klar for flere markedsplasser.
 
        Prinsipp:
        - AI-estimat er alltid grunnlaget dersom det finnes.
@@ -3062,9 +3062,36 @@ Returner KUN gyldig JSON:
         same_model_match_count: 0,
         distinct_count: 0,
         reason:
-          "FINN-markedsdata er klargjort, men FINN API-tilgang er ikke koblet til ennå."
+          "FINN-adapter er klargjort, men live FINN-data er deaktivert til Kistefunn har legitim FINN API-tilgang og nødvendige API-parametre."
       }
     };
+
+    /*
+     * FINN-ADAPTER V11.0
+     * -------------------
+     * FINN skal ikke skrapes. Live FINN-data aktiveres først når Kistefunn
+     * har legitim API-tilgang, API-nøkkel og dokumentert endepunkt/format.
+     * Vi holder derfor adapteren eksplisitt deaktivert her i stedet for å
+     * late som et uoffisielt endepunkt er tilgjengelig.
+     *
+     * Når tilgangen er på plass skal adapteren levere samme interne format
+     * som eBay: value_nok, low_nok, high_nok, exact_match_count,
+     * same_model_match_count og distinct_count. Frontend trenger da ikke
+     * endres.
+     */
+    const finnAdapter = {
+      enabled: false,
+      status: "ready_for_official_api",
+      requires: [
+        "FINN API-tilgang",
+        "API-nøkkel/credentials",
+        "offisielt søkeendepunkt",
+        "dokumentert responsformat"
+      ]
+    };
+
+    marketSources.finn.adapter_status = finnAdapter.status;
+    marketSources.finn.adapter_requires = finnAdapter.requires;
 
     function calculateEbayQuality(source) {
       if (!source?.enabled || !Number.isFinite(source.value_nok)) {
@@ -3127,7 +3154,7 @@ Returner KUN gyldig JSON:
     }
 
     /*
-     * V10 bruker source weights i stedet for at kombinasjonslogikken
+     * V11.0 bruker source weights i stedet for at kombinasjonslogikken
      * er bundet direkte til eBay. Når FINN senere aktiveres, kan samme
      * motor bruke FINN + eBay samtidig uten å endre frontend.
      */
@@ -3210,7 +3237,7 @@ Returner KUN gyldig JSON:
         );
 
         /*
-         * V10.8: Når vi har mange eksakte markedsreferanser skal
+         * V11.0: Når vi har mange eksakte markedsreferanser skal
          * faktisk markedsdata være hovedankeret. AI brukes fortsatt
          * som kontroll, men skal ikke trekke en godt dokumentert
          * markedspris unødvendig langt ned eller opp.
@@ -3354,7 +3381,7 @@ Returner KUN gyldig JSON:
       market.source_weights.find(x => x.source === "ebay")?.percent || 0;
 
     const valuationMethod =
-      `V10.8 markedsmotor: ${market.basis}`;
+      `V11.0 markedsmotor: ${market.basis}`;
 
     /* ---------------------------------------------------------
        8. RETURNER
@@ -3484,6 +3511,7 @@ Returner KUN gyldig JSON:
 
       market,
 
+      market_engine_version: "v11.0-finn-ready",
       market_sources: marketSources,
 
       market_engine_version:
