@@ -1,4 +1,4 @@
-// Kistefunn analysebackend v12.5
+// Kistefunn analysebackend v12.6
 // Strengere identifikasjon + hardere markedsfilter + multi-source markedsmotor
 // - V11.9: feil i søkemotorens variabelrekkefølge rettet + versjonsmerking samlet.
 // - V11.8: farge og gripebrett/materiale er sekundære signaler og skal ikke låse markedssøket.
@@ -3107,14 +3107,15 @@ Returner KUN gyldig JSON:
       // V12.5: Ikke stol på søketeksten alene. En Fender MIM Stratocaster
       // med kjent år skal ha samme harde variantgate selv om AI/eBay-
       // metadata mangler "Mexico" i ett av feltene.
+      // V12.6: bruk selve markedssøket som siste sikkerhetssignal.
+      // Tidligere var denne gaten avhengig av built.category/brand/model.
+      // Hvis AI-en satte category feil eller feltene var tomme, kunne Squier
+      // derfor slippe gjennom selv om søket tydelig var Fender Stratocaster
+      // Mexico. Query-teksten er nå tilstrekkelig til å aktivere hardgaten.
       const normalFenderMimQuery =
-        built.category === "guitar" &&
-        /\bfender\b/i.test(String(built.brand || builtQueryText)) &&
-        /\bstratocaster\b/i.test(String(built.model || builtQueryText)) &&
-        (
-          /\b(?:mexico|mim|made in mexico)\b/i.test(builtQueryText) ||
-          /\b(?:mexico|mim|made in mexico)\b/i.test(String(built.country || ""))
-        );
+        /\bfender\b/i.test(builtQueryText) &&
+        /\bstratocaster\b/i.test(builtQueryText) &&
+        /\b(?:mexico|mim|made in mexico)\b/i.test(builtQueryText);
 
       if (normalFenderMimQuery) {
         const finalForbiddenFenderVariants = [
@@ -3566,6 +3567,7 @@ Returner KUN gyldig JSON:
               })
             ),
 
+        // V12.6: exactPool er allerede hard-filtrert mot Squier/FSR/Special osv.
         exact_listings:
           exactPool
             .slice(0, 12)
@@ -4158,10 +4160,10 @@ Returner KUN gyldig JSON:
       market_sources: marketSources,
 
       market_engine_version:
-        "v12.5-market-first-pricing",
+        "v12.6-market-first-pricing",
 
       market_filter_version:
-        "v12.5-hard-title-year-variant-fender-gate-clean-display"
+        "v12.6-hard-title-year-variant-fender-gate-clean-display"
     });
 
   } catch (e) {
