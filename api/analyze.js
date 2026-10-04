@@ -455,6 +455,31 @@ Returner KUN gyldig JSON:
       return null;
     }
 
+    function detectCategory(...values) {
+      const s = values
+        .map(v => String(v || ""))
+        .join(" ")
+        .toLowerCase();
+
+      if (/\b(playstation|ps5|xbox|nintendo switch|console|konsoll)\b/.test(s)) {
+        return "console";
+      }
+
+      if (/\b(bicycle|bike|sykkel|el-sykkel|elsykkel|e-bike|ebike|trekking bike|pedelec)\b/.test(s)) {
+        return "bicycle";
+      }
+
+      if (/\b(guitar|gitar|stratocaster|telecaster|les paul|precision bass|jazz bass)\b/.test(s)) {
+        return "guitar";
+      }
+
+      if (/\bbirkenstock\b/.test(s)) {
+        return "footwear";
+      }
+
+      return "generic";
+    }
+
     function buildStrictQueries(parsed) {
       const info = parsed?.item_info || {};
 
@@ -486,6 +511,15 @@ Returner KUN gyldig JSON:
         info.type,
         info.model,
         info.year_or_period
+      );
+
+      const category = detectCategory(
+        parsed.name,
+        parsed.description,
+        info.type,
+        info.model,
+        info.brand,
+        parsed.ebay_search_query
       );
 
       const candidates = [];
@@ -540,6 +574,7 @@ Returner KUN gyldig JSON:
         year,
         country,
         ageGroup,
+        category,
         variant_uncertain: /cannot be confirmed|can't be confirmed|cannot be determined|exact variant|variant.*cannot|eksakt variant|variant.*ikke.*bekreft|kan ikke bekreftes/i.test(
           `${parsed.description || ""} ${info.uncertainties || ""} ${info.model || ""}`
         )
@@ -573,6 +608,7 @@ Returner KUN gyldig JSON:
       const year = criteria.year;
       const material = String(criteria.material || "").toLowerCase();
       const variantUncertain = Boolean(criteria.variant_uncertain);
+      const category = criteria.category || "generic";
 
       let score = 0;
       const reasons = [];
@@ -591,7 +627,13 @@ Returner KUN gyldig JSON:
         "gehause only", "bodyteil", "korpus", "chassis",
         "ersatzteil", "ersatzteile", "spare part", "replacement part",
         "ohne hals", "ohne neck", "ohne hardware", "ohne elektronik",
-        "ohne pickup"
+        "ohne pickup",
+        "ladegerät", "ladegerat", "charger", "akku ladegerät",
+        "akku ladegerat", "battery charger", "battery only", "akku only",
+        "display only", "motor only", "engine only", "wheel only",
+        "laufrad only", "fork only", "gabel only", "saddle only",
+        "sattel only", "pedal set", "disc drive only", "disc drive",
+        "laufwerk only", "laufwerk", "repair service", "reparatur"
       ];
 
       const wrongModelTerms = [
@@ -604,6 +646,97 @@ Returner KUN gyldig JSON:
       // Direkte avvisning av tilbehør/deler.
       if (accessoryTerms.some(term => t.includes(term))) {
         return { score: -100, accepted: false, reason: "tilbehør/del" };
+      }
+
+      // SYKKEL: batterilåser, låser, nøkler og andre smådeler skal ikke
+      // kunne bli "eksakte" treff bare fordi merke + modell står i tittelen.
+      if (category === "bicycle") {
+        const bicyclePartTerms = [
+          "akku schloss", "battery lock", "battery key", "akku schloss set",
+          "lock set", "frame lock", "rahmenschloss", "battery cover",
+          "akku deckel", "akkugehäuse", "akku gehause", "motor cover",
+          "display", "controller", "sensor", "speed sensor", "chainring",
+          "kassette", "derailleur", "schaltwerk", "brake rotor",
+          "bremsrotor", "brake lever", "bremshebel", "charger",
+          "ladegerät", "ladegerat", "key only", "schlüssel only",
+          "schluessel only", "spare key", "ersatzschlüssel", "ersatzschluessel"
+        ];
+
+        if (bicyclePartTerms.some(term => t.includes(term))) {
+          return {
+            score: -100,
+            accepted: false,
+            near_match: false,
+            year_match: year ? "missing" : "not_required",
+            reason: "sykkeldel/tilbehør"
+          };
+        }
+
+        // En ren del-/tilbehørstittel uten tydelig komplett sykkelord skal
+        // aldri få høy score bare fra merke + modell.
+        const completeBikeWords = /\b(bike|bicycle|e-bike|ebike|trekking|city bike|mountain bike|mtb|pedelec|fahrrad|elektrofahrrad|sykkel)\b/.test(t);
+        const obviousPartWords = /\b(lock|schloss|key|battery|akku|charger|ladegerät|ladegerat|motor|display|sensor|fork|gabel|wheel|laufrad|frame|rahmen|sattel|saddle|pedal|brake|bremse|derailleur|schaltwerk|kassette)\b/.test(t);
+
+        if (obviousPartWords && !completeBikeWords) {
+          return {
+            score: -100,
+            accepted: false,
+            near_match: false,
+            year_match: year ? "missing" : "not_required",
+            reason: "ikke komplett sykkel"
+          };
+        }
+      }
+
+      // KONSOLL: en PS5-disc-stasjon, fjernkontroll eller reparasjonsobjekt
+      // er ikke en sammenlignbar komplett konsoll.
+      if (category === "console") {
+        const consolePartTerms = [
+          "disc drive", "disc-drive", "laufwerk", "disc reader",
+          "controller only", "dualsense only", "gamepad only",
+          "replacement", "repair", "defekt", "broken", "for parts",
+          "parts only", "fan only", "power supply", "netzteil",
+          "stand only", "vertical stand", "faceplate", "cover only"
+        ];
+
+        if (consolePartTerms.some(term => t.includes(term))) {
+          return {
+            score: -100,
+            accepted: false,
+            near_match: false,
+            year_match: year ? "missing" : "not_required",
+            reason: "konsolldel/tilbehør"
+          };
+        }
+
+        // Variantseparasjon for PS5: Slim, Pro og standard må ikke blandes.
+        const targetSlim = /\bslim\b/.test(model + " " + type + " " + criteria.model);
+        const targetPro = /\bpro\b/.test(model + " " + type + " " + criteria.model);
+        const listingSlim = /\bslim\b/.test(t);
+        const listingPro = /\bpro\b/.test(t);
+
+        if (targetSlim && listingPro) {
+          return { score: -100, accepted: false, reason: "PS5 Pro vs Slim" };
+        }
+        if (targetPro && listingSlim) {
+          return { score: -100, accepted: false, reason: "PS5 Slim vs Pro" };
+        }
+
+        const targetDisc = /\b(disc|blu[ -]?ray|diskstasjon|disk)\b/.test(
+          `${model} ${type} ${criteria.model}`
+        );
+        const targetDigital = /\b(digital|digital edition)\b/.test(
+          `${model} ${type} ${criteria.model}`
+        );
+        const listingDisc = /\b(disc|blu[ -]?ray|diskstasjon|disk)\b/.test(t);
+        const listingDigital = /\bdigital\b/.test(t);
+
+        if (targetDisc && listingDigital && !listingDisc) {
+          return { score: -100, accepted: false, reason: "PS5 Digital vs Disc" };
+        }
+        if (targetDigital && listingDisc) {
+          return { score: -100, accepted: false, reason: "PS5 Disc vs Digital" };
+        }
       }
 
       if (
@@ -942,7 +1075,15 @@ Returner KUN gyldig JSON:
         relevance_score: relevance.score,
         relevance_reason: relevance.reason,
         year_match: relevance.year_match || "not_required",
-        match_tier: relevance.near_match ? "near" : "exact"
+        match_tier: relevance.near_match ? "near" : "exact",
+        valuation_tier:
+          relevance.near_match
+            ? (
+                // Same model + same material is useful market evidence
+                // when the object itself has no concrete year requirement.
+                (criteria.year ? "near" : "same_model")
+              )
+            : "exact"
       };
     }
 
@@ -1013,21 +1154,51 @@ Returner KUN gyldig JSON:
         return a.nok - b.nok;
       });
 
-      // Prisberegningen bruker KUN eksakte treff når objektet har
-      // et konkret år. Nærtreff uten år kan vises som markedsreferanser,
-      // men får ikke dra verdien opp eller ned.
+      // Tre nivåer:
+      // 1) exact       = samme dokumenterte variant + år når år er kjent
+      // 2) same_model  = samme modell/materialfamilie, men enkelte detaljer
+      //                  som farge/størrelse/år er ikke bekreftet
+      // 3) near         = nyttig som visning, men ikke verdigrunnlag
+      //
+      // Hvis objektet har et konkret år (f.eks. Fender 1995), skal
+      // year-missing treff IKKE påvirke verdien.
+      // Hvis objektet ikke har et konkret år (f.eks. en sandal), kan
+      // same_model brukes sammen med exact.
       const exactPool = all.filter(
         x => x.match_tier === "exact" && x.relevance_score >= 45
       );
 
-      const valuationPool = all.filter(
-        x => x.match_tier === "exact" && x.relevance_score >= 60
+      const sameModelPool = all.filter(
+        x =>
+          x.valuation_tier === "same_model" &&
+          x.relevance_score >= 50
       );
+
+      const valuationPool = built.year
+        ? all.filter(
+            x => x.match_tier === "exact" && x.relevance_score >= 60
+          )
+        : all.filter(
+            x =>
+              (
+                x.match_tier === "exact" ||
+                x.valuation_tier === "same_model"
+              ) &&
+              x.relevance_score >= 50
+          );
 
       const pool =
         valuationPool.length >= 3
           ? valuationPool
-          : exactPool;
+          : (
+              built.year
+                ? exactPool
+                : (
+                    sameModelPool.length
+                      ? [...exactPool, ...sameModelPool]
+                      : exactPool
+                  )
+            );
 
       const filteredPool = removeOutliers(pool);
 
@@ -1038,6 +1209,10 @@ Returner KUN gyldig JSON:
 
       const nearMatches = all
         .filter(x => x.match_tier === "near")
+        .slice(0, 8);
+
+      const sameModelMatches = all
+        .filter(x => x.valuation_tier === "same_model")
         .slice(0, 8);
 
       const prices = finalPool
@@ -1063,6 +1238,12 @@ Returner KUN gyldig JSON:
       const lowNok = percentile(prices, 0.15);
       const highNok = percentile(prices, 0.85);
 
+      // Samme annonsetekst til samme pris er ikke to uavhengige
+      // markedsobservasjoner. Dette hindrer duplikater fra å øke vekten.
+      const distinctValuationKeys = new Set(
+        finalPool.map(x => `${String(x.title || "").toLowerCase().trim()}|${Math.round(Number(x.nok) || 0)}`)
+      );
+
       return {
         enabled: true,
         marketplace: "EBAY_DE",
@@ -1073,6 +1254,8 @@ Returner KUN gyldig JSON:
         total_candidates: all.length,
         sample_size: finalPool.length,
         exact_match_count: exactPool.length,
+        distinct_valuation_count: distinctValuationKeys.size,
+        same_model_match_count: sameModelMatches.length,
         near_match_count: nearMatches.length,
         median_nok: Number.isFinite(medianNok)
           ? Math.round(medianNok)
@@ -1087,9 +1270,9 @@ Returner KUN gyldig JSON:
           strict: true,
           minimum_relevance_score: 45,
           exact_year_required_for_valuation: Boolean(built.year),
-          valuation_uses_exact_matches_only: true,
+          valuation_uses_same_model_when_year_not_required: !built.year,
           valuation_minimum_relevance_score:
-            valuationPool.length >= 3 ? 60 : 45
+            valuationPool.length >= 3 ? 60 : 50
         },
         listings: all.slice(0, 12).map(item => ({
           title: item.title,
@@ -1114,6 +1297,16 @@ Returner KUN gyldig JSON:
             match_tier: "exact",
             year_match: item.year_match
           })),
+        same_model_listings: sameModelMatches.map(item => ({
+          title: item.title,
+          price: item.price,
+          price_nok: item.nok,
+          url: item.url,
+          query: item.query,
+          relevance_score: item.relevance_score,
+          match_tier: "same_model",
+          year_match: item.year_match
+        })),
         near_listings: nearMatches.map(item => ({
           title: item.title,
           price: item.price,
@@ -1168,11 +1361,22 @@ Returner KUN gyldig JSON:
       ebaySampleSize > 0 &&
       Number.isFinite(ebay.median_nok)
     ) {
-      if (ebaySampleSize === 1) ebayWeight = 0.10;
-      else if (ebaySampleSize === 2) ebayWeight = 0.15;
-      else if (ebaySampleSize <= 4) ebayWeight = 0.25;
-      else if (ebaySampleSize <= 8) ebayWeight = 0.35;
-      else ebayWeight = 0.45;
+      const exactCount = Number(ebay.exact_match_count || 0);
+      const distinctCount = Number(ebay.distinct_valuation_count || ebaySampleSize || 0);
+      const sameModelCount = Number(ebay.same_model_match_count || 0);
+      const hasYear = Boolean(ebay?.filtering?.exact_year_required_for_valuation);
+
+      // eBay skal ha betydelig større vekt når vi faktisk har gode,
+      // uavhengige sammenligninger. Men ett enkelt aktivt treff skal
+      // fortsatt ikke overstyre AI-estimatet fullstendig.
+      if (hasYear && exactCount >= 5 && distinctCount >= 4) ebayWeight = 0.75;
+      else if (hasYear && exactCount >= 3 && distinctCount >= 3) ebayWeight = 0.65;
+      else if (hasYear && exactCount >= 2 && distinctCount >= 2) ebayWeight = 0.55;
+      else if (hasYear && exactCount >= 1) ebayWeight = 0.40;
+      else if (!hasYear && sameModelCount >= 8 && distinctCount >= 6) ebayWeight = 0.60;
+      else if (!hasYear && sameModelCount >= 4 && distinctCount >= 3) ebayWeight = 0.50;
+      else if (!hasYear && (sameModelCount >= 2 || exactCount >= 2)) ebayWeight = 0.40;
+      else ebayWeight = 0.25;
 
       const aiWeight = 1 - ebayWeight;
 
@@ -1199,8 +1403,12 @@ Returner KUN gyldig JSON:
         );
       }
 
+      const valuationBasis = built.year
+        ? "eksakte treff"
+        : "samme modell/materiale";
+
       valuationMethod =
-        `AI + eBay-markedsdata (${Math.round(ebayWeight * 100)} % eBay-vekt, ${ebaySampleSize} strenge treff)`;
+        `AI + eBay-markedsdata (${Math.round(ebayWeight * 100)} % eBay-vekt, ${ebaySampleSize} treff / ${Number(ebay.distinct_valuation_count || ebaySampleSize)} unike ${valuationBasis})`;
     }
 
     if (Number.isFinite(finalEstimated)) {
