@@ -1,4 +1,4 @@
- export default async function handler(req, res) {
+export default async function handler(req, res) {
           if (req.method !== "POST") {
             return res.status(405).json({
               error: "Method not allowed"
@@ -123,6 +123,16 @@
         Hvis flere identifikasjoner er mulige, velg den mest sannsynlige og forklar usikkerheten kort.
 
         Lag også ett KORT eBay-søkeord som kan brukes til å finne tilsvarende gjenstander.
+
+        eBay-søket skal være strengt knyttet til den identifiserte modellen/varianten.
+        Hvis merke, modell, produksjonsland og år/periode kan fastslås, skal de viktigste
+        av disse tas med. For eksempel er "Fender Standard Stratocaster Mexico 1995"
+        mye bedre enn "Fender elektrisk gitar".
+
+        Ikke bruk bare merke + generell produkttype.
+        Ikke bruk egenskaper fra beskrivelsen som ikke identifiserer modellen.
+        Ikke bland USA-modeller, nyere serier, jubileumsmodeller eller spesialutgaver
+        med en eldre standardmodell dersom de kan skilles.
 
         eBay-søket skal være produktorientert og normalt 2-4 korte deler, for eksempel:
         "Fender Stratocaster Mexico"
@@ -1025,20 +1035,22 @@
               }
 
               /*
-               * 2. Merke + modell.
-               */
-              if (brand && model) {
-                candidates.push(
-                  `${brand} ${model}`
-                );
-              }
-
-              /*
-               * 3. Merke + modell + år/periode.
+               * 2. Merke + modell + år/periode.
+               * Når år er kjent skal dette søket komme FØR
+               * det bredere merke + modell-søket.
                */
               if (brand && model && year) {
                 candidates.push(
                   `${brand} ${model} ${year}`
+                );
+              }
+
+              /*
+               * 3. Merke + modell.
+               */
+              if (brand && model) {
+                candidates.push(
+                  `${brand} ${model}`
                 );
               }
 
@@ -1149,28 +1161,23 @@
                 parsed?.item_info || {};
 
               const brand =
-                normalizeSearchText(
-                  info.brand
-                );
+                normalizeSearchText(info.brand);
 
               const model =
-                normalizeSearchText(
-                  info.model
-                );
+                normalizeSearchText(info.model);
 
               const type =
-                normalizeSearchText(
-                  info.type
-                );
+                normalizeSearchText(info.type);
 
               const manufacturer =
-                normalizeSearchText(
-                  info.manufacturer
-                );
+                normalizeSearchText(info.manufacturer);
 
               const year =
+                normalizeSearchText(info.year_or_period);
+
+              const fullIdentity =
                 normalizeSearchText(
-                  info.year_or_period
+                  `${brand} ${model} ${type} ${manufacturer} ${year}`
                 );
 
               const brandWords =
@@ -1180,34 +1187,51 @@
                 ]);
 
               const modelWords =
-                uniqueWords([
-                  model
-                ]);
+                uniqueWords([model]);
 
               const typeWords =
-                uniqueWords([
-                  type
-                ]);
+                uniqueWords([type]);
 
               /*
-               * For eldre/modellspesifikke gjenstander er årstall og
-               * produksjonsland svært viktige. Vi henter derfor ut
-               * konkrete år og nøkkelord fra identifikasjonen.
+               * Hent både konkrete år og tiår fra identifikasjonen.
+               * Eksempel:
+               * "1995" -> eksakt år
+               * "mid-1990s" -> 1990-tallet
                */
-              const yearMatches =
-                String(
-                  `${year} ${model}`
-                ).match(
-                  /\b(19\d{2}|20\d{2})\b/g
-                ) || [];
-
               const targetYears =
                 [
                   ...new Set(
-                    yearMatches
+                    fullIdentity.match(
+                      /\b(19\d{2}|20\d{2})\b/g
+                    ) || []
                   )
                 ];
 
+              const targetDecades = [];
+
+              const decadeMatches =
+                fullIdentity.match(
+                  /\b(19\d0|20\d0)(?:s|tallet)?\b/g
+                ) || [];
+
+              for (
+                const decade of decadeMatches
+              ) {
+                const match =
+                  decade.match(
+                    /^(19\d0|20\d0)/
+                  );
+
+                if (match) {
+                  targetDecades.push(
+                    match[1]
+                  );
+                }
+              }
+
+              /*
+               * Produksjonsland.
+               */
               const mexicoKeywords =
                 new Set([
                   "mexico",
@@ -1220,33 +1244,62 @@
                 new Set([
                   "usa",
                   "american",
-                  "us",
                   "madeinusa",
-                  "americanstandard"
-                ]);
-
-              const wrongModelKeywords =
-                new Set([
-                  "player",
-                  "playerplus",
-                  "professional",
-                  "professionalii",
-                  "ultra",
-                  "elite",
-                  "vintera",
-                  "vinteraii",
-                  "performer",
+                  "americanstandard",
                   "americanprofessional",
                   "americanultra",
-                  "americanstandard",
-                  "americanvintage",
-                  "avri",
-                  "customshop",
-                  "customshop",
-                  "specialedition",
-                  "deluxe",
-                  "standardplus"
+                  "americanelite",
+                  "americanvintage"
                 ]);
+
+              /*
+               * Modellserier/varianter som ikke skal blandes inn
+               * dersom de ikke er identifisert på gjenstanden.
+               */
+              const wrongSeriesPhrases = [
+                "player",
+                "player plus",
+                "player ii",
+                "professional",
+                "professional ii",
+                "ultra",
+                "ultra ii",
+                "elite",
+                "performer",
+                "vintera",
+                "vintera ii",
+                "american standard",
+                "american professional",
+                "american ultra",
+                "american vintage",
+                "american elite",
+                "special edition",
+                "50th anniversary",
+                "60th anniversary",
+                "70th anniversary",
+                "anniversary",
+                "fsr",
+                "custom shop",
+                "road worn",
+                "deluxe"
+              ];
+
+              /*
+               * Hvis identifikasjonen selv inneholder en av disse,
+               * skal den ikke automatisk avvises.
+               */
+              const identityText =
+                fullIdentity;
+
+              const allowedSeriesPhrases =
+                wrongSeriesPhrases.filter(
+                  phrase =>
+                    identityText.includes(
+                      normalizeSearchText(
+                        phrase
+                      )
+                    )
+                );
 
               const negativeWords =
                 new Set([
@@ -1298,9 +1351,11 @@
                 typeWords,
                 importantTypeWords,
                 targetYears,
+                targetDecades,
                 mexicoKeywords,
                 usaKeywords,
-                wrongModelKeywords,
+                wrongSeriesPhrases,
+                allowedSeriesPhrases,
                 negativeWords,
                 genericWords
               };
@@ -1310,14 +1365,13 @@
               title,
               profile
             ) {
-              const wordsArray =
-                titleWords(title);
-
-              const words =
-                new Set(wordsArray);
-
               const text =
                 normalizeSearchText(title);
+
+              const words =
+                new Set(
+                  titleWords(title)
+                );
 
               if (!text) {
                 return {
@@ -1330,11 +1384,11 @@
 
               let brandMatch = false;
               let modelMatch = false;
-              let typeMatch = false;
-              let yearMatch = false;
               let mexicoMatch = false;
               let usaMatch = false;
-              let wrongModel = false;
+              let exactYearMatch = false;
+              let wrongSeriesMatch = false;
+              let negativeHits = 0;
 
               /*
                * MERKE
@@ -1343,9 +1397,11 @@
                 const word of
                   profile.brandWords
               ) {
-                if (words.has(word)) {
+                if (
+                  words.has(word)
+                ) {
                   brandMatch = true;
-                  score += 8;
+                  score += 15;
                   break;
                 }
               }
@@ -1353,49 +1409,17 @@
               /*
                * MODELL
                *
-               * Stratocaster/Telecaster osv. skal telle som
-               * produktidentitet. Men vi krever at merke også er
-               * til stede.
+               * Vi krever modelltreff, ikke bare "Fender".
                */
               for (
                 const word of
                   profile.importantModelWords
               ) {
-                if (words.has(word)) {
-                  modelMatch = true;
-                  score += 8;
-                }
-              }
-
-              /*
-               * PRODUKTTYPE
-               */
-              for (
-                const word of
-                  profile.importantTypeWords
-              ) {
-                if (words.has(word)) {
-                  typeMatch = true;
-                  score += 2;
-                }
-              }
-
-              /*
-               * ÅRSTALL
-               *
-               * Eksakt 1995 er mye sterkere enn bare "90s".
-               */
-              for (
-                const targetYear of
-                  profile.targetYears
-              ) {
                 if (
-                  words.has(
-                    targetYear
-                  )
+                  words.has(word)
                 ) {
-                  yearMatch = true;
-                  score += 12;
+                  modelMatch = true;
+                  score += 15;
                 }
               }
 
@@ -1415,7 +1439,7 @@
                   )
                 ) {
                   mexicoMatch = true;
-                  score += 8;
+                  score += 15;
                   break;
                 }
               }
@@ -1433,57 +1457,146 @@
                   )
                 ) {
                   usaMatch = true;
-                  score -= 12;
+                  score -= 35;
                   break;
                 }
               }
 
               /*
-               * FEIL MODELL/SERIE
+               * FEIL SERIE / VARIANT
                *
-               * Player, American Standard, American Professional
-               * osv. skal ikke få lov til å blandes inn som om de
-               * var samme modell.
+               * Viktig: sjekk hele uttrykk, ikke bare ett ord.
+               * "American Standard" skal f.eks. ikke slippe gjennom
+               * bare fordi tittelen også inneholder "Standard".
                */
               for (
-                const word of
-                  profile.wrongModelKeywords
+                const phrase of
+                  profile.wrongSeriesPhrases
               ) {
+                const normalizedPhrase =
+                  normalizeSearchText(
+                    phrase
+                  );
+
                 if (
-                  words.has(word)
+                  !normalizedPhrase ||
+                  profile.allowedSeriesPhrases.includes(
+                    phrase
+                  )
                 ) {
-                  wrongModel = true;
-                  score -= 18;
+                  continue;
+                }
+
+                if (
+                  text.includes(
+                    normalizedPhrase
+                  )
+                ) {
+                  wrongSeriesMatch = true;
+                  score -= 40;
                 }
               }
 
               /*
                * DELER / TILBEHØR
                */
-              let negativeHits = 0;
-
               for (
                 const word of
                   profile.negativeWords
               ) {
-                if (words.has(word)) {
+                if (
+                  words.has(word)
+                ) {
                   negativeHits++;
                 }
               }
 
-              if (negativeHits > 0) {
+              if (
+                negativeHits > 0
+              ) {
                 score -=
-                  25 +
-                  negativeHits * 5;
+                  50 +
+                  negativeHits * 10;
               }
 
               /*
-               * VIKTIG REGLER:
+               * ÅRSTALL
+               */
+              const listingYears =
+                [
+                  ...new Set(
+                    text.match(
+                      /\b(19\d{2}|20\d{2})\b/g
+                    ) || []
+                  )
+                ];
+
+              if (
+                profile.targetYears.length
+              ) {
+                for (
+                  const year of
+                    profile.targetYears
+                ) {
+                  if (
+                    listingYears.includes(
+                      year
+                    )
+                  ) {
+                    exactYearMatch = true;
+                    score += 35;
+                    break;
+                  }
+                }
+
+                /*
+                 * Hvis annonsen har et annet konkret år,
+                 * er det et tydelig tegn på annen modell/variant.
+                 */
+                const otherYear =
+                  listingYears.some(
+                    year =>
+                      !profile.targetYears.includes(
+                        year
+                      )
+                  );
+
+                if (
+                  otherYear &&
+                  !exactYearMatch
+                ) {
+                  score -= 30;
+                }
+              } else if (
+                profile.targetDecades.length
+              ) {
+                /*
+                 * Hvis vi bare vet "1990-tallet", godtar vi år
+                 * fra riktig tiår, men straffer andre tiår.
+                 */
+                const decadeMatch =
+                  listingYears.some(
+                    year =>
+                      profile.targetDecades.includes(
+                        year.slice(0, 3) + "0"
+                      )
+                  );
+
+                if (
+                  decadeMatch
+                ) {
+                  score += 20;
+                } else if (
+                  listingYears.length
+                ) {
+                  score -= 25;
+                }
+              }
+
+              /*
+               * GRUNNKRAV
                *
-               * 1. Merke må finnes.
-               * 2. Modellidentitet må finnes.
-               * 3. Deler/tilbehør forkastes.
-               * 4. Feil Fender-serie forkastes.
+               * Må være riktig merke + modell.
                */
               if (
                 profile.brandWords.length &&
@@ -1504,9 +1617,23 @@
                 };
               }
 
+              /*
+               * Deler, feil serie og USA når målet er Mexico
+               * skal ikke kunne brukes som markedsreferanse.
+               */
               if (
                 negativeHits > 0 ||
-                wrongModel
+                wrongSeriesMatch
+              ) {
+                return {
+                  score,
+                  relevant: false
+                };
+              }
+
+              if (
+                usaMatch &&
+                profile.mexicoKeywords.size
               ) {
                 return {
                   score,
@@ -1515,11 +1642,27 @@
               }
 
               /*
-               * Hvis vi kjenner både Mexico og USA er USA-feil.
+               * Dersom vi har konkret produksjonsland Mexico,
+               * krever vi normalt Mexico/MIM i annonsen.
+               *
+               * Dette hindrer generiske "Fender Standard Stratocaster"
+               * fra å dominere.
                */
               if (
-                mexicoMatch &&
-                usaMatch
+                profile.mexicoKeywords.size &&
+                !mexicoMatch
+              ) {
+                score -= 20;
+              }
+
+              /*
+               * Hvis et eksakt år er kjent og annonsen viser et
+               * annet år, forkastes den selv om resten matcher.
+               */
+              if (
+                profile.targetYears.length &&
+                listingYears.length &&
+                !exactYearMatch
               ) {
                 return {
                   score,
@@ -1528,83 +1671,11 @@
               }
 
               /*
-               * For en identifikasjon med kjent produksjonsland:
-               * manglende land er OK, men riktig land gir bonus.
+               * Høy terskel: vi vil heller vise færre gode treff
+               * enn mange dårlige.
                */
-              if (
-                profile.mexicoKeywords.size &&
-                !mexicoMatch &&
-                !usaMatch
-              ) {
-                score -= 3;
-              }
-
-              /*
-               * Når eksakt år er kjent:
-               *
-               * - eksakt år = sterk bonus
-               * - annet konkret år = stor straff
-               *
-               * Dette hindrer f.eks. 2008/2012/2019 fra å blandes
-               * inn når bildet viser en 1995-modell.
-               */
-              const listingYears =
-                [
-                  ...new Set(
-                    text.match(
-                      /\b(19\d{2}|20\d{2})\b/g
-                    ) || []
-                  )
-                ];
-
-              if (
-                profile.targetYears.length
-              ) {
-                const exactYear =
-                  profile.targetYears.some(
-                    year =>
-                      listingYears.includes(
-                        year
-                      )
-                  );
-
-                const otherYear =
-                  listingYears.some(
-                    year =>
-                      !profile.targetYears.includes(
-                        year
-                      )
-                  );
-
-                if (
-                  exactYear
-                ) {
-                  score += 18;
-                  yearMatch = true;
-                } else if (
-                  otherYear
-                ) {
-                  score -= 14;
-                }
-              }
-
-              /*
-               * Minimumskrav.
-               *
-               * 1995 Mexico Stratocaster:
-               * merke + modell + Mexico bør normalt være nødvendig.
-               * Hvis Mexico ikke står i tittelen kan treffet fortsatt
-               * slippe gjennom, men med lavere score.
-               */
-              let relevant =
-                score >= 18;
-
-              if (
-                profile.mexicoKeywords.size &&
-                usaMatch
-              ) {
-                relevant = false;
-              }
+              const relevant =
+                score >= 30;
 
               return {
                 score,
