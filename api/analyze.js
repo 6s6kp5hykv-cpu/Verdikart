@@ -1,9 +1,9 @@
-// Kistefunn analysebackend v11.6
+// Kistefunn analysebackend v11.7
 // Strengere identifikasjon + hardere markedsfilter + multi-source markedsmotor
 //
 // Viktige endringer fra v7:
 // - Når konkret år er kjent, kan KUN annonser med samme år brukes i verdiberegningen.
-// - Annonser uten år blir kun nærtreff og påvirker ikke verdien.
+// - Annonser uten år i tittelen blir kun nærtreff og påvirker ikke verdien.
 // - Strengere modell-/variantfilter.
 // - Brukerens konkrete modelltekst brukes som identifikasjonssignal.
 // - eBay-token caches per kjøring.
@@ -768,8 +768,21 @@ Returner KUN gyldig JSON:
           .trim();
       }
 
+      // V11.7: ekstra beskyttelse mot Fender-serienummerfragmenter
+      // som AI av og til legger i modellfeltet, f.eks. "MN5" fra
+      // serienummeret MN5178398. Slike tokens skal aldri bli eBay-søk.
+      function removeSearchSerialTokens(value) {
+        return String(value || "")
+          .replace(/\b(?:MN|MZ|MX|US|AM|DZ|V|CN|CO|IC)\d{1,10}\b/gi, " ")
+          .replace(/\b[A-Z]{2,4}\d{5,10}\b/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+      }
+
       const model =
-        removeSerialArtifacts(rawModel, serialNumber);
+        removeSearchSerialTokens(
+          removeSerialArtifacts(rawModel, serialNumber)
+        );
 
       const type =
         compact(info.type, 2);
@@ -784,9 +797,11 @@ Returner KUN gyldig JSON:
         compact(parsed._user_description, 6);
 
       const aiQuery =
-        removeSerialArtifacts(
-          compact(parsed.ebay_search_query, 6),
-          serialNumber
+        removeSearchSerialTokens(
+          removeSerialArtifacts(
+            compact(parsed.ebay_search_query, 6),
+            serialNumber
+          )
         );
 
       const year =
@@ -2430,6 +2445,34 @@ Returner KUN gyldig JSON:
           criteria
         );
 
+      // V11.7: HARD TITLE-YEAR GATE
+      // Når målobjektet har kjent år, er år i selve annonsetittelen
+      // det eneste som kan gjøre treffet eksakt. eBay-aspekter kan
+      // fortsatt brukes til støtteinformasjon, men de kan ikke løfte
+      // en tittel uten år inn i exact_listings.
+      const titleYears = extractYears(title.toLowerCase());
+      const titleHasTargetYear = criteria.year
+        ? titleYears.includes(Number(criteria.year))
+        : true;
+      const titleHasWrongYear = criteria.year
+        ? titleYears.some(y => y !== Number(criteria.year))
+        : false;
+
+      if (criteria.year) {
+        if (titleHasWrongYear && !titleHasTargetYear) {
+          return null;
+        }
+
+        if (!titleHasTargetYear) {
+          relevance.year_match = "missing";
+          relevance.accepted = relevance.accepted || relevance.near_match;
+          relevance.near_match = relevance.accepted;
+          relevance.same_model = relevance.accepted;
+        } else {
+          relevance.year_match = "exact";
+        }
+      }
+
       if (
         !relevance.accepted &&
         !relevance.near_match
@@ -2537,7 +2580,7 @@ Returner KUN gyldig JSON:
       let valuationTier = "near";
 
       if (relevance.accepted) {
-        // V11.6 HARD YEAR GATE:
+        // V11.7 HARD TITLE-YEAR GATE:
         // Når målobjektet har et konkret år, kan en annonse bare være
         // "exact" dersom samme år faktisk finnes i annonsens tittel.
         // Manglende år er alltid same_model og skal aldri havne i
@@ -2841,7 +2884,7 @@ Returner KUN gyldig JSON:
           x =>
             x.match_tier === "exact" &&
             x.relevance_score >= 45 &&
-            // V11.6 HARD YEAR GATE: kjent år krever dokumentert
+            // V11.7 HARD TITLE-YEAR GATE: kjent år krever dokumentert
             // samme år i annonsen. Ingen fallback til manglende år.
             (!built.year || x.year_match === "exact")
         );
@@ -2851,7 +2894,11 @@ Returner KUN gyldig JSON:
       // selv om et senere steg skulle endre match_tier.
       const strictExactPool =
         built.year
-          ? rawExactPool.filter(x => x.year_match === "exact")
+          ? rawExactPool.filter(x => {
+              const titleYears = extractYears(String(x.title || "").toLowerCase());
+              return x.year_match === "exact" &&
+                titleYears.includes(Number(built.year));
+            })
           : rawExactPool;
 
       /*
@@ -2936,7 +2983,7 @@ Returner KUN gyldig JSON:
       let valuationPool = [];
 
       if (built.year) {
-        // V11.6: kjent år = kun annonser med samme dokumenterte år
+        // V11.7: kjent år = kun annonser med samme år i tittelen kan påvirke verdien
         // kan påvirke selve verdien. Same-model uten år beholdes som
         // støtte/visning, men får 0 % innflytelse på prisberegningen.
         valuationPool = exactPool;
@@ -3006,7 +3053,7 @@ Returner KUN gyldig JSON:
         built.year &&
         Number.isFinite(exactMedian)
       ) {
-        // V11.6: same-model uten år påvirker ikke medianen når år er kjent.
+        // V11.7: same-model uten år påvirker ikke medianen når år er kjent.
         marketMedian = Math.round(exactMedian);
       } else if (
         Number.isFinite(exactMedian)
@@ -3273,7 +3320,9 @@ Returner KUN gyldig JSON:
                 year_match:
                   item.year_match,
                 exact_year_verified:
-                  !built.year || item.year_match === "exact"
+                  !built.year ||
+                  (item.year_match === "exact" &&
+                    extractYears(String(item.title || "").toLowerCase()).includes(Number(built.year)))
               })
             ),
 
@@ -3832,10 +3881,10 @@ Returner KUN gyldig JSON:
       market_sources: marketSources,
 
       market_engine_version:
-        "v11.6-market-first-pricing",
+        "v11.7-market-first-pricing",
 
       market_filter_version:
-        "v11.6-hard-year-variant-validation"
+        "v11.7-hard-title-year-variant-validation"
     });
 
   } catch (e) {
