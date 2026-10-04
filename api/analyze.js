@@ -1,4 +1,4 @@
-// Kistefunn analysebackend v12.9
+// Kistefunn analysebackend v13.0
 // Strengere identifikasjon + hardere markedsfilter + multi-source markedsmotor
 // - V11.9: feil i søkemotorens variabelrekkefølge rettet + versjonsmerking samlet.
 // - V11.8: farge og gripebrett/materiale er sekundære signaler og skal ikke låse markedssøket.
@@ -6,6 +6,7 @@
 // - V11.7: videreføring av streng Fender-variantkontroll og mer robust markedsgrunnlag.
 // - V11.6: hard Fender-variantgate som ekskluderer 62/Special/American/Player/Vintera/Squier osv.
 // - V12.7: MERKING FØRST + sentral variantprofil før prisgrunnlag.
+// - V13.0: deduplisering av markedsannonser + tilstandsjustert prisgrunnlag.
 // - V12.9: prisavvik fjernes også fra viste eksakte markedsreferanser.
 // - V12.9: Prisavvik fjernes også fra viste eksakte markedsreferanser.
 // - V12.8: fanger også feilstavingen "Squire Series" og fjerner den før prisgrunnlag/visning.
@@ -413,13 +414,13 @@ Returner KUN gyldig JSON:
       if (items.length < 4) return items;
 
       const valid = items.filter(x =>
-        Number.isFinite(Number(x.nok)) &&
-        Number(x.nok) > 0
+        Number.isFinite(Number(x.valuation_nok ?? x.nok)) &&
+        Number(x.valuation_nok ?? x.nok) > 0
       );
 
       if (valid.length < 4) return items;
 
-      const prices = valid.map(x => Number(x.nok));
+      const prices = valid.map(x => Number(x.valuation_nok ?? x.nok));
       const med = median(prices);
 
       if (!Number.isFinite(med) || med <= 0) return items;
@@ -430,7 +431,7 @@ Returner KUN gyldig JSON:
       // mer enn 2x medianen et sterkt signal om premiumvariant,
       // feil vare, ekstrautstyr eller annen markedsfeil.
       const ratioFiltered = valid.filter(item => {
-        const price = Number(item.nok);
+        const price = Number(item.valuation_nok ?? item.nok);
         return price <= med * 2 && price >= med * 0.5;
       });
 
@@ -446,13 +447,13 @@ Returner KUN gyldig JSON:
         return ratioResult;
       }
 
-      const ratioPrices = ratioResult.map(x => Number(x.nok));
+      const ratioPrices = ratioResult.map(x => Number(x.valuation_nok ?? x.nok));
       const q1 = percentile(ratioPrices, 0.25);
       const q3 = percentile(ratioPrices, 0.75);
       const iqr = q3 - q1;
 
       const iqrFiltered = ratioResult.filter(item => {
-        const price = Number(item.nok);
+        const price = Number(item.valuation_nok ?? item.nok);
         return price >= q1 - 1.5 * iqr &&
           price <= q3 + 1.5 * iqr;
       });
@@ -736,6 +737,81 @@ Returner KUN gyldig JSON:
       }
 
       return null;
+    }
+
+    /* ---------------------------------------------------------
+       V13.0 – TILSTANDSMOTOR
+       --------------------------------------------------------- */
+
+    function detectConditionClass(...values) {
+      const s = values
+        .map(v => String(v || ""))
+        .join(" ")
+        .toLowerCase();
+
+      if (!s.trim()) return "unknown";
+
+      if (/\b(mint|like new|new old stock|nos|neuwertig|neuwertig|excellent\+|ex\+|mint condition|samlerstand)\b/.test(s)) {
+        return "mint";
+      }
+
+      if (/\b(excellent|exc|very good|vg\+|vg|sehr gut|meget god|meget bra|strøken|stroken|pent brukt|excellent condition)\b/.test(s)) {
+        return "excellent";
+      }
+
+      if (/\b(good|guter zustand|gut|god|bra|used|bruksspor|normal wear|normal bruksslitasje|spiller bra|fully working)\b/.test(s)) {
+        return "good";
+      }
+
+      if (/\b(fair|ok condition|average condition|middels|slitasje|wear|visible wear|brukte spor|fair condition)\b/.test(s)) {
+        return "fair";
+      }
+
+      if (/\b(poor|parts|project|broken|damaged|repair|defekt|ødelagt|skadet|for reparasjon|reparasjon)\b/.test(s)) {
+        return "poor";
+      }
+
+      return "unknown";
+    }
+
+    function conditionFactor(condition) {
+      const factors = {
+        poor: 0.55,
+        fair: 0.75,
+        good: 1.00,
+        excellent: 1.15,
+        mint: 1.30,
+        unknown: 1.00
+      };
+
+      return factors[condition] || 1;
+    }
+
+    function conditionAdjustment(targetCondition, listingCondition, price) {
+      const n = Number(price);
+      if (!Number.isFinite(n) || n <= 0) return null;
+
+      if (
+        targetCondition === "unknown" ||
+        listingCondition === "unknown" ||
+        targetCondition === listingCondition
+      ) {
+        return Math.round(n);
+      }
+
+      const adjusted =
+        n *
+        (conditionFactor(targetCondition) /
+          conditionFactor(listingCondition));
+
+      // Hold justering konservativ. Tilstand skal forbedre sammenligningen,
+      // ikke kunne flytte en markedspris ekstremt langt.
+      const min = n * 0.65;
+      const max = n * 1.35;
+
+      return Math.round(
+        Math.min(max, Math.max(min, adjusted))
+      );
     }
 
     function detectCategory(...values) {
@@ -1217,6 +1293,11 @@ Returner KUN gyldig JSON:
         visible_markings: infoList(info.visible_markings),
         model_marking: infoText(info.model_marking, "Ukjent"),
         country_marking: infoText(info.country_marking, "Ukjent"),
+        target_condition: detectConditionClass(
+          parsed.condition,
+          info.condition_details,
+          parsed.description
+        ),
         user_description: parsed._user_description || "",
         identity_profile: buildIdentityProfile({
           brand, model, manufacturer, type, country, year: hardYear,
@@ -2901,6 +2982,21 @@ Returner KUN gyldig JSON:
           currency
         },
         nok: Math.round(nok),
+        seller: String(
+          item?.seller?.username ||
+          item?.seller?.sellerAccount?.username ||
+          ""
+        ).trim(),
+        condition_class: detectConditionClass(
+          title,
+          item?.condition,
+          item?._ebay_aspect_text || ""
+        ),
+        condition_adjusted_nok: conditionAdjustment(
+          criteria.target_condition || "unknown",
+          detectConditionClass(title, item?.condition, item?._ebay_aspect_text || ""),
+          Math.round(nok)
+        ),
         url:
           item.itemWebUrl || "",
         item_id:
@@ -3233,9 +3329,72 @@ Returner KUN gyldig JSON:
             continue;
           }
 
+          item.valuation_nok =
+            Number.isFinite(Number(item.condition_adjusted_nok))
+              ? Number(item.condition_adjusted_nok)
+              : Number(item.nok);
+
           all.push(item);
         }
       }
+
+      /*
+       * V13.0 – DEDUPLISERING
+       * Samme eBay-annonse kan dukke opp via flere søk og markeder.
+       * itemId er sterkest. Som reserve bruker vi normalisert tittel + pris
+       * + selger når selger finnes, eller tittel + pris når selger mangler.
+       * Vi beholder treffet med høyest relevans.
+       */
+      function comparableTitleKey(value) {
+        return String(value || "")
+          .toLowerCase()
+          .replace(/[^\p{L}\p{N}]+/gu, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+      }
+
+      function deduplicateListings(items) {
+        const map = new Map();
+        let removed = 0;
+
+        for (const item of items) {
+          const itemId = String(item?.item_id || "").trim().toLowerCase();
+          const titleKey = comparableTitleKey(item?.title);
+          const sellerKey = String(item?.seller || "").trim().toLowerCase();
+          const priceKey = Math.round(Number(item?.nok) || 0);
+
+          const key = itemId
+            ? `id:${itemId}`
+            : `fallback:${titleKey}|${priceKey}|${sellerKey}`;
+
+          const existing = map.get(key);
+
+          if (!existing) {
+            map.set(key, item);
+            continue;
+          }
+
+          removed++;
+          const existingScore = Number(existing.relevance_score) || 0;
+          const newScore = Number(item.relevance_score) || 0;
+
+          if (newScore > existingScore) {
+            map.set(key, item);
+          }
+        }
+
+        return {
+          items: [...map.values()],
+          removed
+        };
+      }
+
+      const dedupeResult = deduplicateListings(all);
+      const deduplicatedAll = dedupeResult.items;
+      const duplicateListingsRemoved = dedupeResult.removed;
+
+      all.length = 0;
+      all.push(...deduplicatedAll);
 
       all.sort(
         (a, b) => {
@@ -3483,7 +3642,7 @@ Returner KUN gyldig JSON:
       const exactPrices =
         exactPool
           .map(
-            x => Number(x.nok)
+            x => Number(x.valuation_nok ?? x.nok)
           )
           .filter(Number.isFinite)
           .filter(x => x > 0);
@@ -3491,7 +3650,7 @@ Returner KUN gyldig JSON:
       const sameModelPrices =
         sameModelPool
           .map(
-            x => Number(x.nok)
+            x => Number(x.valuation_nok ?? x.nok)
           )
           .filter(Number.isFinite)
           .filter(x => x > 0);
@@ -3499,7 +3658,7 @@ Returner KUN gyldig JSON:
       const prices =
         finalPool
           .map(
-            x => Number(x.nok)
+            x => Number(x.valuation_nok ?? x.nok)
           )
           .filter(Number.isFinite)
           .filter(x => x > 0);
@@ -3589,7 +3748,7 @@ Returner KUN gyldig JSON:
               )
                 .toLowerCase()
                 .trim()}|${Math.round(
-                Number(x.nok) || 0
+                Number(x.valuation_nok ?? x.nok) || 0
               )}`
           )
         );
@@ -3642,6 +3801,15 @@ Returner KUN gyldig JSON:
 
         exact_price_filter_removed:
           exactPriceOutliersRemoved,
+
+        duplicate_listings_removed:
+          duplicateListingsRemoved,
+
+        condition_adjustment_enabled:
+          true,
+
+        target_condition:
+          built.target_condition || "unknown",
 
         same_model_match_count:
           sameModelPool.length,
@@ -3740,6 +3908,17 @@ Returner KUN gyldig JSON:
           identity_profile:
             built.identity_profile || null,
 
+          condition_adjustment: {
+            enabled: true,
+            target_condition: built.target_condition || "unknown",
+            exact_prices_use_condition_adjustment: true
+          },
+
+          deduplication: {
+            enabled: true,
+            removed_duplicates: duplicateListingsRemoved
+          },
+
           // V12.9: prisavvik fjernes før både verdiberegning og
           // visning under "Eksakte markedsreferanser".
           price_outlier_filter: {
@@ -3761,6 +3940,10 @@ Returner KUN gyldig JSON:
                   item.price,
                 price_nok:
                   item.nok,
+                valuation_price_nok:
+                  item.valuation_nok,
+                condition_class:
+                  item.condition_class || "unknown",
                 url:
                   item.url,
                 query:
@@ -3788,6 +3971,10 @@ Returner KUN gyldig JSON:
                   item.price,
                 price_nok:
                   item.nok,
+                valuation_price_nok:
+                  item.valuation_nok,
+                condition_class:
+                  item.condition_class || "unknown",
                 url:
                   item.url,
                 query:
@@ -3816,6 +4003,10 @@ Returner KUN gyldig JSON:
                 item.price,
               price_nok:
                 item.nok,
+              valuation_price_nok:
+                item.valuation_nok,
+              condition_class:
+                item.condition_class || "unknown",
               url:
                 item.url,
               query:
@@ -4228,7 +4419,7 @@ Returner KUN gyldig JSON:
       market.source_weights.find(x => x.source === "ebay")?.percent || 0;
 
     const valuationMethod =
-      `V12.1 markedsmotor: ${market.basis}`;
+      `V13.0 markedsmotor: ${market.basis}`;
 
     // V12.0: Vis den faktiske rensede eBay-søkestrengen.
     // Dermed vises ikke serienummerfragmenter som f.eks. MN5,
