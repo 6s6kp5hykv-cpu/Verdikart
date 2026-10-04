@@ -3044,13 +3044,13 @@ Returner KUN gyldig JSON:
       let weight = 0;
 
       if (hasYear && exact >= 6 && distinct >= 5) {
-        weight = 0.85;
+        weight = 0.95;
       } else if (hasYear && exact >= 4 && distinct >= 4) {
-        weight = 0.80;
+        weight = 0.90;
       } else if (hasYear && exact >= 3 && distinct >= 3) {
-        weight = 0.70;
+        weight = 0.82;
       } else if (hasYear && exact >= 2 && distinct >= 2) {
-        weight = 0.60;
+        weight = 0.70;
       } else if (hasYear && exact === 1 && sameModel >= 2) {
         weight = 0.45;
       } else if (hasYear && exact === 1) {
@@ -3173,18 +3173,23 @@ Returner KUN gyldig JSON:
         );
 
         /*
-         * Maks 85 % samlet markedsvekt. Flere uavhengige kilder
-         * kan øke markedsandelen, men AI forsvinner aldri helt.
+         * V10.8: Når vi har mange eksakte markedsreferanser skal
+         * faktisk markedsdata være hovedankeret. AI brukes fortsatt
+         * som kontroll, men skal ikke trekke en godt dokumentert
+         * markedspris unødvendig langt ned eller opp.
+         *
+         * Én sterk markedskilde kan få opptil 90 %. Flere uavhengige
+         * markedsplasser kan få samlet opptil 95 %.
          */
         marketWeight = Math.min(
-          0.85,
-          0.45 + Math.min(0.40, totalQuality * 0.25)
+          0.90,
+          0.45 + Math.min(0.45, totalQuality * 0.35)
         );
 
         if (marketCandidates.length >= 2) {
           marketWeight = Math.min(
-            0.85,
-            marketWeight + 0.10
+            0.95,
+            marketWeight + 0.05
           );
         }
       }
@@ -3312,7 +3317,7 @@ Returner KUN gyldig JSON:
       market.source_weights.find(x => x.source === "ebay")?.percent || 0;
 
     const valuationMethod =
-      `V10.6 markedsmotor: ${market.basis}`;
+      `V10.8 markedsmotor: ${market.basis}`;
 
     /* ---------------------------------------------------------
        8. RETURNER
@@ -3445,10 +3450,10 @@ Returner KUN gyldig JSON:
       market_sources: marketSources,
 
       market_engine_version:
-        "v10-multi-source-market-engine",
+        "v10.8-market-first-pricing",
 
       market_filter_version:
-        "v10.5-exact-year-and-variant-primary-same-model-secondary"
+        "v10.7-broad-search-detail-year-variant-validation"
     });
 
   } catch (e) {
