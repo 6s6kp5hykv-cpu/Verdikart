@@ -539,7 +539,10 @@ Returner KUN gyldig JSON:
         material,
         year,
         country,
-        ageGroup
+        ageGroup,
+        variant_uncertain: /cannot be confirmed|can't be confirmed|cannot be determined|exact variant|variant.*cannot|eksakt variant|variant.*ikke.*bekreft|kan ikke bekreftes/i.test(
+          `${parsed.description || ""} ${info.uncertainties || ""} ${info.model || ""}`
+        )
       };
     }
 
@@ -568,6 +571,8 @@ Returner KUN gyldig JSON:
       const type = String(criteria.type || "").toLowerCase();
       const country = criteria.country;
       const year = criteria.year;
+      const material = String(criteria.material || "").toLowerCase();
+      const variantUncertain = Boolean(criteria.variant_uncertain);
 
       let score = 0;
       const reasons = [];
@@ -700,6 +705,58 @@ Returner KUN gyldig JSON:
         /\bpapillio\b/.test(t)
       ) {
         return { score: -100, accepted: false, reason: "Papillio-linje" };
+      }
+
+      // Birkenstock-varianter må ikke blandes bare fordi hovedmodellen
+      // heter det samme. Dette er spesielt viktig for Arizona.
+      if (brand.includes("birkenstock")) {
+        const specialVariantTerms = [
+          "big buckle", "big-buckle", "bigbuckle",
+          "eva", "essentials", "essential", "platform",
+          "split", "soft footbed", "soft-footbed", "shearling",
+          "fur", "braided", "braid", "papillio", "kids",
+          "kid", "junior", "youth", "microfiber", "synthetic"
+        ];
+
+        if (specialVariantTerms.some(term => t.includes(term))) {
+          return {
+            score: -100,
+            accepted: false,
+            near_match: false,
+            year_match: year ? "missing" : "not_required",
+            reason: "annen Birkenstock-variant"
+          };
+        }
+
+        // Hvis AI-en uttrykkelig sier at variant/materiale ikke kan
+        // bekreftes, skal et vanlig Arizona-treff ikke kalles eksakt.
+        // Det kan fortsatt vises som nærtreff.
+        if (variantUncertain) {
+          return {
+            score: Math.max(score, 50),
+            accepted: false,
+            near_match: true,
+            year_match: "missing",
+            reason: "variant ikke bekreftet"
+          };
+        }
+
+        // Når materialet er kjent, krev at annonsen faktisk viser samme
+        // materialfamilie. Leather/leder-varianter får ikke blandes med EVA.
+        if (/leather|leder|leatherette|velourleder|suede/.test(material)) {
+          if (/\beva\b|synthetic|microfiber/.test(t)) {
+            return { score: -100, accepted: false, reason: "annet materiale" };
+          }
+          if (!/leather|leder|leatherette|velourleder|suede/.test(t)) {
+            return {
+              score: Math.max(score, 50),
+              accepted: false,
+              near_match: true,
+              year_match: year ? "missing" : "not_required",
+              reason: "materiale ikke dokumentert"
+            };
+          }
+        }
       }
 
       // Country/produksjonsvariant er svært viktig.
