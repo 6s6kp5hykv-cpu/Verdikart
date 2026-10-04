@@ -1,3 +1,4 @@
+// Kistefunn analysebackend v7 – bredere sykkelmarkedssøk + sterkere markedsvekt
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -16,6 +17,8 @@ export default async function handler(req, res) {
 
     const userDescription =
       typeof description === "string" ? description.trim() : "";
+
+    const userDescriptionLower = userDescription.toLowerCase();
 
     const contextText = userDescription
       ? `Brukeren har også skrevet følgende informasjon om gjenstanden:
@@ -57,22 +60,11 @@ VIKTIG: Ikke forveksle visuelt like produkter fra ulike produsenter. For sykler 
 - komponenter som faktisk kan sees
 Hvis merke eller modell ikke kan bekreftes, skriv "ukjent" i stedet for å presentere en gjetning som sikker identifikasjon.
 
-MODELLSIKKERHET:
-- "brand" kan settes når logo/merkenavn eller svært sterke kjennetegn støtter merket.
-- "model" skal KUN settes til en konkret modell når minst ett tydelig modellbevis finnes (lesbar modelltekst/dekal/etikett), ELLER når flere uavhengige synlige komponent-/rammekjennetegn samlet skiller modellen tydelig fra de nærmeste alternativene.
-- Hvis flere modeller i samme serie kan se like ut, bruk "ukjent" modell. Ikke velg Trekking 4 bare fordi sykkelen ligner på Trekking 4.
-- Hvis modell bare er sannsynlig, men ikke bevist, skriv "ukjent" i model og legg den sannsynlige familien i uncertainties/model_evidence. Du kan skrive f.eks. "Haibike Trekking-serien" i type/description, men ikke late som dette er eksakt modell.
-- For sykler skal motor, batteri, girgruppe, rammeform og andre komponenter brukes som bevis bare når de faktisk er synlige i bildet. Ikke anta motor eller batterikapasitet ut fra merke eller utseende alene.
-- Hvis bildet ikke viser nok detaljer til å skille modellene, er riktig resultat merke + type/familie og "modell ikke sikkert identifisert".
-- Ved flere opplastede bilder: bruk ALLE bildene samlet. Ett nærbilde av modelltekst/ramme/motor kan veie mer enn et helbilde.
-
 Før du returnerer JSON, gjør en intern kontroll:
 1. Hvilket merkenavn kan faktisk leses eller sees?
-2. Hvilke konkrete detaljer beviser modellen?
-3. Hvilke alternative modeller fra samme serie kan også passe?
-4. Er det nok synlige detaljer til å utelukke disse alternativene?
-5. Finnes det en annen kjent produsent som bare ligner i formen? Hvis ja, ikke velg den uten bevis.
-6. Stemmer beskrivelsen, bildet og identifikasjonen med hverandre?
+2. Hvilke detaljer beviser modellen?
+3. Finnes det en annen kjent produsent som bare ligner i formen? Hvis ja, ikke velg den uten bevis.
+4. Stemmer beskrivelsen, bildet og identifikasjonen med hverandre?
 
 Vurder spesielt:
 - merke
@@ -123,7 +115,6 @@ Returner KUN gyldig JSON:
     "identifying_features": ["synlige kjennetegn"],
     "brand_evidence": "hva i bildet som støtter merkeidentifikasjonen, eller ukjent",
     "model_evidence": "hva i bildet som støtter modellidentifikasjonen, eller ukjent",
-    "model_confidence": "bekreftet, sannsynlig eller ukjent",
     "modifications": "modifikasjoner eller ingen synlig",
     "condition_details": "detaljert tilstand",
     "value_factors": ["forhold som påvirker verdi"],
@@ -197,6 +188,10 @@ Returner KUN gyldig JSON:
       parsed.item_info = {};
     }
 
+    // Brukerens tekst er et eget identifikasjonssignal. Den skal ikke overstyre bildet,
+    // men kan gi et sterkt modellspor når brukeren oppgir en konkret modell.
+    parsed._user_description = userDescription;
+
     const info = parsed.item_info;
 
     const infoText = (value, fallback = "Ukjent") =>
@@ -227,7 +222,6 @@ Returner KUN gyldig JSON:
       identifying_features: infoList(info.identifying_features),
       brand_evidence: infoText(info.brand_evidence),
       model_evidence: infoText(info.model_evidence),
-      model_confidence: infoText(info.model_confidence, "ukjent").toLowerCase(),
       modifications: infoText(
         info.modifications,
         "Ingen sikre modifikasjoner bekreftet."
@@ -516,20 +510,16 @@ Returner KUN gyldig JSON:
     function buildStrictQueries(parsed) {
       const info = parsed?.item_info || {};
 
-      const rawBrand = infoText(info.brand, "");
-      const rawModel = infoText(info.model, "");
-      const rawType = infoText(info.type, "");
-      const rawManufacturer = infoText(info.manufacturer, "");
-      const rawMaterial = infoText(info.material, "");
+      const brand = compact(info.brand, 1);
+      const model = compact(info.model, 3);
+      const type = compact(info.type, 2);
+      const manufacturer = compact(info.manufacturer, 2);
+      const material = compact(info.material, 1);
       const aiQuery = compact(parsed.ebay_search_query, 5);
 
-      const brand = compact(rawBrand, 1);
-      const model = compact(rawModel, 3);
-      const type = compact(rawType, 4);
-      const manufacturer = compact(rawManufacturer, 2);
-      const material = compact(rawMaterial, 2);
-
       // Finn konkret år fra all identifikasjonsinformasjon.
+      // Dette er viktig når AI-en skriver 1995 i navn/beskrivelse,
+      // men ikke legger det i year_or_period.
       const year =
         extractYear(info.year_or_period) ||
         extractYear(parsed.name) ||
@@ -559,110 +549,61 @@ Returner KUN gyldig JSON:
         parsed.ebay_search_query
       );
 
-      // Bare/antatte sykkelår er ikke harde filtre.
+      // Bare/assumed bicycle years are not hard filters.
       const hardYear = category === "guitar" ? year : null;
-
-      const modelConfidence = String(
-        info.model_confidence || ""
-      ).toLowerCase();
-
-      const modelEvidence = String(
-        info.model_evidence || ""
-      ).toLowerCase();
-
-      const uncertainties = Array.isArray(info.uncertainties)
-        ? info.uncertainties.join(" ").toLowerCase()
-        : String(info.uncertainties || "").toLowerCase();
-
-      const modelUnknown =
-        !model ||
-        /^(unknown|ukjent|ikke kjent|ikke bekreftet|not confirmed)$/i.test(
-          rawModel.trim()
-        );
-
-      const modelUncertain =
-        modelUnknown ||
-        modelConfidence === "ukjent" ||
-        modelConfidence === "unknown" ||
-        modelConfidence === "sannsynlig" ||
-        /not sure|uncertain|cannot|can't|ikke.*bekreft|kan ikke|sannsynlig|trolig|likely|probable|usikker/.test(
-          `${modelEvidence} ${uncertainties}`
-        );
 
       const candidates = [];
 
-      /*
-       * SYKKEL:
-       * Hvis modell ikke er bevist, skal vi IKKE bruke AI-ens eventuelle
-       * gjetning som eneste eBay-søk. Vi søker bredere på merke + type/familie
-       * og lar relevante komplette sykler danne et bredere markedsgrunnlag.
-       *
-       * Eksempel:
-       * Haibike + Trekking + e-bike
-       * Haibike + Trekking complete bike
-       * Haibike e-bike trekking
-       *
-       * En konkret modell kan fortsatt brukes som sekundært søk dersom
-       * AI-en faktisk har modellbevis.
-       */
-      if (category === "bicycle") {
-        const bikeTypeWords = uniqueWords(
-          `${rawType} ${parsed.description || ""}`
-        )
-          .filter(w =>
-            /^(trekking|trekkingrad|trekkingbike|e-bike|ebike|elsykkel|electric|elektrisk|pedelec|city|hybrid|hybridsykkel|bike|bicycle|sykkel)$/i.test(w)
-          )
-          .slice(0, 3)
-          .join(" ");
+      // Sykkel: søk etter komplett sykkel først. Ikke bruk bare
+      // "Haibike Trekking 4", fordi eBay da ofte returnerer deler som
+      // bagasjebrett, batterideksel, hjul og låser.
+      if (category === "bicycle" && brand && model) {
+        // Sykkelmodeller dukker ofte opp med ulike titler på eBay.
+        // Søk derfor både presist og med vanlige komplette-sykkelord.
+        candidates.push(`${brand} ${model}`);
+        candidates.push(`${brand} ${model} e-bike`);
+        candidates.push(`${brand} ${model} electric bike`);
+        candidates.push(`${brand} ${model} complete e-bike`);
+        candidates.push(`${brand} ${model} Yamaha`);
+        candidates.push(`${brand} ${model} 630Wh`);
+      } else if (category === "bicycle" && brand) {
+        // Når modellen ikke kan bekreftes, søk bredt på merke + sykkeltype.
+        // Disse treffene skal være svakere verdibevis enn en bekreftet modell.
+        candidates.push(`${brand} trekking e-bike`);
+        candidates.push(`${brand} trekking electric bike`);
+        candidates.push(`${brand} trekking bicycle`);
+        candidates.push(`${brand} e-bike trekking`);
+      }
 
-        if (brand && model && !modelUncertain) {
-          candidates.push(`${brand} ${model} complete e-bike`);
-          candidates.push(`${brand} ${model} complete bicycle`);
-          candidates.push(`${brand} ${model} e-bike`);
-        }
+      // Førstevalg: mest presise identifikasjon med konkret år når vi kjenner det.
+      if (brand && model && country && hardYear) {
+        candidates.push(`${brand} ${model} ${country} ${hardYear}`);
+      }
 
-        if (brand && bikeTypeWords) {
-          candidates.push(`${brand} ${bikeTypeWords} e-bike`);
-          candidates.push(`${brand} ${bikeTypeWords} complete bike`);
-        }
+      if (brand && model && hardYear) {
+        candidates.push(`${brand} ${model} ${hardYear}`);
+      }
 
-        if (brand) {
-          candidates.push(`${brand} electric trekking bike`);
-          candidates.push(`${brand} trekking e-bike`);
-        }
+      // Land uten år brukes fortsatt som søkestøtte, men treff uten
+      // dokumentert år blir ikke godkjent som prisreferanser når year finnes.
+      if (brand && model && country) {
+        candidates.push(`${brand} ${model} ${country}`);
+      }
 
-        // AI-søket er bare med dersom det ikke peker på en usikker modell.
-        if (aiQuery && !modelUncertain) {
-          candidates.push(aiQuery);
-        }
-      } else {
-        // Ikke-sykkel: behold den strenge eksisterende modellen/variant-logikken.
-        if (brand && model && country && hardYear) {
-          candidates.push(`${brand} ${model} ${country} ${hardYear}`);
-        }
+      if (brand && model) {
+        candidates.push(`${brand} ${model}`);
+      }
 
-        if (brand && model && hardYear) {
-          candidates.push(`${brand} ${model} ${hardYear}`);
-        }
-
-        if (brand && model && country) {
-          candidates.push(`${brand} ${model} ${country}`);
-        }
-
-        if (brand && model) {
-          candidates.push(`${brand} ${model}`);
-        }
-
-        if (aiQuery) {
-          candidates.push(aiQuery);
-        }
+      // AI-søket brukes kun hvis det allerede er kort og produktorientert.
+      if (aiQuery) {
+        candidates.push(aiQuery);
       }
 
       const out = [];
       const seen = new Set();
 
       for (const raw of candidates) {
-        const q = compact(raw, 8);
+        const q = compact(raw, 6);
         if (!q || q.length < 4) continue;
 
         const key = q.toLowerCase();
@@ -671,7 +612,7 @@ Returner KUN gyldig JSON:
         seen.add(key);
         out.push(q);
 
-        if (out.length >= 6) break;
+        if (out.length >= 5) break;
       }
 
       return {
@@ -686,12 +627,16 @@ Returner KUN gyldig JSON:
         country,
         ageGroup,
         category,
-        model_confidence: modelConfidence || "ukjent",
-        model_uncertain: modelUncertain,
-        variant_uncertain:
-          /cannot be confirmed|can't be confirmed|cannot be determined|exact variant|variant.*cannot|eksakt variant|variant.*ikke.*bekreft|kan ikke bekreftes/i.test(
-            `${parsed.description || ""} ${info.uncertainties || ""} ${info.model || ""}`
-          )
+        user_model_hint: Boolean(
+          category === "bicycle" &&
+          brand &&
+          model &&
+          String(parsed._user_description || "").toLowerCase().includes(brand) &&
+          String(parsed._user_description || "").toLowerCase().includes(model)
+        ),
+        variant_uncertain: /cannot be confirmed|can't be confirmed|cannot be determined|exact variant|variant.*cannot|eksakt variant|variant.*ikke.*bekreft|kan ikke bekreftes/i.test(
+          `${parsed.description || ""} ${info.uncertainties || ""} ${info.model || ""}`
+        )
       };
     }
 
@@ -788,9 +733,9 @@ Returner KUN gyldig JSON:
 
         // En ren del-/tilbehørstittel uten tydelig komplett sykkelord skal
         // aldri få høy score bare fra merke + modell.
-        // "trekking" alene er IKKE nok til å bevise at annonsen gjelder en
-        // komplett sykkel. eBay bruker ofte ordet trekking i titler på deler.
-        const completeBikeWords = /\b(e-?bike|ebike|electric bike|electric bicycle|bicycle|fahrrad|elektrofahrrad|pedelec|city bike|mountain bike|mtb|trekking bike|trekkingrad|trekking e-bike|complete bike|complete bicycle|komplett fahrrad|komplett e-bike|sykkel)\b/.test(t);
+        // "trekking" alene er IKKE bevis på komplett sykkel.
+        // Det må finnes et faktisk sykkelord i tittelen.
+        const completeBikeWords = /\b(bike|bicycle|e-bike|ebike|city bike|mountain bike|mtb|pedelec|fahrrad|elektrofahrrad|sykkel|trekkingrad|trekking e-bike|trekking bike|electric bike)\b/.test(t);
         const obviousPartWords = /\b(lock|schloss|key|battery|akku|charger|ladegerät|ladegerat|motor|display|sensor|fork|gabel|wheel|laufrad|vorderrad|hinterrad|frame|rahmen|sattel|saddle|seat|pedal|brake|bremse|derailleur|schaltwerk|kassette|abdeckung|deckung|cover|schutz|mudguard|schutzblech|fender|rack|gepäckträger|gepacktrager|kickstand|ständer|staender|chainring|kettenblatt|rotor|disc|laufrad)\b/.test(t);
 
         // Sterke delord skal avvises selv om tittelen også inneholder
@@ -909,19 +854,6 @@ Returner KUN gyldig JSON:
         score -= 30;
       }
 
-      // Når sykkelmodellen er usikker, er merke + riktig sykkeltype
-      // det vi faktisk har bevis for. Ikke straff annonsen for at den
-      // mangler en modell som Kistefunn selv ikke kunne bekrefte.
-      if (category === "bicycle" && criteria.model_uncertain) {
-        const bicycleTypeHit =
-          /\b(e-?bike|ebike|electric bike|electric bicycle|bicycle|fahrrad|elektrofahrrad|pedelec|trekking bike|trekkingrad|trekking e-bike|trekking|sykkel|electric|elektrisk)\b/.test(t);
-
-        if (bicycleTypeHit) {
-          score += 20;
-          reasons.push("sykkeltype");
-        }
-      }
-
       // Modell: skill mellom selve modellnavnet og variantord.
       // Eksempel: "Standard Stratocaster" skal kunne matche
       // "Fender Mexico Stratocaster 1995" selv om "Standard" mangler.
@@ -944,21 +876,21 @@ Returner KUN gyldig JSON:
         if (t.includes(word)) modelMatches++;
       }
 
-      // Vi krever kjerne-modellen når modellen er bekreftet.
-      // Ved usikker sykkelmodell skal vi ikke late som om en tilfeldig
-      // modelltekst i annonsen beviser at det er samme modell.
-      if (coreModelWords.length && !criteria.model_uncertain) {
-        if (modelMatches === coreModelWords.length) {
-          score += 50;
-          reasons.push("kjerne-modell");
-        } else if (
-          modelMatches >= Math.max(1, Math.ceil(coreModelWords.length * 0.6))
-        ) {
-          score += 25;
-          reasons.push("delvis kjerne-modell");
-        } else {
-          score -= 35;
-        }
+      // Vi krever kjerne-modellen, men ikke nødvendigvis hvert variantord.
+      if (
+        coreModelWords.length &&
+        modelMatches === coreModelWords.length
+      ) {
+        score += 50;
+        reasons.push("kjerne-modell");
+      } else if (
+        coreModelWords.length &&
+        modelMatches >= Math.max(1, Math.ceil(coreModelWords.length * 0.6))
+      ) {
+        score += 25;
+        reasons.push("delvis kjerne-modell");
+      } else if (coreModelWords.length) {
+        score -= 35;
       }
 
       // Variantord som er viktige kan gi bonus, men skal normalt ikke
@@ -1231,14 +1163,6 @@ Returner KUN gyldig JSON:
       const nok = originalPrice * rate;
       if (!Number.isFinite(nok) || nok <= 0) return null;
 
-      const bicycleFamilyOnly =
-        criteria.category === "bicycle" &&
-        Boolean(criteria.model_uncertain);
-
-      const exactLike =
-        !bicycleFamilyOnly &&
-        !relevance.near_match;
-
       return {
         title,
         price: {
@@ -1251,14 +1175,15 @@ Returner KUN gyldig JSON:
         relevance_score: relevance.score,
         relevance_reason: relevance.reason,
         year_match: relevance.year_match || "not_required",
-        match_tier:
-          relevance.near_match
-            ? "near"
-            : (bicycleFamilyOnly ? "same_model" : "exact"),
+        match_tier: relevance.near_match ? "near" : "exact",
         valuation_tier:
           relevance.near_match
-            ? "near"
-            : (bicycleFamilyOnly ? "same_model" : "exact")
+            ? (
+                // Same model + same material is useful market evidence
+                // when the object itself has no concrete year requirement.
+                (criteria.year ? "near" : "same_model")
+              )
+            : "exact"
       };
     }
 
@@ -1349,28 +1274,18 @@ Returner KUN gyldig JSON:
           x.relevance_score >= 50
       );
 
-      const familyOnlyBicycle =
-        built.category === "bicycle" &&
-        Boolean(built.model_uncertain);
-
       const valuationPool = built.year
         ? all.filter(
             x => x.match_tier === "exact" && x.relevance_score >= 60
           )
-        : familyOnlyBicycle
-          ? all.filter(
-              x =>
-                x.valuation_tier === "same_model" &&
-                x.relevance_score >= 60
-            )
-          : all.filter(
-              x =>
-                (
-                  x.match_tier === "exact" ||
-                  x.valuation_tier === "same_model"
-                ) &&
-                x.relevance_score >= 50
-            );
+        : all.filter(
+            x =>
+              (
+                x.match_tier === "exact" ||
+                x.valuation_tier === "same_model"
+              ) &&
+              x.relevance_score >= 50
+          );
 
       const pool =
         valuationPool.length >= 3
@@ -1378,13 +1293,11 @@ Returner KUN gyldig JSON:
           : (
               built.year
                 ? exactPool
-                : familyOnlyBicycle
-                  ? sameModelPool.filter(x => x.relevance_score >= 60)
-                  : (
-                      sameModelPool.length
-                        ? [...exactPool, ...sameModelPool]
-                        : exactPool
-                    )
+                : (
+                    sameModelPool.length
+                      ? [...exactPool, ...sameModelPool]
+                      : exactPool
+                  )
             );
 
       const filteredPool = removeOutliers(pool);
@@ -1458,10 +1371,13 @@ Returner KUN gyldig JSON:
           minimum_relevance_score: 45,
           exact_year_required_for_valuation: Boolean(built.year),
           valuation_uses_same_model_when_year_not_required: !built.year,
+          user_model_hint: Boolean(built.user_model_hint),
+          market_basis_label:
+            built.category === "bicycle" && built.model
+              ? (built.user_model_hint ? "modell oppgitt av bruker + bilde" : "modell identifisert fra bilde")
+              : null,
           valuation_minimum_relevance_score:
-            valuationPool.length >= 3 ? 60 : (familyOnlyBicycle ? 60 : 50),
-          model_uncertain: Boolean(built.model_uncertain),
-          family_level_valuation: Boolean(familyOnlyBicycle)
+            valuationPool.length >= 3 ? 60 : 50
         },
         listings: all.slice(0, 12).map(item => ({
           title: item.title,
@@ -1562,27 +1478,26 @@ Returner KUN gyldig JSON:
       // eBay skal ha betydelig større vekt når vi faktisk har gode,
       // uavhengige sammenligninger. Men ett enkelt aktivt treff skal
       // fortsatt ikke overstyre AI-estimatet fullstendig.
-      if (hasYear && exactCount >= 5 && distinctCount >= 4) ebayWeight = 0.75;
-      else if (hasYear && exactCount >= 3 && distinctCount >= 3) ebayWeight = 0.65;
-      else if (hasYear && exactCount >= 2 && distinctCount >= 2) ebayWeight = 0.55;
-      else if (hasYear && exactCount >= 1) ebayWeight = 0.40;
-      else if (!hasYear && sameModelCount >= 8 && distinctCount >= 6) ebayWeight = 0.60;
-      else if (!hasYear && sameModelCount >= 4 && distinctCount >= 3) ebayWeight = 0.50;
-      else if (!hasYear && (sameModelCount >= 2 || exactCount >= 2)) ebayWeight = 0.40;
+      if (hasYear && exactCount >= 5 && distinctCount >= 4) ebayWeight = 0.85;
+      else if (hasYear && exactCount >= 3 && distinctCount >= 3) ebayWeight = 0.80;
+      else if (hasYear && exactCount >= 2 && distinctCount >= 2) ebayWeight = 0.70;
+      else if (hasYear && exactCount >= 1) ebayWeight = 0.45;
+      else if (!hasYear && exactCount >= 4 && distinctCount >= 3) ebayWeight = 0.80;
+      else if (!hasYear && exactCount >= 2 && distinctCount >= 2) ebayWeight = 0.70;
+      else if (!hasYear && sameModelCount >= 8 && distinctCount >= 6) ebayWeight = 0.65;
+      else if (!hasYear && sameModelCount >= 4 && distinctCount >= 3) ebayWeight = 0.60;
+      else if (!hasYear && sameModelCount >= 2) ebayWeight = 0.50;
       else ebayWeight = 0.25;
 
-      // Familie-/type-nivå for sykkel er nyttig, men skal ikke dominere
-      // verdien når eksakt modell ikke er bekreftet.
-      if (ebay?.filtering?.family_level_valuation) {
-        if (sameModelCount >= 8 && distinctCount >= 6) ebayWeight = Math.min(ebayWeight, 0.50);
-        else if (sameModelCount >= 4 && distinctCount >= 3) ebayWeight = Math.min(ebayWeight, 0.40);
-        else ebayWeight = Math.min(ebayWeight, 0.30);
-      }
+      // En konkret modell oppgitt av brukeren er et reelt identifikasjonssignal.
+      // Bildet må fortsatt støtte merke/type, men manglende modelltekst i bildet
+      // skal ikke automatisk redusere gode modelltreff til bare 15 %.
+      const userModelHint = Boolean(ebay?.filtering?.user_model_hint);
 
-      // Sikkerhetsventil: markedsdata skal ikke få stor vekt når selve
-      // merke-/modellidentifikasjonen er usikker eller mangler synlig bevis.
-      if (identificationConfidence === "lav" || !hasBrandEvidence || (!hasModelEvidence && !ebay?.filtering?.family_level_valuation)) {
-        ebayWeight = Math.min(ebayWeight, 0.15);
+      if (identificationConfidence === "lav" || !hasBrandEvidence) {
+        ebayWeight = Math.min(ebayWeight, userModelHint ? 0.45 : 0.15);
+      } else if (!hasModelEvidence && !userModelHint) {
+        ebayWeight = Math.min(ebayWeight, 0.25);
       }
 
       const aiWeight = 1 - ebayWeight;
@@ -1611,13 +1526,9 @@ Returner KUN gyldig JSON:
       }
 
       const valuationBasis =
-        ebay?.filtering?.family_level_valuation
-          ? "samme merke/type-familie"
-          : (
-              ebay?.filtering?.exact_year_required_for_valuation
-                ? "eksakte treff"
-                : "samme modell/materiale"
-            );
+        ebay?.filtering?.exact_year_required_for_valuation
+          ? "eksakte treff"
+          : "samme modell/materiale";
 
       valuationMethod =
         `AI + eBay-markedsdata (${Math.round(ebayWeight * 100)} % eBay-vekt, ${ebaySampleSize} treff / ${Number(ebay.distinct_valuation_count || ebaySampleSize)} unike ${valuationBasis})`;
@@ -1672,7 +1583,6 @@ Returner KUN gyldig JSON:
       identifying_features: itemInfo.identifying_features,
       brand_evidence: itemInfo.brand_evidence,
       model_evidence: itemInfo.model_evidence,
-      model_confidence: itemInfo.model_confidence,
       modifications: itemInfo.modifications,
       condition_details: itemInfo.condition_details,
       value_factors: itemInfo.value_factors,
@@ -1680,6 +1590,7 @@ Returner KUN gyldig JSON:
       item_info: itemInfo,
 
       ebay_search_query: parsed.ebay_search_query || "",
+      ebay_search_queries: ebay?.queries || [],
       ebay,
 
       valuation_method: valuationMethod,
