@@ -438,6 +438,23 @@ Returner KUN gyldig JSON:
       return null;
     }
 
+    function extractAgeGroup(...values) {
+      const s = values
+        .map(v => String(v || ""))
+        .join(" ")
+        .toLowerCase();
+
+      if (/\b(kids?|kid|children|child|junior|youth|infant|baby|toddler)\b/.test(s)) {
+        return "kids";
+      }
+
+      if (/\b(adult|adults|men|mens|women|womens|man|woman)\b/.test(s)) {
+        return "adult";
+      }
+
+      return null;
+    }
+
     function buildStrictQueries(parsed) {
       const info = parsed?.item_info || {};
 
@@ -454,6 +471,14 @@ Returner KUN gyldig JSON:
         extractCountry(info.manufacturer) ||
         extractCountry(parsed.name) ||
         extractCountry(parsed.description);
+
+      const ageGroup = extractAgeGroup(
+        parsed.name,
+        parsed.description,
+        info.type,
+        info.model,
+        info.year_or_period
+      );
 
       const candidates = [];
 
@@ -503,7 +528,8 @@ Returner KUN gyldig JSON:
         manufacturer,
         material,
         year,
-        country
+        country,
+        ageGroup
       };
     }
 
@@ -544,17 +570,7 @@ Returner KUN gyldig JSON:
         "gigbag", "hardcase", "flight case", "cable", "stand",
         "wall hanger", "capo", "knob", "potentiometer", "switch",
         "sticker", "decal", "parts", "part", "repair", "manual",
-        "book", "poster", "shirt", "t-shirt", "cover", "cover only",
-
-        // Vanlige eBay-betegnelser for deler / kun hus / kun kropp.
-        "nur gehäuse", "nur gehause", "nur korpus", "nur body",
-        "nur hals", "nur neck", "nur bodyteil", "nur chassis",
-        "gehäuse only", "gehause only", "body only", "neck only",
-        "korpus only", "chassis only", "ohne hals", "ohne neck",
-        "ohne hardware", "ohne elektronik", "ohne elektronik",
-        "ohne pickup", "replacement part", "spare part",
-        "ersatzteil", "ersatzteile", "gehäuse", "gehause",
-        "korpus", "bodyteil"
+        "book", "poster", "shirt", "t-shirt", "cover", "cover only"
       ];
 
       const wrongModelTerms = [
@@ -569,16 +585,6 @@ Returner KUN gyldig JSON:
         return { score: -100, accepted: false, reason: "tilbehør/del" };
       }
 
-      // Ekstra sikkerhet mot formuleringer som betyr "kun hus/kropp".
-      // Disse skal aldri kunne bli prisreferanser for en komplett gjenstand.
-      if (
-        /\b(nur|only|just)\b.{0,25}\b(gehäuse|gehause|korpus|body|chassis|case)\b/.test(t) ||
-        /\b(gehäuse|gehause|korpus|body|chassis|case)\b.{0,25}\b(nur|only|just)\b/.test(t) ||
-        /\b(ohne|without)\b.{0,25}\b(hals|neck|hardware|elektronik|electronics|pickup)\b/.test(t)
-      ) {
-        return { score: -100, accepted: false, reason: "kun del/hus" };
-      }
-
       if (brand && t.includes(brand)) {
         score += 25;
         reasons.push("merke");
@@ -586,24 +592,54 @@ Returner KUN gyldig JSON:
         score -= 30;
       }
 
-      // Modell: del opp slik at "Standard Stratocaster" matches robust.
+      // Modell: skill mellom selve modellnavnet og variantord.
+      // Eksempel: "Standard Stratocaster" skal kunne matche
+      // "Fender Mexico Stratocaster 1995" selv om "Standard" mangler.
       const modelWords = model
         .split(/\s+/)
+        .map(w => w.trim())
         .filter(w => w.length >= 3);
 
+      const genericVariantWords = new Set([
+        "standard", "original", "classic", "vintage", "modern",
+        "series", "serie", "model", "modell", "electric", "elektrisk"
+      ]);
+
+      const coreModelWords = modelWords.filter(
+        word => !genericVariantWords.has(word)
+      );
+
       let modelMatches = 0;
-      for (const word of modelWords) {
+      for (const word of coreModelWords) {
         if (t.includes(word)) modelMatches++;
       }
 
-      if (modelWords.length && modelMatches === modelWords.length) {
-        score += 45;
-        reasons.push("modell");
-      } else if (modelMatches >= Math.max(1, Math.ceil(modelWords.length * 0.6))) {
+      // Vi krever kjerne-modellen, men ikke nødvendigvis hvert variantord.
+      if (
+        coreModelWords.length &&
+        modelMatches === coreModelWords.length
+      ) {
+        score += 50;
+        reasons.push("kjerne-modell");
+      } else if (
+        coreModelWords.length &&
+        modelMatches >= Math.max(1, Math.ceil(coreModelWords.length * 0.6))
+      ) {
         score += 25;
-        reasons.push("delvis modell");
-      } else if (modelWords.length) {
-        score -= 25;
+        reasons.push("delvis kjerne-modell");
+      } else if (coreModelWords.length) {
+        score -= 35;
+      }
+
+      // Variantord som er viktige kan gi bonus, men skal normalt ikke
+      // være absolutte krav når kjerne-modellen er identisk.
+      const variantWords = modelWords.filter(
+        word => genericVariantWords.has(word)
+      );
+
+      if (variantWords.some(word => t.includes(word))) {
+        score += 8;
+        reasons.push("variant");
       }
 
       // Type er støtte, ikke hovedkrav.
@@ -614,6 +650,32 @@ Returner KUN gyldig JSON:
       if (typeWords.some(w => t.includes(w))) {
         score += 10;
         reasons.push("type");
+      }
+
+      // Aldersgruppe er viktig. Hvis AI-en har identifisert en voksenmodell,
+      // skal Kids/Junior/Youth ikke brukes som sammenligningsgrunnlag.
+      const listingIsKids =
+        /\b(kids?|kid|children|child|junior|youth|infant|baby|toddler)\b/.test(t);
+
+      const listingIsAdult =
+        /\b(adult|adults|men|mens|women|womens|man|woman)\b/.test(t);
+
+      if (criteria.ageGroup === "adult" && listingIsKids) {
+        return { score: -100, accepted: false, reason: "barnemodell" };
+      }
+
+      if (criteria.ageGroup === "kids" && listingIsAdult && !listingIsKids) {
+        return { score: -100, accepted: false, reason: "voksenmodell" };
+      }
+
+      // Birkenstock: Papillio er en egen produktlinje og skal ikke blandes
+      // inn når målet er vanlig Birkenstock Arizona.
+      if (
+        brand.includes("birkenstock") &&
+        !model.toLowerCase().includes("papillio") &&
+        /\bpapillio\b/.test(t)
+      ) {
+        return { score: -100, accepted: false, reason: "Papillio-linje" };
       }
 
       // Country/produksjonsvariant er svært viktig.
@@ -639,19 +701,21 @@ Returner KUN gyldig JSON:
         }
       }
 
-      // År: når identifikasjonen har et konkret år, skal et annet
-      // konkret år i annonsen ikke brukes som sammenligningsgrunnlag.
+      // År: bruk som ekstra poeng, men ikke krev det.
       const titleYears = extractYears(t);
 
       if (year && titleYears.length) {
         const exact = titleYears.some(y => y === year);
-        const otherYear = titleYears.some(y => y !== year);
+        const close = titleYears.some(y => Math.abs(y - year) <= 3);
 
         if (exact) {
-          score += 25;
+          score += 20;
           reasons.push("samme år");
-        } else if (otherYear) {
-          return { score: -100, accepted: false, reason: "annet år" };
+        } else if (close) {
+          score += 8;
+          reasons.push("nær år");
+        } else {
+          score -= 5;
         }
       }
 
