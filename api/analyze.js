@@ -41,11 +41,27 @@ Bruk dette som ekstra informasjon, men stol ikke blindt på opplysningene hvis b
             {
               type: "input_text",
               text: `
-Du er ekspert på identifisering og verdivurdering av fysiske gjenstander.
+Du er ekspert på visuell identifisering og verdivurdering av fysiske gjenstander.
 
-Identifiser gjenstanden på bildet så presist som mulig.
+IDENTIFIKASJON SKAL VÆRE BEVISDREVET. Ikke gjett merke eller modell bare fordi formen ligner et kjent produkt. Før du bestemmer identiteten skal du aktivt lese og vurdere synlig logo, merkenavn, modellnavn, etiketter, serienummer, dekaler og andre kjennetegn i bildet. Hvis et merkenavn er synlig på selve gjenstanden, skal dette veie tyngre enn generell form/silhuett.
 
 ${contextText}
+
+VIKTIG: Ikke forveksle visuelt like produkter fra ulike produsenter. For sykler skal du spesielt kontrollere:
+- synlig merkenavn/logo på ramme
+- modellnavn/dekal på ramme
+- motorprodusent og motorplassering
+- batteritype/plassering
+- rammeform og integrert batteri
+- hjulstørrelse hvis synlig
+- komponenter som faktisk kan sees
+Hvis merke eller modell ikke kan bekreftes, skriv "ukjent" i stedet for å presentere en gjetning som sikker identifikasjon.
+
+Før du returnerer JSON, gjør en intern kontroll:
+1. Hvilket merkenavn kan faktisk leses eller sees?
+2. Hvilke detaljer beviser modellen?
+3. Finnes det en annen kjent produsent som bare ligner i formen? Hvis ja, ikke velg den uten bevis.
+4. Stemmer beskrivelsen, bildet og identifikasjonen med hverandre?
 
 Vurder spesielt:
 - merke
@@ -94,6 +110,8 @@ Returner KUN gyldig JSON:
     "material": "materiale eller ukjent",
     "serial_number": "serienummer eller ukjent",
     "identifying_features": ["synlige kjennetegn"],
+    "brand_evidence": "hva i bildet som støtter merkeidentifikasjonen, eller ukjent",
+    "model_evidence": "hva i bildet som støtter modellidentifikasjonen, eller ukjent",
     "modifications": "modifikasjoner eller ingen synlig",
     "condition_details": "detaljert tilstand",
     "value_factors": ["forhold som påvirker verdi"],
@@ -195,6 +213,8 @@ Returner KUN gyldig JSON:
       material: infoText(info.material),
       serial_number: infoText(info.serial_number),
       identifying_features: infoList(info.identifying_features),
+      brand_evidence: infoText(info.brand_evidence),
+      model_evidence: infoText(info.model_evidence),
       modifications: infoText(
         info.modifications,
         "Ingen sikre modifikasjoner bekreftet."
@@ -543,7 +563,12 @@ Returner KUN gyldig JSON:
       }
 
       if (brand && model) {
-        candidates.push(`${brand} ${model}`);
+        if (category === "bicycle") {
+          candidates.push(`${brand} ${model} e-bike complete bicycle`);
+          candidates.push(`${brand} ${model} complete e-bike`);
+        } else {
+          candidates.push(`${brand} ${model}`);
+        }
       }
 
       // AI-søket brukes kun hvis det allerede er kort og produktorientert.
@@ -679,28 +704,56 @@ Returner KUN gyldig JSON:
         // En ren del-/tilbehørstittel uten tydelig komplett sykkelord skal
         // aldri få høy score bare fra merke + modell.
         const completeBikeWords = /\b(bike|bicycle|e-bike|ebike|trekking|city bike|mountain bike|mtb|pedelec|fahrrad|elektrofahrrad|sykkel|trekkingrad|trekking e-bike)\b/.test(t);
-        const obviousPartWords = /\b(lock|schloss|key|battery|akku|charger|ladegerät|ladegerat|motor|display|sensor|fork|gabel|wheel|laufrad|vorderrad|hinterrad|frame|rahmen|sattel|saddle|seat|pedal|brake|bremse|derailleur|schaltwerk|kassette|abdeckung|deckung|cover|schutz|mudguard|schutzblech|fender|rack|gepäckträger|gepacktrager|kickstand|ständer|staender|chainring|kettenblatt|rotor|disc|laufrad)\b/.test(t);
 
-        if (obviousPartWords && !completeBikeWords) {
+        // VIKTIG: "trekking" alene er ikke bevis på at annonsen gjelder en
+        // komplett sykkel. Mange deler/tilbehør bruker modellnavnet i tittelen.
+        // Derfor skal en eksplisitt delindikator ALLTID vinne over modelltreffet.
+        const bicyclePartWords = /\b(akku schloss|battery lock|battery key|akku schloss set|lock set|frame lock|rahmenschloss|battery cover|akku deckel|akkugehäuse|akku gehause|motor cover|motorabdeckung|display|controller|sensor|speed sensor|chainring|kettenblatt|kassette|derailleur|schaltwerk|brake rotor|bremsrotor|brake lever|bremshebel|charger|ladegerät|ladegerat|key only|schlüssel only|schluessel only|spare key|ersatzschlüssel|ersatzschluessel|lock|schloss|battery|akku|charger|ladegerät|ladegerat|motor only|motor|fork|gabel|wheel|laufrad|vorderrad|hinterrad|frame|rahmen|sattel|saddle|seat|pedal|brake|bremse|abdeckung|deckung|cover|schutz|mudguard|schutzblech|fender|rack|gepäckträger|gepacktrager|kickstand|ständer|staender|rotor|disc|pedal|kickstand|ständer|ersatzteil|spare part|replacement part)\b/;
+
+        if (bicyclePartWords.test(t)) {
           return {
             score: -100,
             accepted: false,
             near_match: false,
             year_match: year ? "missing" : "not_required",
-            reason: "ikke komplett sykkel"
+            reason: "sykkeldel/tilbehør"
           };
         }
 
-        // Titler som eksplisitt beskriver en ramme/deksel/hjul/skjerm osv.
-        // skal avvises selv om merke og modell står i tittelen.
-        if (!completeBikeWords && /\b(rahmen|frame|abdeckung|deckung|cover|schutz|laufrad|vorderrad|hinterrad|wheel|gabel|fork|sattel|saddle|rack|gepäckträger|mudguard|schutzblech)\b/.test(t)) {
+        if (!completeBikeWords) {
           return {
             score: -100,
             accepted: false,
             near_match: false,
             year_match: year ? "missing" : "not_required",
-            reason: "sykkeldel/ramme/hjul"
+            reason: "ikke tydelig komplett sykkel"
           };
+        }
+
+        // Modellserier som eksplisitt lister flere modeller (f.eks.
+        // "Trekking 4 5 6 7 8") er ikke et eksakt modelltreff.
+        // De kan vises som nærmeste referanse, men skal ikke påvirke verdien.
+        if (model) {
+          const modelWords = model
+            .split(/\s+/)
+            .map(w => w.replace(/[^a-z0-9.]/g, ""))
+            .filter(w => w.length >= 2);
+
+          const numericModel = modelWords.find(w => /^\d+(?:\.\d+)?$/.test(w));
+          if (numericModel) {
+            const seriesPattern = new RegExp(
+              `\\b${numericModel.replace('.', '\\.')}(?:\s+\d+){1,6}\\b`
+            );
+            if (seriesPattern.test(t)) {
+              return {
+                score: 20,
+                accepted: false,
+                near_match: true,
+                year_match: year ? "missing" : "not_required",
+                reason: "flere modeller i samme annonse"
+              };
+            }
+          }
         }
       }
 
@@ -1239,7 +1292,7 @@ Returner KUN gyldig JSON:
       const successfulQueries = [
         ...new Set(
           all
-            .filter(x => x.match_tier === "exact" && x.relevance_score >= 45)
+            .filter(x => x.match_tier === "exact" && x.relevance_score >= 45 && x.accepted !== false)
             .map(x => x.query)
         )
       ];
@@ -1368,6 +1421,10 @@ Returner KUN gyldig JSON:
     let ebayWeight = 0;
     let valuationMethod = "AI-estimat uten eBay-grunnlag";
 
+    const identificationConfidence = String(parsed.confidence || "lav").toLowerCase();
+    const hasBrandEvidence = String(itemInfo.brand_evidence || "").trim().toLowerCase() !== "ukjent";
+    const hasModelEvidence = String(itemInfo.model_evidence || "").trim().toLowerCase() !== "ukjent";
+
     const ebaySampleSize =
       ebay?.enabled && Number.isFinite(Number(ebay.sample_size))
         ? Number(ebay.sample_size)
@@ -1393,6 +1450,12 @@ Returner KUN gyldig JSON:
       else if (!hasYear && sameModelCount >= 4 && distinctCount >= 3) ebayWeight = 0.50;
       else if (!hasYear && (sameModelCount >= 2 || exactCount >= 2)) ebayWeight = 0.40;
       else ebayWeight = 0.25;
+
+      // Sikkerhetsventil: markedsdata skal ikke få stor vekt når selve
+      // merke-/modellidentifikasjonen er usikker eller mangler synlig bevis.
+      if (identificationConfidence === "lav" || !hasBrandEvidence || !hasModelEvidence) {
+        ebayWeight = Math.min(ebayWeight, 0.15);
+      }
 
       const aiWeight = 1 - ebayWeight;
 
@@ -1475,6 +1538,8 @@ Returner KUN gyldig JSON:
       serial_number: itemInfo.serial_number,
 
       identifying_features: itemInfo.identifying_features,
+      brand_evidence: itemInfo.brand_evidence,
+      model_evidence: itemInfo.model_evidence,
       modifications: itemInfo.modifications,
       condition_details: itemInfo.condition_details,
       value_factors: itemInfo.value_factors,
