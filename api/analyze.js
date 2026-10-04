@@ -1,4 +1,4 @@
- export default async function handler(req, res) {
+export default async function handler(req, res) {
           if (req.method !== "POST") {
             return res.status(405).json({
               error: "Method not allowed"
@@ -909,30 +909,11 @@
               if (!value) return "";
 
               const stop = new Set([
-                "sannsynligvis",
-                "muligens",
-                "trolig",
-                "ukjent",
-                "unknown",
-                "eller",
-                "med",
-                "og",
-                "av",
-                "for",
-                "fra",
-                "som",
-                "mulig",
-                "antatt",
-                "probably",
-                "likely",
-                "possibly",
-                "treverk",
-                "lakkert",
-                "kropp",
-                "gripebrett",
-                "metallhardware",
-                "plastplekterbrett",
-                "plast"
+                "sannsynligvis", "muligens", "trolig", "ukjent", "unknown",
+                "eller", "med", "og", "av", "for", "fra", "som", "mulig",
+                "antatt", "probably", "likely", "possibly", "the", "a", "an",
+                "treverk", "lakkert", "kropp", "gripebrett", "metallhardware",
+                "plastplekterbrett", "plast"
               ]);
 
               const words = String(value)
@@ -942,199 +923,293 @@
                 .trim()
                 .split(" ")
                 .filter(Boolean)
-                .map(word =>
-                  word.replace(/[^\p{L}\p{N}.]/gu, "")
-                )
+                .map(word => word.replace(/[^\p{L}\p{N}.]/gu, ""))
                 .filter(Boolean)
-                .filter(word =>
-                  !stop.has(word.toLowerCase())
-                );
+                .filter(word => !stop.has(word.toLowerCase()));
 
               const unique = [];
               const seen = new Set();
 
               for (const word of words) {
                 const key = word.toLowerCase();
-
                 if (seen.has(key)) continue;
-
                 seen.add(key);
                 unique.push(word);
-
-                if (unique.length >= maxWords) {
-                  break;
-                }
+                if (unique.length >= maxWords) break;
               }
 
               return unique.join(" ");
             }
 
+            function normalizeSearchText(value) {
+              return String(value || "")
+                .toLowerCase()
+                .normalize("NFD")
+                .replace(/[\u0300-\u036f]/g, "")
+                .replace(/[^a-z0-9\s]/g, " ")
+                .replace(/\s+/g, " ")
+                .trim();
+            }
 
+            function titleWords(value) {
+              return normalizeSearchText(value)
+                .split(" ")
+                .filter(Boolean);
+            }
+
+            function uniqueWords(values) {
+              const out = [];
+              const seen = new Set();
+
+              for (const value of values || []) {
+                const word = normalizeSearchText(value);
+                if (!word) continue;
+
+                for (const part of word.split(" ")) {
+                  if (!part || part.length < 2) continue;
+                  if (seen.has(part)) continue;
+                  seen.add(part);
+                  out.push(part);
+                }
+              }
+
+              return out;
+            }
+
+            /*
+             * Bygg søk i prioritert rekkefølge.
+             * Vi bruker aldri bare merke som søk.
+             */
             function buildEbayQueries(parsed) {
               const info = parsed?.item_info || {};
 
-              const brand =
-                cleanEbayTerm(info.brand, 1);
-
-              const model =
-                cleanEbayTerm(info.model, 3);
-
-              const type =
-                cleanEbayTerm(info.type, 2);
-
-              const manufacturer =
-                cleanEbayTerm(info.manufacturer, 2);
-
-              const material =
-                cleanEbayTerm(info.material, 1);
-
-              const year =
-                cleanEbayTerm(info.year_or_period, 1);
-
-              const aiQuery =
-                cleanEbayTerm(
-                  parsed?.ebay_search_query,
-                  4
-                );
+              const brand = cleanEbayTerm(info.brand, 1);
+              const model = cleanEbayTerm(info.model, 3);
+              const type = cleanEbayTerm(info.type, 2);
+              const manufacturer = cleanEbayTerm(info.manufacturer, 2);
+              const year = cleanEbayTerm(info.year_or_period, 1);
+              const aiQuery = cleanEbayTerm(parsed?.ebay_search_query, 4);
 
               const precise = [];
-              const broad = [];
-
-              /*
-               * PRESISE SØK
-               */
+              const broader = [];
 
               if (brand && model) {
-                precise.push(
-                  `${brand} ${model}`
-                );
+                precise.push(`${brand} ${model}`);
               }
 
               if (brand && model && year) {
-                precise.push(
-                  `${brand} ${model} ${year}`
-                );
+                precise.push(`${brand} ${model} ${year}`);
+              }
+
+              if (brand && type && model) {
+                precise.push(`${brand} ${model} ${type}`);
               }
 
               if (brand && type) {
-                precise.push(
-                  `${brand} ${type}`
-                );
-              }
-
-              if (manufacturer && model) {
-                precise.push(
-                  `${manufacturer} ${model}`
-                );
+                precise.push(`${brand} ${type}`);
               }
 
               if (aiQuery) {
                 precise.push(aiQuery);
               }
 
-              /*
-               * BREDERE SØK
-               */
+              if (manufacturer && model && manufacturer.toLowerCase() !== brand.toLowerCase()) {
+                broader.push(`${manufacturer} ${model}`);
+              }
+
+              if (brand && model) {
+                broader.push(`${brand} ${model}`);
+              }
 
               if (brand && type) {
-                broad.push(
-                  `${brand} ${type}`
-                );
+                broader.push(`${brand} ${type}`);
               }
-
-              if (brand) {
-                broad.push(brand);
-              }
-
-              if (model) {
-                broad.push(model);
-              }
-
-              if (brand && material) {
-                broad.push(
-                  `${brand} ${material}`
-                );
-              }
-
-              if (type) {
-                broad.push(type);
-              }
-
-              /*
-               * Kombiner og fjern duplikater.
-               */
 
               const seen = new Set();
               const queries = [];
 
-              for (const raw of [
-                ...precise,
-                ...broad
-              ]) {
-                const q =
-                  cleanEbayTerm(raw, 5);
+              for (const raw of [...precise, ...broader]) {
+                const q = cleanEbayTerm(raw, 5);
+                if (!q || q.length < 3) continue;
 
-                if (!q || q.length < 3) {
-                  continue;
-                }
-
-                const words =
-                  q.split(/\s+/);
-
-                if (words.length > 5) {
-                  continue;
-                }
-
-                const key =
-                  q.toLowerCase();
-
-                if (seen.has(key)) {
-                  continue;
-                }
-
+                const key = q.toLowerCase();
+                if (seen.has(key)) continue;
                 seen.add(key);
                 queries.push(q);
 
-                if (queries.length >= 8) {
-                  break;
-                }
+                if (queries.length >= 6) break;
               }
 
               return {
-                precise,
-                broad,
+                precise: queries.slice(0, 4),
+                broader: queries.slice(4),
                 queries
               };
             }
 
+            /*
+             * Lag krav til hva en eBay-annonse må inneholde.
+             * Dette hindrer f.eks. "Fender finish", tunere,
+             * strengepakker, gitarkropper og andre deler fra å
+             * påvirke verdien til selve gjenstanden.
+             */
+            function buildEbayRelevanceProfile(parsed) {
+              const info = parsed?.item_info || {};
+
+              const brand = normalizeSearchText(info.brand);
+              const model = normalizeSearchText(info.model);
+              const type = normalizeSearchText(info.type);
+              const manufacturer = normalizeSearchText(info.manufacturer);
+              const year = normalizeSearchText(info.year_or_period);
+
+              const modelWords = uniqueWords([model]);
+              const typeWords = uniqueWords([type]);
+              const brandWords = uniqueWords([brand, manufacturer]);
+
+              const importantModelWords = modelWords.filter(word =>
+                !["standard", "electric", "electrical", "guitar", "instrument", "unknown"].includes(word)
+              );
+
+              const importantTypeWords = typeWords.filter(word =>
+                !["electric", "electrical", "instrument", "item", "unknown"].includes(word)
+              );
+
+              const negativeWords = new Set([
+                "neck", "body", "pickup", "pickups", "tuner", "tuners", "pedal",
+                "pedals", "effect", "effects", "cable", "strings", "string",
+                "bridge", "pickguard", "knobs", "knob", "case", "gigbag", "bag",
+                "strap", "stand", "parts", "part", "replacement", "replacementpart",
+                "finish", "refinish", "decal", "sticker", "manual", "book", "magazine",
+                "shirt", "shirt", "poster", "cover", "sticker", "accessory", "accessories"
+              ]);
+
+              return {
+                brandWords,
+                modelWords,
+                importantModelWords,
+                typeWords,
+                importantTypeWords,
+                year,
+                negativeWords
+              };
+            }
+
+            function scoreEbayListing(title, profile) {
+              const words = new Set(titleWords(title));
+              const text = normalizeSearchText(title);
+
+              if (!text) {
+                return { score: 0, relevant: false };
+              }
+
+              let score = 0;
+              let brandMatch = false;
+              let modelMatch = false;
+              let typeMatch = false;
+
+              for (const word of profile.brandWords) {
+                if (words.has(word)) {
+                  brandMatch = true;
+                  score += 3;
+                  break;
+                }
+              }
+
+              for (const word of profile.importantModelWords) {
+                if (words.has(word)) {
+                  modelMatch = true;
+                  score += 4;
+                }
+              }
+
+              for (const word of profile.importantTypeWords) {
+                if (words.has(word)) {
+                  typeMatch = true;
+                  score += 2;
+                }
+              }
+
+              /* Modellord som "Stratocaster" kan være viktig selv om
+               * modellen ellers bare heter Standard Stratocaster. */
+              for (const word of profile.modelWords) {
+                if (word.length >= 4 && words.has(word)) {
+                  modelMatch = true;
+                  score += 2;
+                }
+              }
+
+              const hasYear = profile.year && text.includes(profile.year);
+              if (hasYear) score += 1;
+
+              let negativeHit = false;
+              for (const word of profile.negativeWords) {
+                if (words.has(word)) {
+                  negativeHit = true;
+                  score -= 8;
+                }
+              }
+
+              /*
+               * Hovedregelen:
+               * - merke må finnes når vi kjenner merke
+               * - minst ett ord fra modell/type må finnes
+               * - negative treff får ikke slippe gjennom
+               */
+              const hasProductIdentity =
+                modelMatch || typeMatch;
+
+              const relevant =
+                !negativeHit &&
+                (!profile.brandWords.length || brandMatch) &&
+                hasProductIdentity &&
+                score >= 5;
+
+              return {
+                score,
+                relevant
+              };
+            }
+
+            function filterRelevantEbayListings(listings, parsed) {
+              const profile = buildEbayRelevanceProfile(parsed);
+
+              return listings
+                .map(item => {
+                  const result = scoreEbayListing(
+                    item.title,
+                    profile
+                  );
+
+                  return {
+                    ...item,
+                    relevance_score: result.score,
+                    relevance_match: result.relevant
+                  };
+                })
+                .filter(item => item.relevance_match)
+                .sort(
+                  (a, b) =>
+                    Number(b.relevance_score || 0) -
+                    Number(a.relevance_score || 0)
+                );
+            }
 
             async function searchEbay(parsed) {
-
-              const querySet =
-                buildEbayQueries(parsed);
-
-              const allQueries =
-                querySet.queries;
+              const querySet = buildEbayQueries(parsed);
+              const allQueries = querySet.queries;
 
               if (!allQueries.length) {
                 return {
                   enabled: false,
-                  reason:
-                    "Ingen egnet eBay-søkestreng",
+                  reason: "Ingen egnet eBay-søkestreng",
                   queries: [],
                   successful_queries: []
                 };
               }
 
-
-              /*
-               * Kjør ett eBay-søk.
-               */
               async function runQuery(query) {
                 try {
-                  return await searchEbaySingle(
-                    query
-                  );
+                  return await searchEbaySingle(query);
                 } catch {
                   return {
                     enabled: false,
@@ -1145,273 +1220,135 @@
                 }
               }
 
+              /* Først de mest presise søkene. */
+              const firstQueries = allQueries.slice(0, 4);
+              const results = await Promise.all(
+                firstQueries.map(query => runQuery(query))
+              );
 
-              /*
-               * Start med de tre mest presise søkene.
-               */
-              const firstQueries =
-                allQueries.slice(0, 3);
-
-              const firstResults =
-                await Promise.all(
-                  firstQueries.map(
-                    query => runQuery(query)
-                  )
-                );
-
-              const results = [
-                ...firstResults
-              ];
-
-
-              /*
-               * Tell hvor mange treff vi har så langt.
-               */
-              let initialCount =
-                results.reduce(
-                  (sum, result) =>
-                    sum +
-                    Number(
-                      result?.sample_size || 0
-                    ),
-                  0
-                );
-
-
-              /*
-               * Hvis vi har færre enn 5 treff,
-               * prøver vi bredere søk automatisk.
-               */
-              if (initialCount < 5) {
-
-                const remainingQueries =
-                  allQueries.filter(
-                    query =>
-                      !firstQueries.some(
-                        first =>
-                          first.toLowerCase() ===
-                          query.toLowerCase()
-                      )
-                  );
-
-                const fallbackQueries =
-                  remainingQueries.slice(0, 5);
-
-                const fallbackResults =
-                  await Promise.all(
-                    fallbackQueries.map(
-                      query => runQuery(query)
-                    )
-                  );
-
-                results.push(
-                  ...fallbackResults
-                );
-              }
-
-
-              /*
-               * Alle søk som faktisk ble forsøkt.
-               */
-              const attemptedQueries =
-                results
-                  .map(result => result?.query)
-                  .filter(Boolean);
-
-
-              /*
-               * Bare søk som ga faktiske treff.
-               */
-              const successful =
-                results
-                  .filter(
-                    result =>
-                      result?.enabled &&
-                      Number(
-                        result?.sample_size
-                      ) > 0
-                  )
-                  .map(
-                    result => result.query
-                  );
-
-
-              /*
-               * Samle alle annonser og fjern duplikater.
-               */
-              const allListings = [];
+              let rawListings = [];
               const seen = new Set();
 
-              for (const result of results) {
+              function addResults(resultList) {
+                for (const result of resultList) {
+                  for (const item of result?.listings || []) {
+                    const key = String(
+                      item.url || item.title || ""
+                    ).trim().toLowerCase();
 
-                for (
-                  const item of
-                    result?.listings || []
-                ) {
+                    if (!key || seen.has(key)) continue;
+                    seen.add(key);
 
-                  const key =
-                    String(
-                      item.url ||
-                      item.title ||
-                      ""
-                    )
-                      .trim()
-                      .toLowerCase();
-
-                  if (!key) {
-                    continue;
+                    rawListings.push({
+                      ...item,
+                      query: result.query
+                    });
                   }
-
-                  if (seen.has(key)) {
-                    continue;
-                  }
-
-                  seen.add(key);
-
-                  allListings.push({
-                    ...item,
-                    query:
-                      result.query
-                  });
                 }
               }
 
+              addResults(results);
+
+              let relevantListings =
+                filterRelevantEbayListings(
+                  rawListings,
+                  parsed
+                );
 
               /*
-               * Gjør prisene numeriske og fjern ekstreme avvik.
+               * Hvis vi har færre enn 5 relevante treff,
+               * bruker vi bredere søk som reserve.
                */
-              const priceItems =
-                allListings
-                  .filter(
-                    item =>
-                      Number.isFinite(
-                        Number(
-                          item.price_nok
-                        )
-                      ) &&
-                      Number(
-                        item.price_nok
-                      ) > 0
+              if (relevantListings.length < 5) {
+                const remainingQueries = allQueries.filter(query =>
+                  !firstQueries.some(first =>
+                    first.toLowerCase() === query.toLowerCase()
                   )
-                  .map(
-                    item => ({
-                      ...item,
-                      nok:
-                        Number(
-                          item.price_nok
-                        )
-                    })
+                );
+
+                const fallbackQueries =
+                  remainingQueries.slice(0, 2);
+
+                const fallbackResults = await Promise.all(
+                  fallbackQueries.map(query => runQuery(query))
+                );
+
+                results.push(...fallbackResults);
+                addResults(fallbackResults);
+
+                relevantListings =
+                  filterRelevantEbayListings(
+                    rawListings,
+                    parsed
                   );
+              }
+
+              const attemptedQueries = results
+                .map(result => result?.query)
+                .filter(Boolean);
+
+              const successfulQueries = results
+                .filter(result => result?.enabled && Number(result?.sample_size) > 0)
+                .map(result => result.query);
+
+              /*
+               * Prisberegningen bruker bare annonser som passer
+               * identifikasjonen – ikke alle eBay-treff.
+               */
+              const priceItems = relevantListings
+                .filter(item =>
+                  Number.isFinite(Number(item.price_nok)) &&
+                  Number(item.price_nok) > 0
+                )
+                .map(item => ({
+                  ...item,
+                  nok: Number(item.price_nok)
+                }));
 
               const filteredPriceItems =
-                removeOutliers(
-                  priceItems
-                );
+                removeOutliers(priceItems);
 
-              const filtered =
-                filteredPriceItems.length
-                  ? filteredPriceItems
-                  : priceItems;
+              const filtered = filteredPriceItems.length
+                ? filteredPriceItems
+                : priceItems;
 
-              const finalPrices =
-                filtered
-                  .map(
-                    item =>
-                      Number(item.nok)
-                  )
-                  .filter(
-                    Number.isFinite
-                  )
-                  .filter(
-                    value => value > 0
-                  );
+              const finalPrices = filtered
+                .map(item => Number(item.nok))
+                .filter(Number.isFinite)
+                .filter(value => value > 0);
 
-              const medianNok =
-                median(finalPrices);
-
-              const ebayLow =
-                percentile(
-                  finalPrices,
-                  0.15
-                );
-
-              const ebayHigh =
-                percentile(
-                  finalPrices,
-                  0.85
-                );
-
+              const medianNok = median(finalPrices);
+              const ebayLow = percentile(finalPrices, 0.15);
+              const ebayHigh = percentile(finalPrices, 0.85);
 
               return {
                 enabled: true,
-
-                marketplace:
-                  "EBAY_DE",
-
-                query:
-                  attemptedQueries[0] ||
-                  "",
-
-                queries:
-                  attemptedQueries,
-
-                successful_queries:
-                  successful,
-
-                total_candidates:
-                  allListings.length,
-
-                sample_size:
-                  filtered.length,
-
-                median_nok:
-                  Number.isFinite(
-                    medianNok
-                  )
-                    ? Math.round(
-                        medianNok
-                      )
-                    : null,
-
-                low_nok:
-                  Number.isFinite(
-                    ebayLow
-                  )
-                    ? Math.round(
-                        ebayLow
-                      )
-                    : null,
-
-                high_nok:
-                  Number.isFinite(
-                    ebayHigh
-                  )
-                    ? Math.round(
-                        ebayHigh
-                      )
-                    : null,
-
-                listings:
-                  filtered
-                    .slice(0, 12)
-                    .map(
-                      item => ({
-                        title:
-                          item.title,
-
-                        price:
-                          item.price,
-
-                        price_nok:
-                          item.nok,
-
-                        url:
-                          item.url,
-
-                        query:
-                          item.query
-                      })
-                    )
+                marketplace: "EBAY_DE",
+                query: attemptedQueries[0] || "",
+                queries: attemptedQueries,
+                successful_queries: successfulQueries,
+                total_candidates: rawListings.length,
+                relevant_candidates: relevantListings.length,
+                sample_size: filtered.length,
+                median_nok: Number.isFinite(medianNok)
+                  ? Math.round(medianNok)
+                  : null,
+                low_nok: Number.isFinite(ebayLow)
+                  ? Math.round(ebayLow)
+                  : null,
+                high_nok: Number.isFinite(ebayHigh)
+                  ? Math.round(ebayHigh)
+                  : null,
+                listings: filtered
+                  .slice(0, 12)
+                  .map(item => ({
+                    title: item.title,
+                    price: item.price,
+                    price_nok: item.nok,
+                    url: item.url,
+                    query: item.query,
+                    relevance_score: item.relevance_score
+                  }))
               };
             }
 
