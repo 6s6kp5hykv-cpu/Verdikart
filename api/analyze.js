@@ -1,6 +1,9 @@
-// Kistefunn analysebackend v11.8
+// Kistefunn analysebackend v11.9
 // Strengere identifikasjon + hardere markedsfilter + multi-source markedsmotor
+// - V11.9: feil i søkemotorens variabelrekkefølge rettet + versjonsmerking samlet.
 // - V11.8: farge og gripebrett/materiale er sekundære signaler og skal ikke låse markedssøket.
+// - V11.7: videreføring av streng Fender-variantkontroll og mer robust markedsgrunnlag.
+// - V11.6: hard Fender-variantgate som ekskluderer 62/Special/American/Player/Vintera/Squier osv.
 //
 // Viktige endringer fra v7:
 // - Når konkret år er kjent, kan KUN annonser med samme år brukes i verdiberegningen.
@@ -818,6 +821,20 @@ Returner KUN gyldig JSON:
           )
         );
 
+      // V11.9: category må bestemmes før marketAiQuery brukes.
+      // I v11.8 lå marketAiQuery foran category-deklarasjonen, som kunne
+      // gi ReferenceError (Temporal Dead Zone) og stoppe hele analysen.
+      const category =
+        detectCategory(
+          parsed.name,
+          parsed.description,
+          info.type,
+          info.model,
+          info.brand,
+          parsed.ebay_search_query,
+          userText
+        );
+
       const marketAiQuery =
         category === "guitar"
           ? removeGuitarCosmeticSearchTerms(aiQuery)
@@ -844,17 +861,6 @@ Returner KUN gyldig JSON:
           info.type,
           info.model,
           info.year_or_period,
-          userText
-        );
-
-      const category =
-        detectCategory(
-          parsed.name,
-          parsed.description,
-          info.type,
-          info.model,
-          info.brand,
-          parsed.ebay_search_query,
           userText
         );
 
@@ -2380,7 +2386,7 @@ Returner KUN gyldig JSON:
           // Bare, selektiv aspekttekst. Vi tar ikke med alle aspekter
           // fordi f.eks. "Pickup" ellers kan bli feiltolket som en del.
           if (
-            /year|manufactured|production|fretboard|fingerboard|board|color|colour|finish|model|series|country|region|brand|type|body color|body colour/i.test(name)
+            /year|manufactured|production|fretboard|fingerboard|\bboard\b|color|colour|finish|model|series|country|region|brand|type|body color|body colour/i.test(name)
           ) {
             aspectText.push(`${name}: ${cleanValues.join(", ")}`);
           }
@@ -3770,7 +3776,7 @@ Returner KUN gyldig JSON:
       market.source_weights.find(x => x.source === "ebay")?.percent || 0;
 
     const valuationMethod =
-      `V11.3 markedsmotor: ${market.basis}`;
+      `V11.9 markedsmotor: ${market.basis}`;
 
     /* ---------------------------------------------------------
        8. RETURNER
@@ -3903,10 +3909,10 @@ Returner KUN gyldig JSON:
       market_sources: marketSources,
 
       market_engine_version:
-        "v11.8-market-first-pricing",
+        "v11.9-market-first-pricing",
 
       market_filter_version:
-        "v11.8-hard-title-year-variant-cosmetic-secondary"
+        "v11.9-hard-title-year-variant-cosmetic-secondary"
     });
 
   } catch (e) {
