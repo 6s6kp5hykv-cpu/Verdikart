@@ -1,4 +1,4 @@
- export default async function handler(req, res) {
+export default async function handler(req, res) {
           if (req.method !== "POST") {
             return res.status(405).json({
               error: "Method not allowed"
@@ -904,50 +904,67 @@
              * ---------------------------------------------------------
              */
 
-            function cleanEbayTerm(value) {
+            function cleanEbayTerm(value, maxWords = 3) {
               if (!value) return "";
 
               const stop = new Set([
-                "sannsynligvis", "muligens", "trolig",
-                "ukjent", "unknown", "eller", "med",
-                "og", "av", "for", "fra", "som",
-                "mulig", "antatt", "muligens"
+                "sannsynligvis", "muligens", "trolig", "ukjent", "unknown",
+                "eller", "med", "og", "av", "for", "fra", "som", "mulig",
+                "antatt", "probably", "likely", "possibly", "treverk", "lakkert",
+                "kropp", "gripebrett", "metallhardware", "plastplekterbrett", "plast"
               ]);
 
-              return String(value)
-                .replace(/[\n\r\t,;:()\[\]{}\"']/g, " ")
+              const words = String(value)
+                .replace(/[\n\r\t,;:()\[\]{}"']/g, " ")
+                .replace(/[\/|_-]+/g, " ")
                 .replace(/\s+/g, " ")
                 .trim()
                 .split(" ")
                 .filter(Boolean)
-                .filter(word => !stop.has(word.toLowerCase()))
-                .slice(0, 4)
-                .join(" " );
+                .map(word => word.replace(/[^\p{L}\p{N}.]/gu, ""))
+                .filter(Boolean)
+                .filter(word => !stop.has(word.toLowerCase()));
+
+              const unique = [];
+              const seen = new Set();
+              for (const word of words) {
+                const key = word.toLowerCase();
+                if (seen.has(key)) continue;
+                seen.add(key);
+                unique.push(word);
+                if (unique.length >= maxWords) break;
+              }
+
+              return unique.join(" ");
             }
 
             function buildEbayQueries(parsed) {
               const info = parsed?.item_info || {};
-              const brand = cleanEbayTerm(info.brand);
-              const model = cleanEbayTerm(info.model);
-              const type = cleanEbayTerm(info.type);
-              const manufacturer = cleanEbayTerm(info.manufacturer);
-              const material = cleanEbayTerm(info.material);
-              const aiQuery = cleanEbayTerm(parsed?.ebay_search_query);
+              const brand = cleanEbayTerm(info.brand, 1);
+              const model = cleanEbayTerm(info.model, 2);
+              const type = cleanEbayTerm(info.type, 2);
+              const manufacturer = cleanEbayTerm(info.manufacturer, 2);
+              const material = cleanEbayTerm(info.material, 1);
+              const aiQueryRaw = cleanEbayTerm(parsed?.ebay_search_query, 4);
 
-              const candidates = [
-                [brand, model].filter(Boolean).join(" "),
-                [brand, type].filter(Boolean).join(" "),
-                [model, type].filter(Boolean).join(" "),
-                [brand, material].filter(Boolean).join(" "),
-                aiQuery
-              ];
+              const candidates = [];
+
+              if (brand && model) candidates.push(`${brand} ${model}`);
+              if (brand && type) candidates.push(`${brand} ${type}`);
+              if (model && type) candidates.push(`${model} ${type}`);
+              if (manufacturer && model && manufacturer.toLowerCase() !== brand.toLowerCase()) {
+                candidates.push(`${manufacturer} ${model}`);
+              }
+              if (aiQueryRaw && aiQueryRaw.split(/\s+/).length <= 4) candidates.push(aiQueryRaw);
+              if (brand && material) candidates.push(`${brand} ${material}`);
 
               const seen = new Set();
               const queries = [];
 
               for (const raw of candidates) {
-                const q = cleanEbayTerm(raw);
+                const q = cleanEbayTerm(raw, 4);
                 if (q.length < 3) continue;
+                if (q.split(/\s+/).length > 4) continue;
                 const key = q.toLowerCase();
                 if (seen.has(key)) continue;
                 seen.add(key);
