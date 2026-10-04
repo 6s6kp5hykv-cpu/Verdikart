@@ -722,8 +722,54 @@ Returner KUN gyldig JSON:
       const brand =
         compact(info.brand, 1);
 
-      const model =
+      const rawModel =
         compact(info.model, 4);
+
+      const serialNumber =
+        infoText(info.serial_number, "");
+
+      // Ikke la serienummer/prefix snike seg inn i markedssoeket.
+      // Fender MN5178398 kan for eksempel bli feiltolket som
+      // modellteksten "MN5". Det gir svaert daarlige eBay-soek.
+      function removeSerialArtifacts(value, serial) {
+        let out = String(value || "");
+        const sn = String(serial || "")
+          .replace(/[^\p{L}\p{N}]/gu, "")
+          .toLowerCase();
+
+        if (sn.length >= 4) {
+          const compactValue = sn
+            ? sn
+            : "";
+
+          out = out.replace(
+            new RegExp("\\b" + compactValue + "\\b", "ig"),
+            " "
+          );
+
+          // Fjern korte serienummerprefiks som AI kan ha lagt i modellfeltet.
+          // Bare prefiks med minst 3 tegn og minst ett siffer fjernes.
+          const prefixes = [];
+          for (let len = 3; len <= Math.min(5, sn.length - 1); len++) {
+            const prefix = sn.slice(0, len);
+            if (/\d/.test(prefix)) prefixes.push(prefix);
+          }
+
+          for (const prefix of prefixes) {
+            out = out.replace(
+              new RegExp("\\b" + prefix + "\\b", "ig"),
+              " "
+            );
+          }
+        }
+
+        return out
+          .replace(/\s+/g, " ")
+          .trim();
+      }
+
+      const model =
+        removeSerialArtifacts(rawModel, serialNumber);
 
       const type =
         compact(info.type, 2);
@@ -738,7 +784,10 @@ Returner KUN gyldig JSON:
         compact(parsed._user_description, 6);
 
       const aiQuery =
-        compact(parsed.ebay_search_query, 6);
+        removeSerialArtifacts(
+          compact(parsed.ebay_search_query, 6),
+          serialNumber
+        );
 
       const year =
         extractYear(info.year_or_period) ||
@@ -930,6 +979,20 @@ Returner KUN gyldig JSON:
 
       if (userModelHint) {
         candidates.push(userText);
+      }
+
+      if (
+        category === "guitar" &&
+        brand.toLowerCase() === "fender" &&
+        /\bstratocaster\b/i.test(model) &&
+        hardYear
+      ) {
+        // Disse skal alltid finnes, selv om AI har blandet serienummer
+        // eller annen støy inn i modell-/soekefeltene.
+        candidates.push(`Fender Standard Stratocaster ${hardYear}`);
+        candidates.push(`Fender Stratocaster ${hardYear} MIM`);
+        candidates.push(`Fender Stratocaster ${hardYear} Mexico`);
+        candidates.push(`Fender Standard Stratocaster Mexico ${hardYear}`);
       }
 
       if (aiQuery) {
