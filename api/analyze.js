@@ -2542,6 +2542,39 @@ Returner KUN gyldig JSON:
           Math.round(sameModelMedian);
       }
 
+      /*
+       * V10.6 sikkerhetsregel:
+       * En markedsmedian skal aldri kunne ligge utenfor selve
+       * prisgrunnlaget som vises i UI. Dette beskytter mot en
+       * feil/inkonsistent kombinasjon av markedsmedianer, valuta eller
+       * sekundære treff som ellers kan gi f.eks. 10 731 kr median når
+       * prisintervallet bare er 3 934–5 972 kr.
+       */
+      const medianClampPrices =
+        exactPrices.length >= 2
+          ? exactPrices
+          : prices;
+
+      if (
+        Number.isFinite(marketMedian) &&
+        medianClampPrices.length > 0
+      ) {
+        const clampMin = Math.min(...medianClampPrices);
+        const clampMax = Math.max(...medianClampPrices);
+
+        if (
+          Number.isFinite(clampMin) &&
+          Number.isFinite(clampMax)
+        ) {
+          marketMedian = Math.round(
+            Math.min(
+              clampMax,
+              Math.max(clampMin, marketMedian)
+            )
+          );
+        }
+      }
+
       const successfulQueries =
         [
           ...new Set(
@@ -2737,7 +2770,7 @@ Returner KUN gyldig JSON:
           strict: true,
 
           market_engine_version:
-            "v10.4-multi-ebay-no-de-uk-us",
+            "v10.6-multi-ebay-no-de-uk-us-safe-median",
 
           minimum_relevance_score:
             45,
@@ -3135,6 +3168,28 @@ Returner KUN gyldig JSON:
             high += item.high * share;
           }
         }
+      }
+
+      /*
+       * V10.6: sluttverdien kan heller ikke havne utenfor
+       * sitt eget beregnede lav/høy-intervall.
+       */
+      if (
+        Number.isFinite(low) &&
+        Number.isFinite(high) &&
+        low > 0 &&
+        high > 0
+      ) {
+        if (low > high) {
+          const tmp = low;
+          low = high;
+          high = tmp;
+        }
+
+        estimated = Math.min(
+          high,
+          Math.max(low, estimated)
+        );
       }
 
       const enabledMarketSources = marketCandidates.length;
