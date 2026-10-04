@@ -2089,6 +2089,87 @@ Returner KUN gyldig JSON:
       };
     }
 
+    async function enrichEbayItem(item, marketplace) {
+      const itemId = String(item?.itemId || "").trim();
+
+      if (!itemId) return item;
+
+      const token = await getEbayToken();
+      if (!token) return item;
+
+      try {
+        const url =
+          "https://api.ebay.com/buy/browse/v1/item/" +
+          encodeURIComponent(itemId);
+
+        const r = await fetch(url, {
+          method: "GET",
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "Accept": "application/json",
+            "X-EBAY-C-MARKETPLACE-ID": marketplace
+          }
+        });
+
+        if (!r.ok) return item;
+
+        const detail = await r.json();
+
+        // Browse item-details kan inneholde strukturerte aspekter som
+        // ikke følger med i item_summary. Disse er spesielt viktige for
+        // år, farge, gripebrett og modellvariant. eBay dokumenterer at
+        // getItem kan brukes for komplette item-detaljer/aspekter.
+        const aspects = [
+          ...(Array.isArray(detail?.localizedAspects)
+            ? detail.localizedAspects
+            : []),
+          ...(Array.isArray(detail?.inferredLocalizedAspects)
+            ? detail.inferredLocalizedAspects
+            : [])
+        ];
+
+        const aspectText = [];
+        const aspectMap = {};
+
+        for (const aspect of aspects) {
+          const name = String(aspect?.name || "").trim();
+          const valueRaw = aspect?.value;
+          const values = Array.isArray(valueRaw)
+            ? valueRaw
+            : [valueRaw];
+
+          const cleanValues = values
+            .map(v => String(v ?? "").trim())
+            .filter(Boolean);
+
+          if (!name || !cleanValues.length) continue;
+
+          const key = name.toLowerCase();
+          if (!aspectMap[key]) aspectMap[key] = [];
+          aspectMap[key].push(...cleanValues);
+
+          // Bare, selektiv aspekttekst. Vi tar ikke med alle aspekter
+          // fordi f.eks. "Pickup" ellers kan bli feiltolket som en del.
+          if (
+            /year|manufactured|production|fretboard|fingerboard|board|color|colour|finish|model|series|country|region|brand|type|body color|body colour/i.test(name)
+          ) {
+            aspectText.push(`${name}: ${cleanValues.join(", ")}`);
+          }
+        }
+
+        const enriched = {
+          ...item,
+          _ebay_detail_loaded: true,
+          _ebay_aspects: aspectMap,
+          _ebay_aspect_text: aspectText.join(" | ")
+        };
+
+        return enriched;
+      } catch {
+        return item;
+      }
+    }
+
     async function prepareListing(
       item,
       query,
@@ -2110,9 +2191,15 @@ Returner KUN gyldig JSON:
       const title =
         item.title || "";
 
+      // Bruk strukturerte eBay-aspekter i relevanskontrollen når de finnes.
+      // Dette gjør at et "Year Manufactured = 1995" kan gi ekte årstreff
+      // selv om 1995 ikke står i annonsetittelen.
+      const scoringText =
+        `${title} ${item._ebay_aspect_text || ""}`.trim();
+
       const relevance =
         scoreListing(
-          title,
+          scoringText,
           criteria
         );
 
@@ -2246,6 +2333,12 @@ Returner KUN gyldig JSON:
           )
         );
 
+      /*
+       * eBay item_summary gir ikke alltid år/variant i selve søkeresultatet.
+       * Før verdiberegningen henter vi derfor detaljer for de mest lovende
+       * kandidatene per marked. Dette er spesielt viktig for eldre varer,
+       * der "Year Manufactured" ofte ligger som et item aspect og ikke i tittelen.
+       */
       const preparedNested =
         await Promise.all(
           results.map(
@@ -2254,12 +2347,46 @@ Returner KUN gyldig JSON:
                 return [];
               }
 
+              const rawItems =
+                Array.isArray(result.rawItems)
+                  ? result.rawItems
+                  : [];
+
+              const ranked = rawItems
+                .map(item => ({
+                  item,
+                  score: scoreListing(
+                    item?.title || "",
+                    { ...built, marketplace: result.marketplace }
+                  ).score
+                }))
+                .sort((a, b) => b.score - a.score);
+
+              // Maks 10 detaljhentinger per søk/marked. Resten får fortsatt
+              // vanlig tittelbasert relevanskontroll.
+              const detailIds = new Set(
+                ranked
+                  .filter(x => x.score >= 20 && x.item?.itemId)
+                  .slice(0, 10)
+                  .map(x => String(x.item.itemId))
+              );
+
+              const enrichedItems =
+                await Promise.all(
+                  rawItems.map(async item => {
+                    if (!detailIds.has(String(item?.itemId || ""))) {
+                      return item;
+                    }
+                    return enrichEbayItem(
+                      item,
+                      result.marketplace
+                    );
+                  })
+                );
+
               const list = [];
 
-              for (
-                const item of
-                result.rawItems || []
-              ) {
+              for (const item of enrichedItems) {
                 const prepared =
                   await prepareListing(
                     item,
@@ -2567,6 +2694,9 @@ Returner KUN gyldig JSON:
 
         total_candidates:
           all.length,
+
+        detail_enriched_count:
+          all.filter(x => x._ebay_detail_loaded).length,
 
         sample_size:
           finalPool.length,
@@ -3100,7 +3230,7 @@ Returner KUN gyldig JSON:
       market.source_weights.find(x => x.source === "ebay")?.percent || 0;
 
     const valuationMethod =
-      `V10 markedsmotor: ${market.basis}`;
+      `V10.6 markedsmotor: ${market.basis}`;
 
     /* ---------------------------------------------------------
        8. RETURNER
