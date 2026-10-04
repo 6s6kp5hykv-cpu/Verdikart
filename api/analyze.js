@@ -1,3 +1,4 @@
+// Kistefunn analysebackend v7 – bredere sykkelmarkedssøk + sterkere markedsvekt
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -16,6 +17,8 @@ export default async function handler(req, res) {
 
     const userDescription =
       typeof description === "string" ? description.trim() : "";
+
+    const userDescriptionLower = userDescription.toLowerCase();
 
     const contextText = userDescription
       ? `Brukeren har også skrevet følgende informasjon om gjenstanden:
@@ -184,6 +187,10 @@ Returner KUN gyldig JSON:
     if (!parsed.item_info || typeof parsed.item_info !== "object") {
       parsed.item_info = {};
     }
+
+    // Brukerens tekst er et eget identifikasjonssignal. Den skal ikke overstyre bildet,
+    // men kan gi et sterkt modellspor når brukeren oppgir en konkret modell.
+    parsed._user_description = userDescription;
 
     const info = parsed.item_info;
 
@@ -547,17 +554,25 @@ Returner KUN gyldig JSON:
 
       const candidates = [];
 
-      // SYKKEL: Når merke + modell er kjent, kjør flere komplette-sykkel-søk.
-      // Dette er med vilje bredere enn ett enkelt søk: eBay kan rangere
-      // deler/tilbehør høyt selv ved et svært presist modellnavn.
+      // Sykkel: søk etter komplett sykkel først. Ikke bruk bare
+      // "Haibike Trekking 4", fordi eBay da ofte returnerer deler som
+      // bagasjebrett, batterideksel, hjul og låser.
       if (category === "bicycle" && brand && model) {
+        // Sykkelmodeller dukker ofte opp med ulike titler på eBay.
+        // Søk derfor både presist og med vanlige komplette-sykkelord.
         candidates.push(`${brand} ${model}`);
         candidates.push(`${brand} ${model} e-bike`);
-        candidates.push(`${brand} ${model} electric bicycle`);
+        candidates.push(`${brand} ${model} electric bike`);
         candidates.push(`${brand} ${model} complete e-bike`);
-        candidates.push(`${brand} ${model} complete bicycle`);
         candidates.push(`${brand} ${model} Yamaha`);
         candidates.push(`${brand} ${model} 630Wh`);
+      } else if (category === "bicycle" && brand) {
+        // Når modellen ikke kan bekreftes, søk bredt på merke + sykkeltype.
+        // Disse treffene skal være svakere verdibevis enn en bekreftet modell.
+        candidates.push(`${brand} trekking e-bike`);
+        candidates.push(`${brand} trekking electric bike`);
+        candidates.push(`${brand} trekking bicycle`);
+        candidates.push(`${brand} e-bike trekking`);
       }
 
       // Førstevalg: mest presise identifikasjon med konkret år når vi kjenner det.
@@ -612,6 +627,13 @@ Returner KUN gyldig JSON:
         country,
         ageGroup,
         category,
+        user_model_hint: Boolean(
+          category === "bicycle" &&
+          brand &&
+          model &&
+          String(parsed._user_description || "").toLowerCase().includes(brand) &&
+          String(parsed._user_description || "").toLowerCase().includes(model)
+        ),
         variant_uncertain: /cannot be confirmed|can't be confirmed|cannot be determined|exact variant|variant.*cannot|eksakt variant|variant.*ikke.*bekreft|kan ikke bekreftes/i.test(
           `${parsed.description || ""} ${info.uncertainties || ""} ${info.model || ""}`
         )
@@ -709,18 +731,19 @@ Returner KUN gyldig JSON:
           };
         }
 
+        // En ren del-/tilbehørstittel uten tydelig komplett sykkelord skal
+        // aldri få høy score bare fra merke + modell.
         // "trekking" alene er IKKE bevis på komplett sykkel.
-        // Et batteri kan f.eks. ha "Haibike Trekking 6 E-Bike" i tittelen.
-        const strongCompleteBikeWords = /\b(bike|bicycle|e-bike|ebike|city bike|mountain bike|mtb|pedelec|fahrrad|elektrofahrrad|sykkel|trekkingrad)\b/.test(t);
-        const completeBikeContext = /\b(complete|komplett|fahr(e|r)rad|fahrrad|bike|bicycle|e-bike|ebike|sykkel|pedelec|elektrofahrrad)\b/.test(t);
+        // Det må finnes et faktisk sykkelord i tittelen.
+        const completeBikeWords = /\b(bike|bicycle|e-bike|ebike|city bike|mountain bike|mtb|pedelec|fahrrad|elektrofahrrad|sykkel|trekkingrad|trekking e-bike|trekking bike|electric bike)\b/.test(t);
         const obviousPartWords = /\b(lock|schloss|key|battery|akku|charger|ladegerät|ladegerat|motor|display|sensor|fork|gabel|wheel|laufrad|vorderrad|hinterrad|frame|rahmen|sattel|saddle|seat|pedal|brake|bremse|derailleur|schaltwerk|kassette|abdeckung|deckung|cover|schutz|mudguard|schutzblech|fender|rack|gepäckträger|gepacktrager|kickstand|ständer|staender|chainring|kettenblatt|rotor|disc|laufrad)\b/.test(t);
 
-        // Typiske eBay-batterititler må avvises selv om de også inneholder
-        // "E-Bike", merke og modell.
+        // Batteriannonser kan inneholde både merke, modell og "E-Bike".
+        // De skal derfor avvises eksplisitt før scoring.
         const batteryPartPattern =
-          /\b(e[- ]?bike|ebike)?\s*(akku|battery|batterie)\b.*\b(für|fuer|for|replacement|ersatz|only|nur)\b/\.test(t) ||
-          /\b(akku|battery|batterie)\b.*\b(für|fuer|for)\s+haibike\b/\.test(t) ||
-          /\b(replacement|ersatz)\s+(battery|akku|batterie)\b/\.test(t);
+          /\b(e[- ]?bike|ebike)?\s*(akku|battery|batterie)\b.*\b(für|fuer|for|replacement|ersatz|only|nur)\b/.test(t) ||
+          /\b(akku|battery|batterie)\b.*\b(für|fuer|for)\s+haibike\b/.test(t) ||
+          /\b(replacement|ersatz)\s+(battery|akku|batterie)\b/.test(t);
 
         if (batteryPartPattern) {
           return {
@@ -759,7 +782,7 @@ Returner KUN gyldig JSON:
           };
         }
 
-        if (obviousPartWords && !strongCompleteBikeWords) {
+        if (obviousPartWords && !completeBikeWords) {
           return {
             score: -100,
             accepted: false,
@@ -771,25 +794,13 @@ Returner KUN gyldig JSON:
 
         // Titler som eksplisitt beskriver en ramme/deksel/hjul/skjerm osv.
         // skal avvises selv om merke og modell står i tittelen.
-        if (!strongCompleteBikeWords && /\b(rahmen|frame|abdeckung|deckung|cover|schutz|laufrad|vorderrad|hinterrad|wheel|gabel|fork|sattel|saddle|rack|gepäckträger|mudguard|schutzblech)\b/.test(t)) {
+        if (!completeBikeWords && /\b(rahmen|frame|abdeckung|deckung|cover|schutz|laufrad|vorderrad|hinterrad|wheel|gabel|fork|sattel|saddle|rack|gepäckträger|mudguard|schutzblech)\b/.test(t)) {
           return {
             score: -100,
             accepted: false,
             near_match: false,
             year_match: year ? "missing" : "not_required",
             reason: "sykkeldel/ramme/hjul"
-          };
-        }
-
-        // Hvis tittelen ikke har et tydelig komplett-sykkelord, skal den
-        // ikke kunne bli en prisreferanse bare fordi modellnavnet matcher.
-        if (!strongCompleteBikeWords && !completeBikeContext) {
-          return {
-            score: -100,
-            accepted: false,
-            near_match: false,
-            year_match: year ? "missing" : "not_required",
-            reason: "ikke komplett sykkel"
           };
         }
       }
@@ -1377,6 +1388,11 @@ Returner KUN gyldig JSON:
           minimum_relevance_score: 45,
           exact_year_required_for_valuation: Boolean(built.year),
           valuation_uses_same_model_when_year_not_required: !built.year,
+          user_model_hint: Boolean(built.user_model_hint),
+          market_basis_label:
+            built.category === "bicycle" && built.model
+              ? (built.user_model_hint ? "modell oppgitt av bruker + bilde" : "modell identifisert fra bilde")
+              : null,
           valuation_minimum_relevance_score:
             valuationPool.length >= 3 ? 60 : 50
         },
@@ -1479,22 +1495,26 @@ Returner KUN gyldig JSON:
       // eBay skal ha betydelig større vekt når vi faktisk har gode,
       // uavhengige sammenligninger. Men ett enkelt aktivt treff skal
       // fortsatt ikke overstyre AI-estimatet fullstendig.
-      if (hasYear && exactCount >= 5 && distinctCount >= 4) ebayWeight = 0.75;
-      else if (hasYear && exactCount >= 3 && distinctCount >= 3) ebayWeight = 0.65;
-      else if (hasYear && exactCount >= 2 && distinctCount >= 2) ebayWeight = 0.55;
-      else if (hasYear && exactCount >= 1) ebayWeight = 0.40;
-      else if (!hasYear && exactCount >= 5 && distinctCount >= 4) ebayWeight = 0.80;
-      else if (!hasYear && exactCount >= 3 && distinctCount >= 3) ebayWeight = 0.70;
-      else if (!hasYear && exactCount >= 2 && distinctCount >= 2) ebayWeight = 0.60;
-      else if (!hasYear && sameModelCount >= 8 && distinctCount >= 6) ebayWeight = 0.60;
-      else if (!hasYear && sameModelCount >= 4 && distinctCount >= 3) ebayWeight = 0.50;
-      else if (!hasYear && (sameModelCount >= 2 || exactCount >= 2)) ebayWeight = 0.40;
+      if (hasYear && exactCount >= 5 && distinctCount >= 4) ebayWeight = 0.85;
+      else if (hasYear && exactCount >= 3 && distinctCount >= 3) ebayWeight = 0.80;
+      else if (hasYear && exactCount >= 2 && distinctCount >= 2) ebayWeight = 0.70;
+      else if (hasYear && exactCount >= 1) ebayWeight = 0.45;
+      else if (!hasYear && exactCount >= 4 && distinctCount >= 3) ebayWeight = 0.80;
+      else if (!hasYear && exactCount >= 2 && distinctCount >= 2) ebayWeight = 0.70;
+      else if (!hasYear && sameModelCount >= 8 && distinctCount >= 6) ebayWeight = 0.65;
+      else if (!hasYear && sameModelCount >= 4 && distinctCount >= 3) ebayWeight = 0.60;
+      else if (!hasYear && sameModelCount >= 2) ebayWeight = 0.50;
       else ebayWeight = 0.25;
 
-      // Sikkerhetsventil: markedsdata skal ikke få stor vekt når selve
-      // merke-/modellidentifikasjonen er usikker eller mangler synlig bevis.
-      if (identificationConfidence === "lav" || !hasBrandEvidence || !hasModelEvidence) {
-        ebayWeight = Math.min(ebayWeight, 0.15);
+      // En konkret modell oppgitt av brukeren er et reelt identifikasjonssignal.
+      // Bildet må fortsatt støtte merke/type, men manglende modelltekst i bildet
+      // skal ikke automatisk redusere gode modelltreff til bare 15 %.
+      const userModelHint = Boolean(ebay?.filtering?.user_model_hint);
+
+      if (identificationConfidence === "lav" || !hasBrandEvidence) {
+        ebayWeight = Math.min(ebayWeight, userModelHint ? 0.45 : 0.15);
+      } else if (!hasModelEvidence && !userModelHint) {
+        ebayWeight = Math.min(ebayWeight, 0.25);
       }
 
       const aiWeight = 1 - ebayWeight;
@@ -1587,6 +1607,7 @@ Returner KUN gyldig JSON:
       item_info: itemInfo,
 
       ebay_search_query: parsed.ebay_search_query || "",
+      ebay_search_queries: ebay?.queries || [],
       ebay,
 
       valuation_method: valuationMethod,
