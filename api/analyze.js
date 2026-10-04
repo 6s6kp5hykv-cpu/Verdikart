@@ -2356,6 +2356,60 @@ Returner KUN gyldig JSON:
         return null;
       }
 
+      /*
+       * V11.3: STRATOCaster-VARIANTFILTER
+       * --------------------------------
+       * "Stratocaster" alene er for bredt. Player II, Vintera,
+       * Special/Limited Edition, Squier osv. kan ellers bli telt som
+       * eksakte treff selv om objektet er en eldre Standard MIM.
+       */
+      if (
+        criteria.category === "guitar" &&
+        /^fender$/i.test(String(criteria.brand || "")) &&
+        /\bstratocaster\b/i.test(String(criteria.model || ""))
+      ) {
+        const lowerTitle = scoringText.toLowerCase();
+
+        const incompatibleVariantPatterns = [
+          /\bsquier\b/,
+          /\bplayer\s*(ii|2)\b/,
+          /\bvintera\b/,
+          /\bamerican\s+(professional|performer|ultra|standard|original)\b/,
+          /\bamerican\s+stratocaster\b/,
+          /\bamerican\s+professional\b/,
+          /\bprofessional\s+ii\b/,
+          /\bprofessional\b/,
+          /\bultra\b/,
+          /\bvintage\s+ii\b/,
+          /\bspecial\s+edition\b/,
+          /\blimited\s+edition\b/,
+          /\bredline\b/,
+          /\bsignature\s+series\b/,
+          /\bdeluxe\s+stratocaster\b/,
+          /\bclassic\s+vibe\b/,
+          /\baffinity\s+strat\b/,
+          /\bbullet\s+strat\b/,
+          /\bjapan\b/,
+          /\bmi[j]?\b.*\bstratocaster\b/
+        ];
+
+        if (
+          incompatibleVariantPatterns.some(
+            pattern => pattern.test(lowerTitle)
+          )
+        ) {
+          return null;
+        }
+
+        const hasCompleteGuitarWord =
+          /\b(electric\s+guitar|guitar|gitar|stratocaster)\b/
+            .test(lowerTitle);
+
+        if (!hasCompleteGuitarWord) {
+          return null;
+        }
+      }
+
       const rate =
         await getExchangeRate(
           currency,
@@ -2377,8 +2431,19 @@ Returner KUN gyldig JSON:
       // Svært lave gitarpriser er ofte deler, tilbehør eller defekte
       // instrumenter som har sneket seg gjennom eBays søkerelevans.
       // De skal ikke få påvirke verdien av en komplett fungerende gitar.
-      if (criteria.category === "guitar" && nok < 1200) {
-        return null;
+      if (criteria.category === "guitar") {
+        const isFenderStrat =
+          /^fender$/i.test(String(criteria.brand || "")) &&
+          /\bstratocaster\b/i.test(String(criteria.model || ""));
+
+        const minimumGuitarComparable =
+          isFenderStrat && criteria.year
+            ? 2000
+            : 1200;
+
+        if (nok < minimumGuitarComparable) {
+          return null;
+        }
       }
 
       /*
@@ -2462,10 +2527,40 @@ Returner KUN gyldig JSON:
         "EBAY_US"
       ];
 
-      const searchQueries =
+      /*
+       * V11.3: DETERMINISTISK MARKEDSSØK
+       * --------------------------------
+       * AI kan formulere litt forskjellige eBay-søk for samme objekt.
+       * Det gjorde at identisk Fender-bilde kunne gi helt forskjellige
+       * markedsutvalg. For kjente Fender Stratocaster/MIM-år bruker vi
+       * derfor et fast sett med søk og kombinerer resultatene etterpå.
+       */
+      let searchQueries =
         built.discovery_queries?.length
           ? built.discovery_queries
           : built.queries;
+
+      if (
+        built.category === "guitar" &&
+        /^fender$/i.test(String(built.brand || "")) &&
+        /\bstratocaster\b/i.test(String(built.model || "")) &&
+        built.year
+      ) {
+        searchQueries = [
+          `Fender Standard Stratocaster Mexico ${built.year}`,
+          `Fender Stratocaster ${built.year} Mexico`,
+          `Fender Stratocaster MIM ${built.year}`,
+          `Fender Stratocaster Made in Mexico ${built.year}`
+        ];
+      }
+
+      searchQueries = [
+        ...new Set(
+          searchQueries
+            .map(q => compact(q, 10))
+            .filter(Boolean)
+        )
+      ].slice(0, 4);
 
       const searchJobs = [];
 
@@ -2669,8 +2764,50 @@ Returner KUN gyldig JSON:
        * vi har nok observasjoner. Ved færre enn 7 treff beholder vi alle
        * treff slik at vi ikke kaster bort verdifulle små utvalg.
        */
+      /*
+       * V11.3: BALANSERING MELLOM SØK
+       * ------------------------------
+       * Ett eBay-søk kan noen ganger returnere svært mange treff mens
+       * et annet søk gir få. Uten balansering kan ett søk dermed dominere
+       * medianen. Vi tar derfor maks 6 sterke eksakte treff per søk.
+       */
+      function balanceByQuery(items, maxPerQuery = 6) {
+        const groups = new Map();
+
+        for (const item of items) {
+          const key =
+            String(item.query || "")
+              .trim()
+              .toLowerCase();
+
+          if (!groups.has(key)) {
+            groups.set(key, []);
+          }
+
+          groups.get(key).push(item);
+        }
+
+        const balanced = [];
+
+        for (const group of groups.values()) {
+          group
+            .sort(
+              (a, b) =>
+                (b.relevance_score || 0) -
+                (a.relevance_score || 0)
+            )
+            .slice(0, maxPerQuery)
+            .forEach(item => balanced.push(item));
+        }
+
+        return balanced;
+      }
+
+      const balancedRawExactPool =
+        balanceByQuery(rawExactPool, 6);
+
       const exactPool =
-        removeOutliers(rawExactPool);
+        removeOutliers(balancedRawExactPool);
 
       /*
        * Same-model treff:
@@ -2678,7 +2815,7 @@ Returner KUN gyldig JSON:
        * Disse er lovlige sekundære sammenligninger når målobjektet
        * har kjent år, men skal ikke behandles som eksakte treff.
        */
-      const sameModelPool =
+      const rawSameModelPool =
         all.filter(
           x =>
             x.match_tier === "same_model" &&
@@ -2688,6 +2825,9 @@ Returner KUN gyldig JSON:
               x.year_match === "missing"
             )
         );
+
+      const sameModelPool =
+        balanceByQuery(rawSameModelPool, 4);
 
       /*
        * Verdigrunnlag:
@@ -2907,8 +3047,11 @@ Returner KUN gyldig JSON:
         raw_exact_match_count:
           rawExactPool.length,
 
+        balanced_exact_match_count:
+          balancedRawExactPool.length,
+
         exact_price_filter_removed:
-          Math.max(0, rawExactPool.length - exactPool.length),
+          Math.max(0, balancedRawExactPool.length - exactPool.length),
 
         same_model_match_count:
           sameModelPool.length,
@@ -3472,7 +3615,7 @@ Returner KUN gyldig JSON:
       market.source_weights.find(x => x.source === "ebay")?.percent || 0;
 
     const valuationMethod =
-      `V11.1 markedsmotor: ${market.basis}`;
+      `V11.3 markedsmotor: ${market.basis}`;
 
     /* ---------------------------------------------------------
        8. RETURNER
