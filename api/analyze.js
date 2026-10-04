@@ -1,4 +1,4 @@
-// Kistefunn analysebackend v12.1
+// Kistefunn analysebackend v12.5
 // Strengere identifikasjon + hardere markedsfilter + multi-source markedsmotor
 // - V11.9: feil i søkemotorens variabelrekkefølge rettet + versjonsmerking samlet.
 // - V11.8: farge og gripebrett/materiale er sekundære signaler og skal ikke låse markedssøket.
@@ -3096,14 +3096,25 @@ Returner KUN gyldig JSON:
        * exact kan brukes.
        */
 
-      // V12.4: ABSOLUTT SISTE DISPLAY-GATE.
+      // V12.5: ABSOLUTT SISTE FENDER-GATE.
       // Eksakte referanser skal aldri kunne vise en inkompatibel Fender-variant.
       // Denne filtreringen skjer direkte på `all`, rett før exactPool bygges.
+      const builtQueryText =
+        Array.isArray(built.queries)
+          ? built.queries.join(" | ")
+          : String(built.queries || "");
+
+      // V12.5: Ikke stol på søketeksten alene. En Fender MIM Stratocaster
+      // med kjent år skal ha samme harde variantgate selv om AI/eBay-
+      // metadata mangler "Mexico" i ett av feltene.
       const normalFenderMimQuery =
         built.category === "guitar" &&
-        /\bfender\b/i.test(built.queries.join(" | ")) &&
-        /\bstratocaster\b/i.test(built.queries.join(" | ")) &&
-        /\b(?:mexico|mim|made in mexico)\b/i.test(built.queries.join(" | "));
+        /\bfender\b/i.test(String(built.brand || builtQueryText)) &&
+        /\bstratocaster\b/i.test(String(built.model || builtQueryText)) &&
+        (
+          /\b(?:mexico|mim|made in mexico)\b/i.test(builtQueryText) ||
+          /\b(?:mexico|mim|made in mexico)\b/i.test(String(built.country || ""))
+        );
 
       if (normalFenderMimQuery) {
         const finalForbiddenFenderVariants = [
@@ -3125,7 +3136,8 @@ Returner KUN gyldig JSON:
         ];
 
         for (let i = all.length - 1; i >= 0; i--) {
-          if (finalForbiddenFenderVariants.some(rx => rx.test(String(all[i]?.title || "")))) {
+          const listingTitle = String(all[i]?.title || "");
+          if (finalForbiddenFenderVariants.some(rx => rx.test(listingTitle))) {
             all.splice(i, 1);
           }
         }
@@ -3135,6 +3147,12 @@ Returner KUN gyldig JSON:
         all.filter(
           x =>
             x.match_tier === "exact" &&
+            // V12.5: Siste uavhengige tittelkontroll før prisgrunnlaget.
+            // Denne kjører selv om en tidligere AI-score skulle ha feilklassifisert treffet.
+            !(
+              normalFenderMimQuery &&
+              /\b(?:squier(?:\s+series)?|fsr|62\s*(?:['’]s?|special)|50th\s+anniversary|anniversary|special(?:\s+edition)?|limited\s+edition|vintage\s+reissue|reissue|player(?:\s+ii|\s+2)?|vintera|classic\s+series|american\s+(?:standard|professional|performer|ultra|original|vintage)|professional\s+ii|signature\s+series)\b/i.test(String(x.title || ""))
+            ) &&
             x.relevance_score >= 45 &&
             // V11.8 HARD TITLE-YEAR GATE: kjent år krever dokumentert
             // samme år i annonsen. Ingen fallback til manglende år.
@@ -4140,10 +4158,10 @@ Returner KUN gyldig JSON:
       market_sources: marketSources,
 
       market_engine_version:
-        "v12.1-market-first-pricing",
+        "v12.5-market-first-pricing",
 
       market_filter_version:
-        "v12.0-hard-title-year-variant-cosmetic-secondary-clean-display"
+        "v12.5-hard-title-year-variant-fender-gate-clean-display"
     });
 
   } catch (e) {
