@@ -1,7 +1,8 @@
-// Kistefunn analysebackend v11.9
+// Kistefunn analysebackend v12.0
 // Strengere identifikasjon + hardere markedsfilter + multi-source markedsmotor
 // - V11.9: feil i søkemotorens variabelrekkefølge rettet + versjonsmerking samlet.
 // - V11.8: farge og gripebrett/materiale er sekundære signaler og skal ikke låse markedssøket.
+// - V12.0: visningssøket bruker den faktiske rensede eBay-søkestrengen, slik at serienummerfragmenter som MN5 ikke vises.
 // - V11.7: videreføring av streng Fender-variantkontroll og mer robust markedsgrunnlag.
 // - V11.6: hard Fender-variantgate som ekskluderer 62/Special/American/Player/Vintera/Squier osv.
 //
@@ -3776,7 +3777,16 @@ Returner KUN gyldig JSON:
       market.source_weights.find(x => x.source === "ebay")?.percent || 0;
 
     const valuationMethod =
-      `V11.9 markedsmotor: ${market.basis}`;
+      `V12.0 markedsmotor: ${market.basis}`;
+
+    // V12.0: Vis den faktiske rensede eBay-søkestrengen.
+    // Dermed vises ikke serienummerfragmenter som f.eks. MN5,
+    // selv om AI-en opprinnelig la dette inn i søkefeltet.
+    const displayEbaySearchQuery =
+      ebay?.discovery_queries?.[0] ||
+      ebay?.queries?.[0] ||
+      parsed.ebay_search_query ||
+      "";
 
     /* ---------------------------------------------------------
        8. RETURNER
@@ -3887,8 +3897,7 @@ Returner KUN gyldig JSON:
         itemInfo,
 
       ebay_search_query:
-        parsed.ebay_search_query ||
-        "",
+        displayEbaySearchQuery,
 
       ebay_search_queries:
         ebay?.queries ||
@@ -3909,10 +3918,10 @@ Returner KUN gyldig JSON:
       market_sources: marketSources,
 
       market_engine_version:
-        "v11.9-market-first-pricing",
+        "v12.0-market-first-pricing",
 
       market_filter_version:
-        "v11.9-hard-title-year-variant-cosmetic-secondary"
+        "v12.0-hard-title-year-variant-cosmetic-secondary-clean-display"
     });
 
   } catch (e) {
