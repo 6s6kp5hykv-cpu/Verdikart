@@ -2472,8 +2472,6 @@ Returner KUN gyldig JSON:
       } else if (
         Number.isFinite(sameModelMedian)
       ) {
-        Number.isFinite(sameModelMedian)
-      ) {
         marketMedian =
           Math.round(sameModelMedian);
       }
