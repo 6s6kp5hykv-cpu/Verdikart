@@ -2719,6 +2719,59 @@ Returner KUN gyldig JSON:
       };
     }
 
+    /* ---------------------------------------------------------
+       V12.2 – FINAL FENDER COMPARABLE GATE
+       ---------------------------------------------------------
+       Dette filteret ligger helt etter eBay-resultatet og før annonsen
+       får lov til å bli en markedsreferanse. Det er med vilje uavhengig
+       av scoreListing(), slik at en feil eller uklar AI-klassifisering
+       ikke kan slippe en Squier/FSR/Special inn i prisgrunnlaget.
+    */
+    function isHardIncompatibleFenderComparable(title, aspectText, criteria) {
+      if (criteria?.category !== "guitar") return false;
+
+      const identity =
+        `${criteria?.brand || ""} ${criteria?.model || ""} ${criteria?.country || ""}`
+          .toLowerCase();
+
+      const isFenderStratMim =
+        /\bfender\b/.test(identity) &&
+        /\bstratocaster\b/.test(identity) &&
+        /\b(?:mexico|mim|made in mexico)\b/.test(identity);
+
+      if (!isFenderStratMim || criteria?.target_special === true) {
+        return false;
+      }
+
+      const text = `${title || ""} ${aspectText || ""}`.toLowerCase();
+
+      const forbidden = [
+        /\bsquier(?:\s+series)?\b/,
+        /\bfsr\b/,
+        /\bfender\s+special\s+run\b/,
+        /\bspecial\s+run\b/,
+        /\b62\s*(?:['’]s?|special)\b/,
+        /\b50th\s+anniversary\b/,
+        /\banniversary\b/,
+        /\bspecial(?:\s+edition)?\b/,
+        /\blimited\s+edition\b/,
+        /\bvintage\s+reissue\b/,
+        /\breissue\b/,
+        /\bplayer(?:\s+ii|\s+2)?\b/,
+        /\bvintera\b/,
+        /\bclassic\s+series\b/,
+        /\bclassic\s+vibe\b/,
+        /\bamerican\s+(?:standard|professional|performer|ultra|original|vintage)\b/,
+        /\bprofessional\s+ii\b/,
+        /\bdeluxe\b/,
+        /\belite\b/,
+        /\bsignature\s+series\b/,
+        /\bmi[j]\b/
+      ];
+
+      return forbidden.some(rx => rx.test(text));
+    }
+
     async function searchEbay(parsed) {
       const built =
         buildStrictQueries(parsed);
@@ -2900,6 +2953,18 @@ Returner KUN gyldig JSON:
                   );
 
                 if (prepared) {
+                  // V12.2: siste, uavhengige sikkerhetsnett.
+                  // Squier/FSR/Special/62 osv. skal ikke eksistere i
+                  // exact, same-model eller nærtreff når målet er en
+                  // vanlig Fender Stratocaster Made in Mexico.
+                  if (isHardIncompatibleFenderComparable(
+                    prepared.title,
+                    item?._ebay_aspect_text || "",
+                    { ...built, marketplace: result.marketplace }
+                  )) {
+                    continue;
+                  }
+
                   list.push(prepared);
                 }
               }
@@ -2935,6 +3000,16 @@ Returner KUN gyldig JSON:
           }
 
           seen.add(key);
+
+          // V12.2: siste sikkerhetsnett før noen markedsdata kan brukes.
+          if (isHardIncompatibleFenderComparable(
+            item.title,
+            item._ebay_aspect_text || "",
+            built
+          )) {
+            continue;
+          }
+
           all.push(item);
         }
       }
