@@ -52,7 +52,7 @@ Vurder spesielt:
 - modell
 - produsent
 - type
-- alder/produksjonsperiode
+- alder/produksjonsperiode, men oppgi konkret år bare når det kan bekreftes fra bildet, serienummer eller annen tydelig dokumentasjon
 - materiale
 - serienummer hvis synlig
 - spesielle kjennetegn
@@ -522,15 +522,18 @@ Returner KUN gyldig JSON:
         parsed.ebay_search_query
       );
 
+      // Bare/assumed bicycle years are not hard filters.
+      const hardYear = category === "guitar" ? year : null;
+
       const candidates = [];
 
       // Førstevalg: mest presise identifikasjon med konkret år når vi kjenner det.
-      if (brand && model && country && year) {
-        candidates.push(`${brand} ${model} ${country} ${year}`);
+      if (brand && model && country && hardYear) {
+        candidates.push(`${brand} ${model} ${country} ${hardYear}`);
       }
 
-      if (brand && model && year) {
-        candidates.push(`${brand} ${model} ${year}`);
+      if (brand && model && hardYear) {
+        candidates.push(`${brand} ${model} ${hardYear}`);
       }
 
       // Land uten år brukes fortsatt som søkestøtte, men treff uten
@@ -571,7 +574,8 @@ Returner KUN gyldig JSON:
         type,
         manufacturer,
         material,
-        year,
+        year: hardYear,
+        detected_year: year,
         country,
         ageGroup,
         category,
@@ -674,8 +678,8 @@ Returner KUN gyldig JSON:
 
         // En ren del-/tilbehørstittel uten tydelig komplett sykkelord skal
         // aldri få høy score bare fra merke + modell.
-        const completeBikeWords = /\b(bike|bicycle|e-bike|ebike|trekking|city bike|mountain bike|mtb|pedelec|fahrrad|elektrofahrrad|sykkel)\b/.test(t);
-        const obviousPartWords = /\b(lock|schloss|key|battery|akku|charger|ladegerät|ladegerat|motor|display|sensor|fork|gabel|wheel|laufrad|frame|rahmen|sattel|saddle|pedal|brake|bremse|derailleur|schaltwerk|kassette)\b/.test(t);
+        const completeBikeWords = /\b(bike|bicycle|e-bike|ebike|trekking|city bike|mountain bike|mtb|pedelec|fahrrad|elektrofahrrad|sykkel|trekkingrad|trekking e-bike)\b/.test(t);
+        const obviousPartWords = /\b(lock|schloss|key|battery|akku|charger|ladegerät|ladegerat|motor|display|sensor|fork|gabel|wheel|laufrad|vorderrad|hinterrad|frame|rahmen|sattel|saddle|seat|pedal|brake|bremse|derailleur|schaltwerk|kassette|abdeckung|deckung|cover|schutz|mudguard|schutzblech|fender|rack|gepäckträger|gepacktrager|kickstand|ständer|staender|chainring|kettenblatt|rotor|disc|laufrad)\b/.test(t);
 
         if (obviousPartWords && !completeBikeWords) {
           return {
@@ -684,6 +688,18 @@ Returner KUN gyldig JSON:
             near_match: false,
             year_match: year ? "missing" : "not_required",
             reason: "ikke komplett sykkel"
+          };
+        }
+
+        // Titler som eksplisitt beskriver en ramme/deksel/hjul/skjerm osv.
+        // skal avvises selv om merke og modell står i tittelen.
+        if (!completeBikeWords && /\b(rahmen|frame|abdeckung|deckung|cover|schutz|laufrad|vorderrad|hinterrad|wheel|gabel|fork|sattel|saddle|rack|gepäckträger|mudguard|schutzblech)\b/.test(t)) {
+          return {
+            score: -100,
+            accepted: false,
+            near_match: false,
+            year_match: year ? "missing" : "not_required",
+            reason: "sykkeldel/ramme/hjul"
           };
         }
       }
