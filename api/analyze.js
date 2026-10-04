@@ -465,7 +465,15 @@ Returner KUN gyldig JSON:
       const material = compact(info.material, 1);
       const aiQuery = compact(parsed.ebay_search_query, 5);
 
-      const year = extractYear(info.year_or_period);
+      // Finn konkret år fra all identifikasjonsinformasjon.
+      // Dette er viktig når AI-en skriver 1995 i navn/beskrivelse,
+      // men ikke legger det i year_or_period.
+      const year =
+        extractYear(info.year_or_period) ||
+        extractYear(parsed.name) ||
+        extractYear(parsed.description) ||
+        extractYear(parsed.ebay_search_query);
+
       const country =
         extractCountry(info.year_or_period) ||
         extractCountry(info.manufacturer) ||
@@ -482,7 +490,7 @@ Returner KUN gyldig JSON:
 
       const candidates = [];
 
-      // Førstevalg: mest presise identifikasjon.
+      // Førstevalg: mest presise identifikasjon med konkret år når vi kjenner det.
       if (brand && model && country && year) {
         candidates.push(`${brand} ${model} ${country} ${year}`);
       }
@@ -570,7 +578,13 @@ Returner KUN gyldig JSON:
         "gigbag", "hardcase", "flight case", "cable", "stand",
         "wall hanger", "capo", "knob", "potentiometer", "switch",
         "sticker", "decal", "parts", "part", "repair", "manual",
-        "book", "poster", "shirt", "t-shirt", "cover", "cover only"
+        "book", "poster", "shirt", "t-shirt", "cover", "cover only",
+        "nur gehäuse", "nur gehause", "nur korpus", "nur body",
+        "nur hals", "nur neck", "nur chassis", "gehäuse only",
+        "gehause only", "bodyteil", "korpus", "chassis",
+        "ersatzteil", "ersatzteile", "spare part", "replacement part",
+        "ohne hals", "ohne neck", "ohne hardware", "ohne elektronik",
+        "ohne pickup"
       ];
 
       const wrongModelTerms = [
@@ -583,6 +597,14 @@ Returner KUN gyldig JSON:
       // Direkte avvisning av tilbehør/deler.
       if (accessoryTerms.some(term => t.includes(term))) {
         return { score: -100, accepted: false, reason: "tilbehør/del" };
+      }
+
+      if (
+        /\b(nur|only|just)\b.{0,25}\b(gehäuse|gehause|korpus|body|chassis|case)\b/.test(t) ||
+        /\b(gehäuse|gehause|korpus|body|chassis|case)\b.{0,25}\b(nur|only|just)\b/.test(t) ||
+        /\b(ohne|without)\b.{0,25}\b(hals|neck|hardware|elektronik|electronics|pickup)\b/.test(t)
+      ) {
+        return { score: -100, accepted: false, reason: "kun del/hus" };
       }
 
       if (brand && t.includes(brand)) {
@@ -701,21 +723,38 @@ Returner KUN gyldig JSON:
         }
       }
 
-      // År: bruk som ekstra poeng, men ikke krev det.
+      // År: når Kistefunn kjenner et konkret år, skal et annet
+      // konkret år i annonsen ikke kunne bli prisreferanse.
       const titleYears = extractYears(t);
 
       if (year && titleYears.length) {
         const exact = titleYears.some(y => y === year);
-        const close = titleYears.some(y => Math.abs(y - year) <= 3);
+        const otherYear = titleYears.some(y => y !== year);
 
         if (exact) {
-          score += 20;
+          score += 25;
           reasons.push("samme år");
-        } else if (close) {
-          score += 8;
-          reasons.push("nær år");
-        } else {
-          score -= 5;
+        } else if (otherYear) {
+          return { score: -100, accepted: false, reason: "annet år" };
+        }
+      }
+
+      // Klare modell-/serievarianter skal ikke blandes med målmodellen.
+      // "Vintage" alene kan være et generisk bruktmarked-ord på eBay,
+      // men konkrete serier som Classic 60s skal skilles ut.
+      const incompatibleSeries = [
+        "classic 60s", "classic series", "vintera", "player ii",
+        "american professional", "american ultra", "american vintage",
+        "performer", "elite", "deluxe", "anniversary", "reissue"
+      ];
+
+      for (const term of incompatibleSeries) {
+        if (t.includes(term) && !model.includes(term)) {
+          return {
+            score: -100,
+            accepted: false,
+            reason: "annen serie/variant"
+          };
         }
       }
 
