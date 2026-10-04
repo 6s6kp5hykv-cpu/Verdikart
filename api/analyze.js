@@ -885,6 +885,49 @@ Returner KUN gyldig JSON:
         );
       }
 
+      /*
+       * GUITAR-FALLBACKS
+       * Ikke stol på at AI sitt fritekst-søk alltid inneholder
+       * de viktigste markedstermene. For Fender Stratocaster/MIM
+       * lager vi derfor noen korte, robuste varianter. Dette skal
+       * ikke endre relevansfilteret - bare øke sjansen for å finne
+       * de samme relevante annonsene som på offentlig eBay-søk.
+       */
+      if (
+        category === "guitar" &&
+        brand &&
+        model
+      ) {
+        const modelLower = model.toLowerCase();
+
+        if (
+          brand.toLowerCase() === "fender" &&
+          /\bstratocaster\b/.test(modelLower)
+        ) {
+          if (hardYear) {
+            candidates.push(
+              `${brand} Standard Stratocaster ${hardYear}`
+            );
+            candidates.push(
+              `${brand} Stratocaster ${hardYear} MIM`
+            );
+            candidates.push(
+              `${brand} Stratocaster ${hardYear} Mexico`
+            );
+            candidates.push(
+              `${brand} Standard Stratocaster Mexico ${hardYear}`
+            );
+          } else {
+            candidates.push(
+              `${brand} Standard Stratocaster MIM`
+            );
+            candidates.push(
+              `${brand} Stratocaster Mexico`
+            );
+          }
+        }
+      }
+
       if (userModelHint) {
         candidates.push(userText);
       }
