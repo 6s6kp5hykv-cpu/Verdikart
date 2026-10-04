@@ -2691,6 +2691,39 @@ Returner KUN gyldig JSON:
         }
       }
 
+      // V12.3: dersom søket eksplisitt er Fender Stratocaster Made in Mexico,
+      // skal kjente konkurrerende varianter aldri kunne passere som exact.
+      // Dette er uavhengig av AI-klassifiseringen i criteria.
+      const hardQueryText = String(query || "").toLowerCase();
+      const hardTargetFromQuery =
+        /\bfender\b/.test(hardQueryText) &&
+        /\bstratocaster\b/.test(hardQueryText) &&
+        /\b(?:mexico|mim|made in mexico)\b/.test(hardQueryText) &&
+        criteria?.target_special !== true;
+
+      if (hardTargetFromQuery) {
+        const hardForbidden = [
+          /\bsquier(?:\s+series)?\b/i,
+          /\bfsr\b/i,
+          /\b62\s*(?:['’]s?|special)\b/i,
+          /\b50th\s+anniversary\b/i,
+          /\banniversary\b/i,
+          /\bspecial(?:\s+edition)?\b/i,
+          /\blimited\s+edition\b/i,
+          /\bvintage\s+reissue\b/i,
+          /\breissue\b/i,
+          /\bplayer(?:\s+ii|\s+2)?\b/i,
+          /\bvintera\b/i,
+          /\bclassic\s+series\b/i,
+          /\bamerican\s+(?:standard|professional|performer|ultra|original|vintage)\b/i,
+          /\bprofessional\s+ii\b/i,
+          /\bsignature\s+series\b/i
+        ];
+        if (hardForbidden.some(rx => rx.test(String(title || "")))) {
+          return null;
+        }
+      }
+
       return {
         title,
         price: {
@@ -2731,13 +2764,24 @@ Returner KUN gyldig JSON:
       if (criteria?.category !== "guitar") return false;
 
       const identity =
-        `${criteria?.brand || ""} ${criteria?.model || ""} ${criteria?.country || ""}`
+        `${criteria?.brand || ""} ${criteria?.model || ""} ${criteria?.country || ""} ${criteria?.manufacturer || ""} ${criteria?.user_model_hint || ""}`
           .toLowerCase();
 
+      // V12.3: bruk også selve søkestrengen som sikkerhetsnett.
+      // AI-en kan i enkelte kjøringer fylle criteria.country/model ufullstendig,
+      // selv om buildStrictQueries allerede har laget et eksplisitt
+      // "Fender ... Stratocaster ... Mexico"-søk.
       const isFenderStratMim =
-        /\bfender\b/.test(identity) &&
-        /\bstratocaster\b/.test(identity) &&
-        /\b(?:mexico|mim|made in mexico)\b/.test(identity);
+        (
+          /\bfender\b/.test(identity) &&
+          /\bstratocaster\b/.test(identity) &&
+          /\b(?:mexico|mim|made in mexico)\b/.test(identity)
+        ) ||
+        (
+          /\bfender\b/.test(String(criteria?.query_context || "").toLowerCase()) &&
+          /\bstratocaster\b/.test(String(criteria?.query_context || "").toLowerCase()) &&
+          /\b(?:mexico|mim|made in mexico)\b/.test(String(criteria?.query_context || "").toLowerCase())
+        );
 
       if (!isFenderStratMim || criteria?.target_special === true) {
         return false;
@@ -2960,7 +3004,7 @@ Returner KUN gyldig JSON:
                   if (isHardIncompatibleFenderComparable(
                     prepared.title,
                     item?._ebay_aspect_text || "",
-                    { ...built, marketplace: result.marketplace }
+                    { ...built, marketplace: result.marketplace, query_context: result.query }
                   )) {
                     continue;
                   }
@@ -3005,7 +3049,7 @@ Returner KUN gyldig JSON:
           if (isHardIncompatibleFenderComparable(
             item.title,
             item._ebay_aspect_text || "",
-            built
+            { ...built, query_context: built.queries.join(" | ") }
           )) {
             continue;
           }
