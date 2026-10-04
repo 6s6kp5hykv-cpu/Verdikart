@@ -2691,7 +2691,7 @@ Returner KUN gyldig JSON:
         }
       }
 
-      // V12.3: dersom søket eksplisitt er Fender Stratocaster Made in Mexico,
+      // V12.4: dersom søket eksplisitt er Fender Stratocaster Made in Mexico,
       // skal kjente konkurrerende varianter aldri kunne passere som exact.
       // Dette er uavhengig av AI-klassifiseringen i criteria.
       const hardQueryText = String(query || "").toLowerCase();
@@ -2767,10 +2767,12 @@ Returner KUN gyldig JSON:
         `${criteria?.brand || ""} ${criteria?.model || ""} ${criteria?.country || ""} ${criteria?.manufacturer || ""} ${criteria?.user_model_hint || ""}`
           .toLowerCase();
 
-      // V12.3: bruk også selve søkestrengen som sikkerhetsnett.
+      // V12.4: bruk også selve søkestrengen som sikkerhetsnett.
       // AI-en kan i enkelte kjøringer fylle criteria.country/model ufullstendig,
       // selv om buildStrictQueries allerede har laget et eksplisitt
       // "Fender ... Stratocaster ... Mexico"-søk.
+      const queryContext = String(criteria?.query_context || "").toLowerCase();
+
       const isFenderStratMim =
         (
           /\bfender\b/.test(identity) &&
@@ -2778,12 +2780,19 @@ Returner KUN gyldig JSON:
           /\b(?:mexico|mim|made in mexico)\b/.test(identity)
         ) ||
         (
-          /\bfender\b/.test(String(criteria?.query_context || "").toLowerCase()) &&
-          /\bstratocaster\b/.test(String(criteria?.query_context || "").toLowerCase()) &&
-          /\b(?:mexico|mim|made in mexico)\b/.test(String(criteria?.query_context || "").toLowerCase())
+          /\bfender\b/.test(queryContext) &&
+          /\bstratocaster\b/.test(queryContext) &&
+          /\b(?:mexico|mim|made in mexico)\b/.test(queryContext)
         );
 
-      if (!isFenderStratMim || criteria?.target_special === true) {
+      // Hvis søket eksplisitt er laget for en vanlig Fender MIM Stratocaster,
+      // skal vi IKKE stole på et feilaktig target_special-flagg fra AI.
+      // Special/62/anniversary må være eksplisitt en del av selve søket for
+      // at slike varianter skal tillates.
+      const queryRequestsSpecial =
+        /\b(?:62\s*(?:['’]s?|special)|special|anniversary|fsr|squier)\b/i.test(queryContext);
+
+      if (!isFenderStratMim || queryRequestsSpecial) {
         return false;
       }
 
@@ -3086,6 +3095,41 @@ Returner KUN gyldig JSON:
        * Hvis år ikke finnes:
        * exact kan brukes.
        */
+
+      // V12.4: ABSOLUTT SISTE DISPLAY-GATE.
+      // Eksakte referanser skal aldri kunne vise en inkompatibel Fender-variant.
+      // Denne filtreringen skjer direkte på `all`, rett før exactPool bygges.
+      const normalFenderMimQuery =
+        built.category === "guitar" &&
+        /\bfender\b/i.test(built.queries.join(" | ")) &&
+        /\bstratocaster\b/i.test(built.queries.join(" | ")) &&
+        /\b(?:mexico|mim|made in mexico)\b/i.test(built.queries.join(" | "));
+
+      if (normalFenderMimQuery) {
+        const finalForbiddenFenderVariants = [
+          /\bsquier(?:\s+series)?\b/i,
+          /\bfsr\b/i,
+          /\b62\s*(?:['’]s?|special)\b/i,
+          /\b50th\s+anniversary\b/i,
+          /\banniversary\b/i,
+          /\bspecial(?:\s+edition)?\b/i,
+          /\blimited\s+edition\b/i,
+          /\bvintage\s+reissue\b/i,
+          /\breissue\b/i,
+          /\bplayer(?:\s+ii|\s+2)?\b/i,
+          /\bvintera\b/i,
+          /\bclassic\s+series\b/i,
+          /\bamerican\s+(?:standard|professional|performer|ultra|original|vintage)\b/i,
+          /\bprofessional\s+ii\b/i,
+          /\bsignature\s+series\b/i
+        ];
+
+        for (let i = all.length - 1; i >= 0; i--) {
+          if (finalForbiddenFenderVariants.some(rx => rx.test(String(all[i]?.title || "")))) {
+            all.splice(i, 1);
+          }
+        }
+      }
 
       const rawExactPool =
         all.filter(
