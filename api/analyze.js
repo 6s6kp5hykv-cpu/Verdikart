@@ -1419,9 +1419,10 @@ Returner KUN gyldig JSON:
         );
       }
 
-      const valuationBasis = built.year
-        ? "eksakte treff"
-        : "samme modell/materiale";
+      const valuationBasis =
+        ebay?.filtering?.exact_year_required_for_valuation
+          ? "eksakte treff"
+          : "samme modell/materiale";
 
       valuationMethod =
         `AI + eBay-markedsdata (${Math.round(ebayWeight * 100)} % eBay-vekt, ${ebaySampleSize} treff / ${Number(ebay.distinct_valuation_count || ebaySampleSize)} unike ${valuationBasis})`;
