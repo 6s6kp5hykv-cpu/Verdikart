@@ -1,4 +1,4 @@
-export default async function handler(req, res) {
+ export default async function handler(req, res) {
           if (req.method !== "POST") {
             return res.status(405).json({
               error: "Method not allowed"
@@ -162,7 +162,7 @@ export default async function handler(req, res) {
         "value_factors": ["konkret forhold som påvirker verdien"],
         "uncertainties": ["det som ikke kan bekreftes sikkert"]
       },
-      "ebay_search_query": "kort eBay-søk med 3-8 sikre søkeord"
+      "ebay_search_query": "kort eBay-søk med 2-4 sikre søkeord"
     }
 
     Hvis du ikke kan identifisere gjenstanden sikkert, si det tydelig og bruk et forsiktig verdiestimat.
@@ -908,25 +908,28 @@ export default async function handler(req, res) {
               if (!value) return "";
 
               const stop = new Set([
-                "sannsynligvis", "muligens", "trolig", "ukjent", "unknown",
-                "eller", "med", "og", "av", "for", "fra", "som", "mulig",
-                "antatt", "probably", "likely", "possibly", "treverk", "lakkert",
-                "kropp", "gripebrett", "metallhardware", "plastplekterbrett", "plast"
+                "sannsynligvis", "muligens", "trolig", "ukjent",
+                "unknown", "eller", "med", "og", "av", "for",
+                "fra", "som", "mulig", "antatt", "probably",
+                "likely", "possibly", "treverk", "lakkert",
+                "kropp", "gripebrett", "metallhardware",
+                "plastplekterbrett", "plast", "condition",
+                "excellent", "good", "very"
               ]);
 
               const words = String(value)
                 .replace(/[\n\r\t,;:()\[\]{}"']/g, " ")
-                .replace(/[\/|_-]+/g, " ")
+                .replace(/[\/|]+/g, " ")
                 .replace(/\s+/g, " ")
                 .trim()
                 .split(" ")
-                .filter(Boolean)
-                .map(word => word.replace(/[^\p{L}\p{N}.]/gu, ""))
+                .map(word => word.replace(/[^\p{L}\p{N}.-]/gu, ""))
                 .filter(Boolean)
                 .filter(word => !stop.has(word.toLowerCase()));
 
               const unique = [];
               const seen = new Set();
+
               for (const word of words) {
                 const key = word.toLowerCase();
                 if (seen.has(key)) continue;
@@ -935,38 +938,47 @@ export default async function handler(req, res) {
                 if (unique.length >= maxWords) break;
               }
 
-              return unique.join(" ");
+              return unique.join(" " );
             }
 
             function buildEbayQueries(parsed) {
               const info = parsed?.item_info || {};
+
+              // Only structured identification fields are used here.
+              // The long AI description/search sentence is deliberately
+              // NOT sent directly to eBay.
               const brand = cleanEbayTerm(info.brand, 1);
-              const model = cleanEbayTerm(info.model, 2);
+              const model = cleanEbayTerm(info.model, 3);
               const type = cleanEbayTerm(info.type, 2);
-              const manufacturer = cleanEbayTerm(info.manufacturer, 2);
-              const material = cleanEbayTerm(info.material, 1);
-              const aiQueryRaw = cleanEbayTerm(parsed?.ebay_search_query, 4);
+              const manufacturer = cleanEbayTerm(info.manufacturer, 1);
 
               const candidates = [];
 
               if (brand && model) candidates.push(`${brand} ${model}`);
               if (brand && type) candidates.push(`${brand} ${type}`);
               if (model && type) candidates.push(`${model} ${type}`);
-              if (manufacturer && model && manufacturer.toLowerCase() !== brand.toLowerCase()) {
+
+              if (
+                manufacturer &&
+                model &&
+                manufacturer.toLowerCase() !== brand.toLowerCase()
+              ) {
                 candidates.push(`${manufacturer} ${model}`);
               }
-              if (aiQueryRaw && aiQueryRaw.split(/\s+/).length <= 4) candidates.push(aiQueryRaw);
-              if (brand && material) candidates.push(`${brand} ${material}`);
+
+              if (model) candidates.push(model);
 
               const seen = new Set();
               const queries = [];
 
               for (const raw of candidates) {
                 const q = cleanEbayTerm(raw, 4);
-                if (q.length < 3) continue;
+                if (!q || q.length < 3) continue;
                 if (q.split(/\s+/).length > 4) continue;
+
                 const key = q.toLowerCase();
                 if (seen.has(key)) continue;
+
                 seen.add(key);
                 queries.push(q);
                 if (queries.length >= 5) break;
