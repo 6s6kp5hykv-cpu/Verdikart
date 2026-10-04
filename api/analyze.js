@@ -1,5 +1,5 @@
-// Kistefunn analysebackend v9
-// Strengere identifikasjon + hardere markedsfilter + korrekt årshåndtering
+// Kistefunn analysebackend v10
+// Strengere identifikasjon + hardere markedsfilter + multi-source markedsmotor
 //
 // Viktige endringer fra v7:
 // - Når konkret år er kjent, kan KUN annonser med samme år brukes i verdiberegningen.
@@ -9,6 +9,8 @@
 // - eBay-token caches per kjøring.
 // - Markedsgrunnlaget krever flere uavhengige treff før eBay får høy vekt.
 // - Beholder eksisterende JSON-struktur slik at frontend normalt ikke trenger endring.
+// - Ny markedsmotor er klargjort for FINN + eBay + AI.
+// - FINN aktiveres først når legitim API-tilgang er tilgjengelig.
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -2501,303 +2503,346 @@ Returner KUN gyldig JSON:
     }
 
     /* ---------------------------------------------------------
-       7. KOMBINER AI + eBAY
+       7. MARKEDSMOTOR
+       ---------------------------------------------------------
+       V10 gjør verdiberegningen klar for flere markedsplasser.
+
+       Prinsipp:
+       - AI-estimat er alltid grunnlaget dersom det finnes.
+       - eBay brukes som markedsreferanse når treffene er gode nok.
+       - FINN er klargjort som egen kilde, men aktiveres først når
+         Kistefunn har legitim FINN/API-tilgang.
+       - Hver kilde kan få egen vekt og kvalitetspoeng.
+       - Frontend beholder de gamle feltene for bakoverkompatibilitet.
        --------------------------------------------------------- */
 
-    let finalEstimated =
-      aiEstimated;
+    const marketSources = {
+      ai: {
+        enabled: Number.isFinite(aiEstimated),
+        value_nok: Number.isFinite(aiEstimated)
+          ? Math.round(aiEstimated)
+          : null,
+        low_nok: Number.isFinite(aiLow)
+          ? Math.round(aiLow)
+          : null,
+        high_nok: Number.isFinite(aiHigh)
+          ? Math.round(aiHigh)
+          : null
+      },
 
-    let finalLow =
-      aiLow;
+      ebay: {
+        enabled: Boolean(ebay?.enabled),
+        value_nok: Number.isFinite(Number(ebay?.median_nok))
+          ? Math.round(Number(ebay.median_nok))
+          : null,
+        low_nok: Number.isFinite(Number(ebay?.low_nok))
+          ? Math.round(Number(ebay.low_nok))
+          : null,
+        high_nok: Number.isFinite(Number(ebay?.high_nok))
+          ? Math.round(Number(ebay.high_nok))
+          : null,
+        exact_match_count: Number(ebay?.exact_match_count || 0),
+        same_model_match_count: Number(ebay?.same_model_match_count || 0),
+        distinct_count: Number(ebay?.distinct_valuation_count || 0)
+      },
 
-    let finalHigh =
-      aiHigh;
+      finn: {
+        enabled: false,
+        value_nok: null,
+        low_nok: null,
+        high_nok: null,
+        exact_match_count: 0,
+        same_model_match_count: 0,
+        distinct_count: 0,
+        reason:
+          "FINN-markedsdata er klargjort, men FINN API-tilgang er ikke koblet til ennå."
+      }
+    };
 
-    let ebayWeight = 0;
+    function calculateEbayQuality(source) {
+      if (!source?.enabled || !Number.isFinite(source.value_nok)) {
+        return 0;
+      }
 
-    let valuationMethod =
-      "AI-estimat uten eBay-grunnlag";
+      const exact = Math.max(0, source.exact_match_count || 0);
+      const sameModel = Math.max(0, source.same_model_match_count || 0);
+      const distinct = Math.max(0, source.distinct_count || 0);
+      const hasYear = Boolean(
+        ebay?.filtering?.exact_year_required_for_valuation
+      );
 
-    const identificationConfidence =
-      String(
-        parsed.confidence ||
-        "lav"
-      ).toLowerCase();
+      let weight = 0;
 
-    const hasBrandEvidence =
-      String(
-        itemInfo.brand_evidence ||
-        ""
-      )
+      if (hasYear && exact >= 6 && distinct >= 5) {
+        weight = 0.85;
+      } else if (hasYear && exact >= 4 && distinct >= 4) {
+        weight = 0.80;
+      } else if (hasYear && exact >= 3 && distinct >= 3) {
+        weight = 0.70;
+      } else if (hasYear && exact >= 2 && distinct >= 2) {
+        weight = 0.60;
+      } else if (hasYear && exact === 1 && sameModel >= 2) {
+        weight = 0.45;
+      } else if (hasYear && exact === 1) {
+        weight = 0.30;
+      } else if (hasYear && exact === 0 && sameModel >= 5) {
+        weight = 0.25;
+      } else if (hasYear && exact === 0 && sameModel >= 2) {
+        weight = 0.20;
+      } else if (!hasYear && exact >= 5 && distinct >= 4) {
+        weight = 0.80;
+      } else if (!hasYear && exact >= 3 && distinct >= 3) {
+        weight = 0.70;
+      } else if (!hasYear && exact >= 2 && distinct >= 2) {
+        weight = 0.60;
+      } else if (!hasYear && exact >= 1) {
+        weight = 0.30;
+      } else {
+        weight = 0.15;
+      }
+
+      const confidence = String(parsed.confidence || "lav").toLowerCase();
+      const brandEvidence = String(itemInfo.brand_evidence || "")
         .trim()
-        .toLowerCase() !==
-      "ukjent";
-
-    const hasModelEvidence =
-      String(
-        itemInfo.model_evidence ||
-        ""
-      )
+        .toLowerCase();
+      const modelEvidence = String(itemInfo.model_evidence || "")
         .trim()
-        .toLowerCase() !==
-      "ukjent";
+        .toLowerCase();
+      const userModelHint = Boolean(ebay?.filtering?.user_model_hint);
 
-    const ebaySampleSize =
-      ebay?.enabled &&
-      Number.isFinite(
-        Number(
-          ebay.sample_size
-        )
-      )
-        ? Number(
-            ebay.sample_size
-          )
-        : 0;
+      if (confidence === "lav" || brandEvidence === "ukjent") {
+        weight = Math.min(weight, userModelHint ? 0.45 : 0.15);
+      } else if (modelEvidence === "ukjent" && !userModelHint) {
+        weight = Math.min(weight, 0.25);
+      }
 
-    if (
-      ebaySampleSize > 0 &&
-      Number.isFinite(
-        ebay.median_nok
-      )
-    ) {
-      const exactCount =
-        Number(
-          ebay.exact_match_count ||
-          0
-        );
+      return weight;
+    }
 
-      const distinctCount =
-        Number(
-          ebay.distinct_valuation_count ||
-          ebaySampleSize ||
-          0
-        );
+    /*
+     * V10 bruker source weights i stedet for at kombinasjonslogikken
+     * er bundet direkte til eBay. Når FINN senere aktiveres, kan samme
+     * motor bruke FINN + eBay samtidig uten å endre frontend.
+     */
+    function combineMarketSources(sources) {
+      const candidates = [];
 
-      const hasYear =
-        Boolean(
-          ebay?.filtering
-            ?.exact_year_required_for_valuation
-        );
+      if (
+        sources.ai?.enabled &&
+        Number.isFinite(sources.ai.value_nok)
+      ) {
+        candidates.push({
+          source: "ai",
+          value: sources.ai.value_nok,
+          low: sources.ai.low_nok,
+          high: sources.ai.high_nok,
+          quality_weight: 1
+        });
+      }
+
+      const ebayQuality =
+        calculateEbayQuality(sources.ebay);
+
+      if (
+        sources.ebay?.enabled &&
+        Number.isFinite(sources.ebay.value_nok) &&
+        ebayQuality > 0
+      ) {
+        candidates.push({
+          source: "ebay",
+          value: sources.ebay.value_nok,
+          low: sources.ebay.low_nok,
+          high: sources.ebay.high_nok,
+          quality_weight: ebayQuality
+        });
+      }
+
+      if (
+        sources.finn?.enabled &&
+        Number.isFinite(sources.finn.value_nok)
+      ) {
+        candidates.push({
+          source: "finn",
+          value: sources.finn.value_nok,
+          low: sources.finn.low_nok,
+          high: sources.finn.high_nok,
+          quality_weight: 0.80
+        });
+      }
+
+      if (!candidates.length) {
+        return {
+          estimated_nok: null,
+          low_nok: null,
+          high_nok: null,
+          source_weights: [],
+          confidence: "lav",
+          basis: "Ingen brukbare markedsdata"
+        };
+      }
 
       /*
-       * V9:
-       * eBay-vekt bestemmes først av eksakte treff.
-       * Same-model uten år er kun sekundær støtte.
+       * AI får basisvekt 1. Markedskilder får sin kvalitetspoeng.
+       * Dersom flere markedsplasser er tilgjengelige, normaliseres
+       * markedsvektene først og AI beholdes som et eget ankerelement.
        */
-      const sameModelCount =
-        Number(
-          ebay.same_model_match_count ||
+      const marketCandidates = candidates.filter(
+        x => x.source !== "ai"
+      );
+
+      const aiCandidate = candidates.find(
+        x => x.source === "ai"
+      );
+
+      let marketWeight = 0;
+
+      if (marketCandidates.length) {
+        const totalQuality = marketCandidates.reduce(
+          (sum, x) => sum + x.quality_weight,
           0
         );
 
-      if (
-        hasYear &&
-        exactCount >= 6 &&
-        distinctCount >= 5
-      ) {
-        ebayWeight = 0.85;
-      } else if (
-        hasYear &&
-        exactCount >= 4 &&
-        distinctCount >= 4
-      ) {
-        ebayWeight = 0.80;
-      } else if (
-        hasYear &&
-        exactCount >= 3 &&
-        distinctCount >= 3
-      ) {
-        ebayWeight = 0.70;
-      } else if (
-        hasYear &&
-        exactCount >= 2 &&
-        distinctCount >= 2
-      ) {
-        ebayWeight = 0.60;
-      } else if (
-        hasYear &&
-        exactCount === 1 &&
-        sameModelCount >= 2
-      ) {
-        ebayWeight = 0.45;
-      } else if (
-        hasYear &&
-        exactCount === 1
-      ) {
-        ebayWeight = 0.30;
-      } else if (
-        hasYear &&
-        exactCount === 0 &&
-        sameModelCount >= 5
-      ) {
-        ebayWeight = 0.25;
-      } else if (
-        hasYear &&
-        exactCount === 0 &&
-        sameModelCount >= 2
-      ) {
-        ebayWeight = 0.20;
-      } else if (
-        !hasYear &&
-        exactCount >= 5 &&
-        distinctCount >= 4
-      ) {
-        ebayWeight = 0.80;
-      } else if (
-        !hasYear &&
-        exactCount >= 3 &&
-        distinctCount >= 3
-      ) {
-        ebayWeight = 0.70;
-      } else if (
-        !hasYear &&
-        exactCount >= 2 &&
-        distinctCount >= 2
-      ) {
-        ebayWeight = 0.60;
-      } else if (
-        !hasYear &&
-        exactCount >= 1
-      ) {
-        ebayWeight = 0.30;
-      } else {
-        ebayWeight = 0.15;
-      }
-
-      const userModelHint =
-        Boolean(
-          ebay?.filtering
-            ?.user_model_hint
+        /*
+         * Maks 85 % samlet markedsvekt. Flere uavhengige kilder
+         * kan øke markedsandelen, men AI forsvinner aldri helt.
+         */
+        marketWeight = Math.min(
+          0.85,
+          0.45 + Math.min(0.40, totalQuality * 0.25)
         );
 
-      if (
-        identificationConfidence ===
-          "lav" ||
-        !hasBrandEvidence
-      ) {
-        ebayWeight =
-          Math.min(
-            ebayWeight,
-            userModelHint
-              ? 0.45
-              : 0.15
+        if (marketCandidates.length >= 2) {
+          marketWeight = Math.min(
+            0.85,
+            marketWeight + 0.10
           );
-      } else if (
-        !hasModelEvidence &&
-        !userModelHint
-      ) {
-        ebayWeight =
-          Math.min(
-            ebayWeight,
-            0.25
-          );
+        }
       }
 
-      const aiWeight =
-        1 - ebayWeight;
+      const aiWeight = aiCandidate
+        ? 1 - marketWeight
+        : 0;
 
-      if (
-        Number.isFinite(
-          aiEstimated
-        )
-      ) {
-        finalEstimated =
-          Math.round(
-            aiEstimated *
-              aiWeight +
-            ebay.median_nok *
-              ebayWeight
-          );
-      } else {
-        finalEstimated =
-          Math.round(
-            ebay.median_nok
-          );
+      let estimated = 0;
+      let low = 0;
+      let high = 0;
+
+      if (aiCandidate) {
+        estimated += aiCandidate.value * aiWeight;
+        if (Number.isFinite(aiCandidate.low)) {
+          low += aiCandidate.low * aiWeight;
+        }
+        if (Number.isFinite(aiCandidate.high)) {
+          high += aiCandidate.high * aiWeight;
+        }
       }
 
-      if (
-        Number.isFinite(aiLow) &&
-        Number.isFinite(ebay.low_nok)
-      ) {
-        finalLow =
-          Math.round(
-            aiLow * aiWeight +
-            ebay.low_nok *
-              ebayWeight
-          );
+      if (marketCandidates.length) {
+        const totalQuality = marketCandidates.reduce(
+          (sum, x) => sum + x.quality_weight,
+          0
+        );
+
+        for (const item of marketCandidates) {
+          const share =
+            marketWeight *
+            (item.quality_weight / totalQuality);
+
+          estimated += item.value * share;
+
+          if (Number.isFinite(item.low)) {
+            low += item.low * share;
+          }
+
+          if (Number.isFinite(item.high)) {
+            high += item.high * share;
+          }
+        }
       }
 
-      if (
-        Number.isFinite(aiHigh) &&
-        Number.isFinite(
-          ebay.high_nok
-        )
-      ) {
-        finalHigh =
-          Math.round(
-            aiHigh * aiWeight +
-            ebay.high_nok *
-              ebayWeight
-          );
+      const enabledMarketSources = marketCandidates.length;
+      const exactMarketCount = marketCandidates.reduce(
+        (sum, x) => {
+          if (x.source === "ebay") {
+            return sum + (sources.ebay.exact_match_count || 0);
+          }
+          if (x.source === "finn") {
+            return sum + (sources.finn.exact_match_count || 0);
+          }
+          return sum;
+        },
+        0
+      );
+
+      let confidence = "middels";
+      if (enabledMarketSources >= 2 && exactMarketCount >= 3) {
+        confidence = "høy";
+      } else if (enabledMarketSources === 1 && exactMarketCount >= 4) {
+        confidence = "høy";
+      } else if (!marketCandidates.length) {
+        confidence = "lav";
       }
 
-      const valuationBasis =
-        hasYear
-          ? (
-              exactCount > 0
-                ? "samme dokumenterte år + sekundære samme-modell-treff"
-                : "samme modell, år ikke oppgitt"
-            )
-          : "samme modell";
+      const sourceWeights = [
+        ...(aiCandidate
+          ? [{ source: "ai", percent: Math.round(aiWeight * 100) }]
+          : []),
+        ...marketCandidates.map(item => ({
+          source: item.source,
+          percent: Math.round(
+            marketWeight *
+            (item.quality_weight /
+              marketCandidates.reduce(
+                (sum, x) => sum + x.quality_weight,
+                0
+              )) *
+            100
+          )
+        }))
+      ];
 
-      valuationMethod =
-        `AI + eBay-markedsdata (${Math.round(
-          ebayWeight * 100
-        )} % eBay-vekt, ${ebaySampleSize} eksakte markedsdata / ${Number(
-          ebay.distinct_valuation_count ||
-          ebaySampleSize
-        )} uavhengige ${valuationBasis})`;
+      const names = marketCandidates.map(x =>
+        x.source === "ebay" ? "eBay" : "FINN"
+      );
+
+      return {
+        estimated_nok: Math.round(estimated),
+        low_nok: Number.isFinite(low) && low > 0
+          ? Math.round(low)
+          : null,
+        high_nok: Number.isFinite(high) && high > 0
+          ? Math.round(high)
+          : null,
+        source_weights: sourceWeights,
+        confidence,
+        basis: names.length
+          ? `AI + ${names.join(" + ")}`
+          : "AI-estimat"
+      };
     }
 
-    if (
-      Number.isFinite(
-        finalEstimated
-      )
-    ) {
-      if (
-        !Number.isFinite(
-          finalLow
-        )
-      ) {
-        finalLow =
-          Math.round(
-            finalEstimated * 0.7
-          );
-      }
+    const market = combineMarketSources(marketSources);
 
-      if (
-        !Number.isFinite(
-          finalHigh
-        )
-      ) {
-        finalHigh =
-          Math.round(
-            finalEstimated * 1.3
-          );
-      }
+    let finalEstimated =
+      Number.isFinite(market.estimated_nok)
+        ? market.estimated_nok
+        : aiEstimated;
 
-      finalLow =
-        Math.min(
-          finalLow,
-          finalEstimated
-        );
+    let finalLow =
+      Number.isFinite(market.low_nok)
+        ? market.low_nok
+        : aiLow;
 
-      finalHigh =
-        Math.max(
-          finalHigh,
-          finalEstimated
-        );
-    }
+    let finalHigh =
+      Number.isFinite(market.high_nok)
+        ? market.high_nok
+        : aiHigh;
+
+    const ebayWeight =
+      market.source_weights.find(x => x.source === "ebay")?.percent || 0;
+
+    const valuationMethod =
+      `V10 markedsmotor: ${market.basis}`;
 
     /* ---------------------------------------------------------
        8. RETURNER
@@ -2922,11 +2967,18 @@ Returner KUN gyldig JSON:
 
       ebay_weight_percent:
         Math.round(
-          ebayWeight * 100
+          ebayWeight
         ),
 
+      market,
+
+      market_sources: marketSources,
+
+      market_engine_version:
+        "v10-multi-source-market-engine",
+
       market_filter_version:
-        "v9-exact-year-primary-same-model-secondary"
+        "v10-exact-year-primary-same-model-secondary"
     });
 
   } catch (e) {
