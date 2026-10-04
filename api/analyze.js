@@ -1,5 +1,6 @@
-// Kistefunn analysebackend v11.7
+// Kistefunn analysebackend v11.8
 // Strengere identifikasjon + hardere markedsfilter + multi-source markedsmotor
+// - V11.8: farge og gripebrett/materiale er sekundære signaler og skal ikke låse markedssøket.
 //
 // Viktige endringer fra v7:
 // - Når konkret år er kjent, kan KUN annonser med samme år brukes i verdiberegningen.
@@ -768,13 +769,26 @@ Returner KUN gyldig JSON:
           .trim();
       }
 
-      // V11.7: ekstra beskyttelse mot Fender-serienummerfragmenter
+      // V11.8: ekstra beskyttelse mot Fender-serienummerfragmenter
       // som AI av og til legger i modellfeltet, f.eks. "MN5" fra
       // serienummeret MN5178398. Slike tokens skal aldri bli eBay-søk.
       function removeSearchSerialTokens(value) {
         return String(value || "")
           .replace(/\b(?:MN|MZ|MX|US|AM|DZ|V|CN|CO|IC)\d{1,10}\b/gi, " ")
           .replace(/\b[A-Z]{2,4}\d{5,10}\b/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+      }
+
+      // V11.8: kosmetiske egenskaper skal ikke styre markedssoeket.
+      // Farge og gripebrett/materiale brukes som sekundære relevanssignaler
+      // i stedet. Dette hindrer f.eks. "black rosewood" fra å låse søket
+      // til et lite og ofte dyrere delmarked.
+      function removeGuitarCosmeticSearchTerms(value) {
+        return String(value || "")
+          .replace(/\b(?:black|svart|sort|white|hvit|olympic\s+white|red|rød|blue|blå|sunburst|sun\s+burst|3[- ]tone\s+sunburst|3ts)\b/gi, " ")
+          .replace(/\b(?:rosewood|palisander|maple|lønnet|ebony|pau\s+ferro|pauferro)\b/gi, " ")
+          .replace(/\b(?:fingerboard|fretboard|gripebrett)\b/gi, " ")
           .replace(/\s+/g, " ")
           .trim();
       }
@@ -803,6 +817,11 @@ Returner KUN gyldig JSON:
             serialNumber
           )
         );
+
+      const marketAiQuery =
+        category === "guitar"
+          ? removeGuitarCosmeticSearchTerms(aiQuery)
+          : aiQuery;
 
       const year =
         extractYear(info.year_or_period) ||
@@ -1037,15 +1056,20 @@ Returner KUN gyldig JSON:
         candidates.push(`Fender Standard Stratocaster Mexico ${hardYear}`);
       }
 
-      if (aiQuery) {
-        candidates.push(aiQuery);
+      if (marketAiQuery) {
+        candidates.push(marketAiQuery);
       }
 
       const out = [];
       const seen = new Set();
 
       for (const raw of candidates) {
-        const q = compact(raw, 7);
+        const normalizedRaw =
+          category === "guitar"
+            ? removeGuitarCosmeticSearchTerms(raw)
+            : raw;
+
+        const q = compact(normalizedRaw, 7);
 
         if (!q || q.length < 4) continue;
 
@@ -1078,7 +1102,11 @@ Returner KUN gyldig JSON:
       const discoverySeen = new Set();
 
       function addDiscovery(value) {
-        const q = compact(value, 7);
+        const normalizedValue =
+          category === "guitar"
+            ? removeGuitarCosmeticSearchTerms(value)
+            : value;
+        const q = compact(normalizedValue, 7);
         if (!q || q.length < 4) return;
         const key = q.toLowerCase();
         if (discoverySeen.has(key)) return;
@@ -1975,17 +2003,15 @@ Returner KUN gyldig JSON:
                 : null;
 
         if (criteria.target_fingerboard && listingFingerboard) {
-          if (criteria.target_fingerboard !== listingFingerboard) {
-            return {
-              score: Math.max(0, score - 20),
-              accepted: false,
-              near_match: true,
-              year_match: year ? "missing" : "not_required",
-              reason: "annet gripebrett"
-            };
+          if (criteria.target_fingerboard === listingFingerboard) {
+            score += 8;
+            reasons.push("samme gripebrett");
+          } else {
+            // V11.8: gripebrett/materiale er sekundært. Feil materiale
+            // skal ikke kaste ut en ellers riktig modell og årgang.
+            score -= 2;
+            reasons.push("annet gripebrett");
           }
-          score += 15;
-          reasons.push("samme gripebrett");
         }
 
         const listingSpecial =
@@ -2020,17 +2046,14 @@ Returner KUN gyldig JSON:
             .find(([, pattern]) => pattern.test(t))?.[0] || null;
 
           if (listingColor && listingColor !== criteria.target_color) {
-            return {
-              score: Math.max(0, score - 15),
-              accepted: false,
-              near_match: true,
-              year_match: year ? "missing" : "not_required",
-              reason: "annen farge"
-            };
+            // V11.8: farge er sekundær. En annen farge skal ikke
+            // ekskludere en ellers korrekt modell/variant/årgang.
+            score -= 1;
+            reasons.push("annen farge");
           }
 
           if (listingColor === criteria.target_color) {
-            score += 8;
+            score += 5;
             reasons.push("samme farge");
           }
         }
@@ -2445,7 +2468,7 @@ Returner KUN gyldig JSON:
           criteria
         );
 
-      // V11.7: HARD TITLE-YEAR GATE
+      // V11.8: HARD TITLE-YEAR GATE
       // Når målobjektet har kjent år, er år i selve annonsetittelen
       // det eneste som kan gjøre treffet eksakt. eBay-aspekter kan
       // fortsatt brukes til støtteinformasjon, men de kan ikke løfte
@@ -2580,7 +2603,7 @@ Returner KUN gyldig JSON:
       let valuationTier = "near";
 
       if (relevance.accepted) {
-        // V11.7 HARD TITLE-YEAR GATE:
+        // V11.8 HARD TITLE-YEAR GATE:
         // Når målobjektet har et konkret år, kan en annonse bare være
         // "exact" dersom samme år faktisk finnes i annonsens tittel.
         // Manglende år er alltid same_model og skal aldri havne i
@@ -2884,7 +2907,7 @@ Returner KUN gyldig JSON:
           x =>
             x.match_tier === "exact" &&
             x.relevance_score >= 45 &&
-            // V11.7 HARD TITLE-YEAR GATE: kjent år krever dokumentert
+            // V11.8 HARD TITLE-YEAR GATE: kjent år krever dokumentert
             // samme år i annonsen. Ingen fallback til manglende år.
             (!built.year || x.year_match === "exact")
         );
@@ -2983,7 +3006,7 @@ Returner KUN gyldig JSON:
       let valuationPool = [];
 
       if (built.year) {
-        // V11.7: kjent år = kun annonser med samme år i tittelen kan påvirke verdien
+        // V11.8: kjent år = kun annonser med samme år i tittelen kan påvirke verdien
         // kan påvirke selve verdien. Same-model uten år beholdes som
         // støtte/visning, men får 0 % innflytelse på prisberegningen.
         valuationPool = exactPool;
@@ -3053,7 +3076,7 @@ Returner KUN gyldig JSON:
         built.year &&
         Number.isFinite(exactMedian)
       ) {
-        // V11.7: same-model uten år påvirker ikke medianen når år er kjent.
+        // V11.8: same-model uten år påvirker ikke medianen når år er kjent.
         marketMedian = Math.round(exactMedian);
       } else if (
         Number.isFinite(exactMedian)
@@ -3877,14 +3900,13 @@ Returner KUN gyldig JSON:
 
       market,
 
-      market_engine_version: "v11.0-finn-ready",
       market_sources: marketSources,
 
       market_engine_version:
-        "v11.7-market-first-pricing",
+        "v11.8-market-first-pricing",
 
       market_filter_version:
-        "v11.7-hard-title-year-variant-validation"
+        "v11.8-hard-title-year-variant-cosmetic-secondary"
     });
 
   } catch (e) {
