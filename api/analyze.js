@@ -1,4 +1,4 @@
-// Kistefunn analysebackend v11.5
+// Kistefunn analysebackend v11.6
 // Strengere identifikasjon + hardere markedsfilter + multi-source markedsmotor
 //
 // Viktige endringer fra v7:
@@ -2022,7 +2022,7 @@ Returner KUN gyldig JSON:
       }
 
       /* -------------------------------------------------------
-         V11.5 – HARD FENDER-VARIANTGATE
+         V11.6 – HARD FENDER-VARIANTGATE
          -------------------------------------------------------
          En vanlig Fender Standard Stratocaster skal aldri få
          prisgrunnlag fra 62/62 Special, Special Edition,
@@ -2537,12 +2537,22 @@ Returner KUN gyldig JSON:
       let valuationTier = "near";
 
       if (relevance.accepted) {
-        if (
-          relevance.year_match === "missing" &&
-          criteria.year
-        ) {
-          matchTier = "same_model";
-          valuationTier = "same_model";
+        // V11.6 HARD YEAR GATE:
+        // Når målobjektet har et konkret år, kan en annonse bare være
+        // "exact" dersom samme år faktisk finnes i annonsens tittel.
+        // Manglende år er alltid same_model og skal aldri havne i
+        // exact_listings eller i hovedverdigrunnlaget.
+        if (criteria.year) {
+          if (relevance.year_match === "exact") {
+            matchTier = "exact";
+            valuationTier = "exact";
+          } else if (relevance.year_match === "missing") {
+            matchTier = "same_model";
+            valuationTier = "same_model";
+          } else {
+            matchTier = "near";
+            valuationTier = "near";
+          }
         } else {
           matchTier = "exact";
           valuationTier = "exact";
@@ -2831,11 +2841,18 @@ Returner KUN gyldig JSON:
           x =>
             x.match_tier === "exact" &&
             x.relevance_score >= 45 &&
-            (
-              !built.year ||
-              x.year_match === "exact"
-            )
+            // V11.6 HARD YEAR GATE: kjent år krever dokumentert
+            // samme år i annonsen. Ingen fallback til manglende år.
+            (!built.year || x.year_match === "exact")
         );
+
+      // Ekstra sikkerhetskontroll før prisberegning og visning.
+      // Dette gjør at en annonse uten år aldri kan bli med i exactPool
+      // selv om et senere steg skulle endre match_tier.
+      const strictExactPool =
+        built.year
+          ? rawExactPool.filter(x => x.year_match === "exact")
+          : rawExactPool;
 
       /*
        * V11.1: stabiliser eksakte markedsreferanser.
@@ -2885,7 +2902,7 @@ Returner KUN gyldig JSON:
       }
 
       const balancedRawExactPool =
-        balanceByQuery(rawExactPool, 6);
+        balanceByQuery(strictExactPool, 6);
 
       const exactPool =
         removeOutliers(balancedRawExactPool);
@@ -2919,7 +2936,7 @@ Returner KUN gyldig JSON:
       let valuationPool = [];
 
       if (built.year) {
-        // V11.5: kjent år = kun annonser med samme dokumenterte år
+        // V11.6: kjent år = kun annonser med samme dokumenterte år
         // kan påvirke selve verdien. Same-model uten år beholdes som
         // støtte/visning, men får 0 % innflytelse på prisberegningen.
         valuationPool = exactPool;
@@ -2989,7 +3006,7 @@ Returner KUN gyldig JSON:
         built.year &&
         Number.isFinite(exactMedian)
       ) {
-        // V11.5: same-model uten år påvirker ikke medianen når år er kjent.
+        // V11.6: same-model uten år påvirker ikke medianen når år er kjent.
         marketMedian = Math.round(exactMedian);
       } else if (
         Number.isFinite(exactMedian)
@@ -3163,6 +3180,12 @@ Returner KUN gyldig JSON:
           exact_year_required_for_valuation:
             Boolean(built.year),
 
+          hard_year_gate:
+            Boolean(built.year),
+
+          exact_requires_title_year_match:
+            Boolean(built.year),
+
           year_missing_excluded_from_exact_valuation:
             Boolean(built.year),
 
@@ -3248,7 +3271,9 @@ Returner KUN gyldig JSON:
                 match_tier:
                   "exact",
                 year_match:
-                  item.year_match
+                  item.year_match,
+                exact_year_verified:
+                  !built.year || item.year_match === "exact"
               })
             ),
 
@@ -3807,10 +3832,10 @@ Returner KUN gyldig JSON:
       market_sources: marketSources,
 
       market_engine_version:
-        "v10.8-market-first-pricing",
+        "v11.6-market-first-pricing",
 
       market_filter_version:
-        "v10.7-broad-search-detail-year-variant-validation"
+        "v11.6-hard-year-variant-validation"
     });
 
   } catch (e) {
