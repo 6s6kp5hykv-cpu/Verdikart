@@ -1416,6 +1416,16 @@ Returner KUN gyldig JSON:
          ------------------------------------------------------- */
 
       if (category === "bicycle") {
+        /*
+         * V12.8 – HARD BICYCLE LISTING GATE
+         * ----------------------------------
+         * A model query such as "Haibike Trekking 4" must never let a
+         * Trekking 6 (or another numbered Trekking sibling) become an
+         * exact comparable. We also reject bicycle components such as
+         * headset bearings, replacement parts and non-working bikes.
+         * These checks happen before normal relevance scoring so a high
+         * textual score can never override them.
+         */
         const bicyclePartTerms = [
           "akku schloss",
           "battery lock",
@@ -1441,6 +1451,27 @@ Returner KUN gyldig JSON:
           "bremsrotor",
           "brake lever",
           "bremshebel",
+          "headset",
+          "headset bearing",
+          "headset bearings",
+          "steuersatz",
+          "steuersatzlager",
+          "steuerlager",
+          "bearing",
+          "bearings",
+          "ersatzteil",
+          "replacement part",
+          "spare part",
+          "parts only",
+          "for parts",
+          "non working",
+          "non-working",
+          "not working",
+          "broken",
+          "damaged",
+          "repair project",
+          "needs repair",
+          "for repair",
           "charger",
           "ladegerät",
           "ladegerat",
@@ -1468,25 +1499,110 @@ Returner KUN gyldig JSON:
           };
         }
 
-        /* V12.7: hard gate slik at Trekking 6 ikke blir sammenligning for Trekking 4. */
-        if (criteria.user_model_hint && criteria.user_model_text) {
-          const targetModel = String(criteria.model || criteria.user_model_text || "").toLowerCase();
-          const variantTokens = targetModel.match(/\b\d+(?:[.,]\d+)?[a-z]*\b/g) || [];
-          if (variantTokens.length) {
-            const allPresent = variantTokens.every(token => {
-              const escapedToken = token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-              return new RegExp("\\b" + escapedToken + "\\b", "i").test(t);
-            });
-            if (!allPresent) {
-              return {
-                score: -100,
-                accepted: false,
-                near_match: false,
-                year_match: year ? "missing" : "not_required",
-                reason: `annen modellvariant enn brukeroppgitt ${criteria.user_model_text}`
-              };
-            }
+        /*
+         * V12.8: variantnummer skal hentes fra SELVE SØKET også.
+         *
+         * criteria.user_model_hint kan bli false hvis AI normaliserer
+         * modellen til bare "Trekking". Queryen er derimot det faktiske
+         * markedssøket brukeren ba om. Derfor bruker vi både query,
+         * user_model_text og criteria.model som kilde.
+         */
+        const bicycleIdentityText = `${query || ""} ${criteria.user_model_text || ""} ${criteria.model || ""}`.toLowerCase();
+        const targetVariantNumbers = [
+          ...new Set(
+            (bicycleIdentityText.match(/\b\d+(?:[.,]\d+)?[a-z]*\b/g) || [])
+              .map(x => x.toLowerCase())
+              .filter(x => !/^20\d{2}$/.test(x))
+          )
+        ];
+
+        if (targetVariantNumbers.length) {
+          const listingVariantNumbers = [
+            ...new Set(
+              (t.match(/\b\d+(?:[.,]\d+)?[a-z]*\b/g) || [])
+                .map(x => x.toLowerCase())
+                .filter(x => !/^20\d{2}$/.test(x))
+            )
+          ];
+
+          /* Hvis målet er Trekking 4, må 4 finnes i annonsen. */
+          const missingTargetVariant = targetVariantNumbers.some(
+            token => !listingVariantNumbers.includes(token)
+          );
+
+          if (missingTargetVariant) {
+            return {
+              score: -100,
+              accepted: false,
+              near_match: false,
+              year_match: year ? "missing" : "not_required",
+              reason: `annen modellvariant enn målsøket ${query || criteria.user_model_text || criteria.model}`
+            };
           }
+        }
+
+        /*
+         * Ekstra eksplisitt sibling-gate for Haibike Trekking: dersom
+         * målet er Trekking N og annonsen sier Trekking M, skal den ut
+         * selv om annonsen tilfeldigvis også inneholder andre tall.
+         */
+        const targetTrekkingMatch =
+          bicycleIdentityText.match(/\btrekking\s+(\d+(?:[.,]\d+)?[a-z]*)\b/i);
+
+        if (targetTrekkingMatch) {
+          const targetTrekkingVariant = targetTrekkingMatch[1].toLowerCase();
+          const listingTrekkingMatches = [
+            ...t.matchAll(/\btrekking\s+(\d+(?:[.,]\d+)?[a-z]*)\b/gi)
+          ].map(m => m[1].toLowerCase());
+
+          if (
+            listingTrekkingMatches.length &&
+            listingTrekkingMatches.some(v => v !== targetTrekkingVariant)
+          ) {
+            return {
+              score: -100,
+              accepted: false,
+              near_match: false,
+              year_match: year ? "missing" : "not_required",
+              reason: `annen Haibike Trekking-variant enn ${targetTrekkingVariant}`
+            };
+          }
+
+          if (
+            listingTrekkingMatches.length &&
+            !listingTrekkingMatches.includes(targetTrekkingVariant)
+          ) {
+            return {
+              score: -100,
+              accepted: false,
+              near_match: false,
+              year_match: year ? "missing" : "not_required",
+              reason: `mangler riktig Haibike Trekking-variant ${targetTrekkingVariant}`
+            };
+          }
+        }
+
+        const bicycleBadConditionPatterns = [
+          /\bnon[- ]?working\b/i,
+          /\bnot\s+working\b/i,
+          /\bbroken\b/i,
+          /\bdamaged\b/i,
+          /\bneeds?\s+repair\b/i,
+          /\bfor\s+repair\b/i,
+          /\brepair\s+project\b/i,
+          /\bfor\s+parts\b/i,
+          /\bparts\s+only\b/i,
+          /\bincomplete\b/i
+        ];
+
+        if (bicycleBadConditionPatterns.some(rx => rx.test(t))) {
+          return {
+            score: -100,
+            accepted: false,
+            near_match: false,
+            year_match: year ? "missing" : "not_required",
+            reason: "defekt/skadet/til reparasjon"
+          };
         }
 
         const completeBikeWords =
@@ -4243,10 +4359,10 @@ Returner KUN gyldig JSON:
       market_sources: marketSources,
 
       market_engine_version:
-        "v12.6-market-first-pricing",
+        "v12.8-market-first-pricing",
 
       market_filter_version:
-        "v12.6-hard-title-year-variant-fender-gate-clean-display"
+        "v12.8-hard-title-year-variant-bicycle-gate-fender-gate-clean-display"
     });
 
   } catch (e) {
