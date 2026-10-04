@@ -1051,8 +1051,50 @@ Returner KUN gyldig JSON:
             `${parsed.description || ""} ${info.uncertainties || ""}`
           );
 
+      /*
+       * V10.7 – SEPARAT DISCOVERY-SØK
+       *
+       * Når vi kjenner produksjonsåret, skal ikke selve søket være låst
+       * til at årstallet må stå i tittelen. eBay kan ha år/variant som
+       * strukturerte item-aspects. Derfor søker vi også bredt uten år,
+       * henter detaljer på gode kandidater, og lar detaljene avgjøre året.
+       */
+      const discovery = [];
+      const discoverySeen = new Set();
+
+      function addDiscovery(value) {
+        const q = compact(value, 7);
+        if (!q || q.length < 4) return;
+        const key = q.toLowerCase();
+        if (discoverySeen.has(key)) return;
+        discoverySeen.add(key);
+        discovery.push(q);
+      }
+
+      for (const q of out) {
+        const withoutYear = hardYear
+          ? q.replace(new RegExp(`\\b${hardYear}\\b`, "ig"), " ")
+          : q;
+        addDiscovery(withoutYear);
+      }
+
+      if (hardYear) {
+        if (brand && model) addDiscovery(`${brand} ${model}`);
+        if (brand && type) addDiscovery(`${brand} ${type}`);
+        if (brand && country) addDiscovery(`${brand} ${model || type} ${country}`);
+
+        if (category === "guitar" &&
+            brand.toLowerCase() === "fender" &&
+            /\bstratocaster\b/i.test(model)) {
+          addDiscovery("Fender Standard Stratocaster Mexico");
+          addDiscovery("Fender Stratocaster MIM");
+          addDiscovery("Fender Stratocaster Made in Mexico");
+        }
+      }
+
       return {
         queries: out,
+        discovery_queries: discovery.slice(0, 4),
         brand,
         model,
         type,
@@ -2297,17 +2339,27 @@ Returner KUN gyldig JSON:
        * EBAY_NO er viktig for norske priser, mens US/GB/DE
        * gir ekstra dekning når det er få norske treff.
        */
+      /*
+       * eBay Browse API støtter ikke EBAY_NO som Browse-marketplace.
+       * Vi bruker derfor de støttede markedene DE/GB/US her. Norge kan
+       * fortsatt dekkes av internasjonale annonser, og FINN blir senere
+       * den norske kilden når legitim FINN/API-tilgang er på plass.
+       */
       const marketplaces = [
-        "EBAY_NO",
         "EBAY_DE",
         "EBAY_GB",
         "EBAY_US"
       ];
 
+      const searchQueries =
+        built.discovery_queries?.length
+          ? built.discovery_queries
+          : built.queries;
+
       const searchJobs = [];
 
       for (const marketplace of marketplaces) {
-        for (const q of built.queries) {
+        for (const q of searchQueries) {
           searchJobs.push({ marketplace, query: q });
         }
       }
@@ -2353,21 +2405,45 @@ Returner KUN gyldig JSON:
                   : [];
 
               const ranked = rawItems
-                .map(item => ({
-                  item,
-                  score: scoreListing(
-                    item?.title || "",
-                    { ...built, marketplace: result.marketplace }
-                  ).score
-                }))
-                .sort((a, b) => b.score - a.score);
+                .map(item => {
+                  const title = String(item?.title || "");
+                  const years = extractYears(title.toLowerCase());
+                  const hasTargetYear = built.year
+                    ? years.includes(built.year)
+                    : false;
+                  const hasWrongYear = built.year
+                    ? years.some(y => y !== built.year)
+                    : false;
 
-              // Maks 10 detaljhentinger per søk/marked. Resten får fortsatt
-              // vanlig tittelbasert relevanskontroll.
+                  let score = scoreListing(
+                    title,
+                    { ...built, marketplace: result.marketplace }
+                  ).score;
+
+                  // Kandidater uten år er verdifulle i v10.7 fordi år kan
+                  // ligge i eBays strukturerte aspekter. Gi dem derfor nok
+                  // prioritet til at getItem faktisk får sjansen til å finne år.
+                  if (built.year && !hasTargetYear && !hasWrongYear) {
+                    score += 15;
+                  }
+
+                  return { item, score, hasTargetYear, hasWrongYear };
+                })
+                .filter(x => !x.hasWrongYear)
+                .sort((a, b) => {
+                  if (b.hasTargetYear !== a.hasTargetYear) {
+                    return Number(b.hasTargetYear) - Number(a.hasTargetYear);
+                  }
+                  return b.score - a.score;
+                });
+
+              // V10.7: hent detaljer bredere enn før. Vi trenger ikke bare
+              // de 10 beste titlene; vi må også undersøke kandidater der
+              // produksjonsåret mangler i tittelen.
               const detailIds = new Set(
                 ranked
-                  .filter(x => x.score >= 20 && x.item?.itemId)
-                  .slice(0, 10)
+                  .filter(x => x.item?.itemId && x.score >= 20)
+                  .slice(0, 15)
                   .map(x => String(x.item.itemId))
               );
 
@@ -2687,6 +2763,8 @@ Returner KUN gyldig JSON:
           built.queries[0],
         queries:
           built.queries,
+        discovery_queries:
+          searchQueries,
         successful_queries:
           successfulQueries,
         near_match_queries:
@@ -2808,6 +2886,8 @@ Returner KUN gyldig JSON:
                   item.url,
                 query:
                   item.query,
+                marketplace:
+                  item.marketplace,
                 relevance_score:
                   item.relevance_score,
                 match_tier:
@@ -2832,6 +2912,8 @@ Returner KUN gyldig JSON:
                   item.url,
                 query:
                   item.query,
+                marketplace:
+                  item.marketplace,
                 relevance_score:
                   item.relevance_score,
                 match_tier:
