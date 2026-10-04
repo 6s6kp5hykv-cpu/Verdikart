@@ -1,4 +1,4 @@
-// Kistefunn analysebackend v12.8
+// Kistefunn analysebackend v12.9
 // Strengere identifikasjon + hardere markedsfilter + multi-source markedsmotor
 // - V11.9: feil i søkemotorens variabelrekkefølge rettet + versjonsmerking samlet.
 // - V11.8: farge og gripebrett/materiale er sekundære signaler og skal ikke låse markedssøket.
@@ -6,6 +6,8 @@
 // - V11.7: videreføring av streng Fender-variantkontroll og mer robust markedsgrunnlag.
 // - V11.6: hard Fender-variantgate som ekskluderer 62/Special/American/Player/Vintera/Squier osv.
 // - V12.7: MERKING FØRST + sentral variantprofil før prisgrunnlag.
+// - V12.9: prisavvik fjernes også fra viste eksakte markedsreferanser.
+// - V12.9: Prisavvik fjernes også fra viste eksakte markedsreferanser.
 // - V12.8: fanger også feilstavingen "Squire Series" og fjerner den før prisgrunnlag/visning.
 // - V12.7: synlig modell-/serie-/landmerking får høyeste identitetsvekt.
 // - V12.7: normal Fender MIM Stratocaster får én samlet hard variantgate.
@@ -408,22 +410,56 @@ Returner KUN gyldig JSON:
     }
 
     function removeOutliers(items) {
-      if (items.length < 5) return items;
+      if (items.length < 4) return items;
 
-      const prices = items
-        .map(x => Number(x.nok))
-        .filter(Number.isFinite);
+      const valid = items.filter(x =>
+        Number.isFinite(Number(x.nok)) &&
+        Number(x.nok) > 0
+      );
 
-      if (prices.length < 5) return items;
+      if (valid.length < 4) return items;
 
-      const q1 = percentile(prices, 0.25);
-      const q3 = percentile(prices, 0.75);
+      const prices = valid.map(x => Number(x.nok));
+      const med = median(prices);
+
+      if (!Number.isFinite(med) || med <= 0) return items;
+
+      // V12.9: prisavvik skal også fjernes fra VISNING.
+      // IQR alene kan slippe gjennom et ekstremt dyrt treff når
+      // utvalget er lite/skjevt. For et ellers identisk produkt er
+      // mer enn 2x medianen et sterkt signal om premiumvariant,
+      // feil vare, ekstrautstyr eller annen markedsfeil.
+      const ratioFiltered = valid.filter(item => {
+        const price = Number(item.nok);
+        return price <= med * 2 && price >= med * 0.5;
+      });
+
+      // Hvis filteret ville fjernet nesten hele datasettet, behold
+      // heller IQR-resultatet. Vi skal aldri gjøre et lite marked
+      // kunstig tomt på grunn av et aggressivt prisfilter.
+      const ratioResult =
+        ratioFiltered.length >= Math.max(3, Math.ceil(valid.length * 0.5))
+          ? ratioFiltered
+          : valid;
+
+      if (ratioResult.length < 4) {
+        return ratioResult;
+      }
+
+      const ratioPrices = ratioResult.map(x => Number(x.nok));
+      const q1 = percentile(ratioPrices, 0.25);
+      const q3 = percentile(ratioPrices, 0.75);
       const iqr = q3 - q1;
 
-      return items.filter(item =>
-        Number(item.nok) >= q1 - 1.5 * iqr &&
-        Number(item.nok) <= q3 + 1.5 * iqr
-      );
+      const iqrFiltered = ratioResult.filter(item => {
+        const price = Number(item.nok);
+        return price >= q1 - 1.5 * iqr &&
+          price <= q3 + 1.5 * iqr;
+      });
+
+      return iqrFiltered.length >= 3
+        ? iqrFiltered
+        : ratioResult;
     }
 
     /* ---------------------------------------------------------
@@ -3378,6 +3414,14 @@ Returner KUN gyldig JSON:
       const exactPool =
         removeOutliers(balancedRawExactPool);
 
+      // V12.9: exactPool er nå også visningsgrunnlaget. Et åpenbart
+      // prisavvik skal derfor ikke bare holdes ute av medianen; det skal
+      // heller ikke presenteres som en "eksakt markedsreferanse".
+      const exactPriceOutliersRemoved = Math.max(
+        0,
+        balancedRawExactPool.length - exactPool.length
+      );
+
       /*
        * Same-model treff:
        * riktig modell/variant, men annonsen oppgir ikke år.
@@ -3597,7 +3641,7 @@ Returner KUN gyldig JSON:
           balancedRawExactPool.length,
 
         exact_price_filter_removed:
-          Math.max(0, balancedRawExactPool.length - exactPool.length),
+          exactPriceOutliersRemoved,
 
         same_model_match_count:
           sameModelPool.length,
@@ -3694,7 +3738,16 @@ Returner KUN gyldig JSON:
               : 50,
 
           identity_profile:
-            built.identity_profile || null
+            built.identity_profile || null,
+
+          // V12.9: prisavvik fjernes før både verdiberegning og
+          // visning under "Eksakte markedsreferanser".
+          price_outlier_filter: {
+            enabled: true,
+            ratio_upper: 2,
+            ratio_lower: 0.5,
+            removed_from_exact_pool: exactPriceOutliersRemoved
+          }
         },
 
         listings:
@@ -4332,10 +4385,10 @@ Returner KUN gyldig JSON:
       },
 
       market_engine_version:
-        "v12.8-marking-first-market-first-pricing",
+        "v12.9-marking-first-price-filter-market-first-pricing",
 
       market_filter_version:
-        "v12.8-marking-first-central-variant-gate-hard-year-clean-display"
+        "v12.9-marking-first-central-variant-gate-hard-year-price-outlier-clean-display"
     });
 
   } catch (e) {
