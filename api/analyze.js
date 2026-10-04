@@ -495,12 +495,14 @@ Returner KUN gyldig JSON:
         candidates.push(`${brand} ${model} ${country} ${year}`);
       }
 
-      if (brand && model && country) {
-        candidates.push(`${brand} ${model} ${country}`);
-      }
-
       if (brand && model && year) {
         candidates.push(`${brand} ${model} ${year}`);
+      }
+
+      // Land uten år brukes fortsatt som søkestøtte, men treff uten
+      // dokumentert år blir ikke godkjent som prisreferanser når year finnes.
+      if (brand && model && country) {
+        candidates.push(`${brand} ${model} ${country}`);
       }
 
       if (brand && model) {
@@ -723,19 +725,23 @@ Returner KUN gyldig JSON:
         }
       }
 
-      // År: når Kistefunn kjenner et konkret år, skal et annet
-      // konkret år i annonsen ikke kunne bli prisreferanse.
+      // År: når Kistefunn kjenner et konkret produksjonsår,
+      // skal prisreferansen dokumentere samme år i selve annonsen.
+      // Dette hindrer f.eks. en 1996/1997-gitar eller en udatert
+      // modell fra å påvirke verdien av en dokumentert 1995-modell.
       const titleYears = extractYears(t);
 
-      if (year && titleYears.length) {
+      if (year) {
         const exact = titleYears.some(y => y === year);
         const otherYear = titleYears.some(y => y !== year);
 
         if (exact) {
-          score += 25;
+          score += 30;
           reasons.push("samme år");
         } else if (otherYear) {
           return { score: -100, accepted: false, reason: "annet år" };
+        } else {
+          return { score: -100, accepted: false, reason: "år ikke dokumentert" };
         }
       }
 
