@@ -731,6 +731,8 @@ Returner KUN gyldig JSON:
       // modell fra å påvirke verdien av en dokumentert 1995-modell.
       const titleYears = extractYears(t);
 
+      let yearMatch = "not_required";
+
       if (year) {
         const exact = titleYears.some(y => y === year);
         const otherYear = titleYears.some(y => y !== year);
@@ -738,12 +740,31 @@ Returner KUN gyldig JSON:
         if (exact) {
           score += 30;
           reasons.push("samme år");
+          yearMatch = "exact";
         } else if (otherYear) {
-          return { score: -100, accepted: false, reason: "annet år" };
+          return {
+            score: -100,
+            accepted: false,
+            near_match: false,
+            year_match: "wrong",
+            reason: "annet år"
+          };
         } else {
-          return { score: -100, accepted: false, reason: "år ikke dokumentert" };
+          score += 5;
+          reasons.push("år ikke oppgitt");
+          yearMatch = "missing";
         }
       }
+
+      const accepted = score >= 45;
+
+      return {
+        score,
+        accepted,
+        near_match: yearMatch === "missing" && score >= 45,
+        year_match: yearMatch,
+        reason: reasons.join(", ") || "lav relevans"
+      };
 
       // Klare modell-/serievarianter skal ikke blandes med målmodellen.
       // "Vintage" alene kan være et generisk bruktmarked-ord på eBay,
@@ -778,11 +799,6 @@ Returner KUN gyldig JSON:
         score -= 35;
       }
 
-      return {
-        score,
-        accepted: score >= 45,
-        reason: reasons.join(", ") || "lav relevans"
-      };
     }
 
     async function searchEbaySingle(query) {
@@ -844,8 +860,9 @@ Returner KUN gyldig JSON:
       const title = item.title || "";
       const relevance = scoreListing(title, criteria);
 
-      // Kun strenge treff går videre.
-      if (!relevance.accepted) return null;
+      // Eksakte treff og gode nærtreff går videre til visning.
+      // Nærtreff brukes aldri automatisk i verdiberegningen.
+      if (!relevance.accepted && !relevance.near_match) return null;
 
       const rate = await getExchangeRate(currency, "NOK");
       if (!rate) return null;
@@ -863,7 +880,9 @@ Returner KUN gyldig JSON:
         url: item.itemWebUrl || "",
         query,
         relevance_score: relevance.score,
-        relevance_reason: relevance.reason
+        relevance_reason: relevance.reason,
+        year_match: relevance.year_match || "not_required",
+        match_tier: relevance.near_match ? "near" : "exact"
       };
     }
 
@@ -934,13 +953,21 @@ Returner KUN gyldig JSON:
         return a.nok - b.nok;
       });
 
-      // Prisberegningen bruker kun de beste relevante treffene.
-      const valuationPool = all.filter(x => x.relevance_score >= 60);
+      // Prisberegningen bruker KUN eksakte treff når objektet har
+      // et konkret år. Nærtreff uten år kan vises som markedsreferanser,
+      // men får ikke dra verdien opp eller ned.
+      const exactPool = all.filter(
+        x => x.match_tier === "exact" && x.relevance_score >= 45
+      );
+
+      const valuationPool = all.filter(
+        x => x.match_tier === "exact" && x.relevance_score >= 60
+      );
 
       const pool =
         valuationPool.length >= 3
           ? valuationPool
-          : all.filter(x => x.relevance_score >= 45);
+          : exactPool;
 
       const filteredPool = removeOutliers(pool);
 
@@ -948,6 +975,10 @@ Returner KUN gyldig JSON:
         filteredPool.length >= 2
           ? filteredPool
           : pool;
+
+      const nearMatches = all
+        .filter(x => x.match_tier === "near")
+        .slice(0, 8);
 
       const prices = finalPool
         .map(x => Number(x.nok))
@@ -957,8 +988,14 @@ Returner KUN gyldig JSON:
       const successfulQueries = [
         ...new Set(
           all
-            .filter(x => x.relevance_score >= 45)
+            .filter(x => x.match_tier === "exact" && x.relevance_score >= 45)
             .map(x => x.query)
+        )
+      ];
+
+      const nearMatchQueries = [
+        ...new Set(
+          nearMatches.map(x => x.query)
         )
       ];
 
@@ -972,8 +1009,11 @@ Returner KUN gyldig JSON:
         query: built.queries[0],
         queries: built.queries,
         successful_queries: successfulQueries,
+        near_match_queries: nearMatchQueries,
         total_candidates: all.length,
         sample_size: finalPool.length,
+        exact_match_count: exactPool.length,
+        near_match_count: nearMatches.length,
         median_nok: Number.isFinite(medianNok)
           ? Math.round(medianNok)
           : null,
@@ -986,6 +1026,8 @@ Returner KUN gyldig JSON:
         filtering: {
           strict: true,
           minimum_relevance_score: 45,
+          exact_year_required_for_valuation: Boolean(built.year),
+          valuation_uses_exact_matches_only: true,
           valuation_minimum_relevance_score:
             valuationPool.length >= 3 ? 60 : 45
         },
@@ -995,7 +1037,32 @@ Returner KUN gyldig JSON:
           price_nok: item.nok,
           url: item.url,
           query: item.query,
-          relevance_score: item.relevance_score
+          relevance_score: item.relevance_score,
+          match_tier: item.match_tier,
+          year_match: item.year_match
+        })),
+        exact_listings: all
+          .filter(item => item.match_tier === "exact")
+          .slice(0, 12)
+          .map(item => ({
+            title: item.title,
+            price: item.price,
+            price_nok: item.nok,
+            url: item.url,
+            query: item.query,
+            relevance_score: item.relevance_score,
+            match_tier: "exact",
+            year_match: item.year_match
+          })),
+        near_listings: nearMatches.map(item => ({
+          title: item.title,
+          price: item.price,
+          price_nok: item.nok,
+          url: item.url,
+          query: item.query,
+          relevance_score: item.relevance_score,
+          match_tier: "near",
+          year_match: item.year_match
         }))
       };
     }
