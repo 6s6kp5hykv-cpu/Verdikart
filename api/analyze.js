@@ -1,4 +1,4 @@
-// Kistefunn analysebackend v12.0
+// Kistefunn analysebackend v12.1
 // Strengere identifikasjon + hardere markedsfilter + multi-source markedsmotor
 // - V11.9: feil i søkemotorens variabelrekkefølge rettet + versjonsmerking samlet.
 // - V11.8: farge og gripebrett/materiale er sekundære signaler og skal ikke låse markedssøket.
@@ -2475,6 +2475,65 @@ Returner KUN gyldig JSON:
           criteria
         );
 
+      /*
+       * V12.1 – ABSOLUTT FENDER STANDARD-GATE
+       * ---------------------------------------
+       * Siste sikkerhetsnett etter scoreListing().
+       *
+       * Problemet i tidligere versjoner var at AI/eBay noen ganger
+       * ikke satte criteria.brand/model helt rent. Da kunne f.eks.
+       * "Squier Series", "FSR" eller "62 Special" slippe gjennom
+       * selv om målet var en vanlig Fender Standard Stratocaster MIM.
+       *
+       * Når målet tydelig er Fender Stratocaster Made in Mexico og
+       * ikke selv er en spesialvariant, skal disse variantene fjernes
+       * fullstendig – både fra exact, same_model og nærmeste referanser.
+       */
+      const targetIdentityText =
+        `${criteria.brand || ""} ${criteria.manufacturer || ""} ${criteria.model || ""} ${criteria.type || ""} ${criteria.country || ""} ${criteria.user_model_hint || ""}`
+          .toLowerCase();
+
+      const targetIsFenderStratMim =
+        /\bfender\b/.test(targetIdentityText) &&
+        /\bstratocaster\b/.test(targetIdentityText) &&
+        /\b(?:made in mexico|mexico|mim)\b/.test(targetIdentityText);
+
+      if (
+        criteria.category === "guitar" &&
+        targetIsFenderStratMim &&
+        criteria.target_special !== true
+      ) {
+        const incompatibleFenderVariantPatterns = [
+          /\bsquier\b/,
+          /\bsquier\s+series\b/,
+          /\bfsr\b/,
+          /\bfender\s+special\s+run\b/,
+          /\bspecial\s+run\b/,
+          /\b62\s*(?:['’]s?|special)?\b/,
+          /\b50th\s+anniversary\b/,
+          /\banniversary\b/,
+          /\bspecial(?:\s+edition)?\b/,
+          /\blimited\s+edition\b/,
+          /\bvintage\s+reissue\b/,
+          /\breissue\b/,
+          /\bplayer(?:\s+ii|\s+2)?\b/,
+          /\bvintera\b/,
+          /\bclassic\s+series\b/,
+          /\bclassic\s+player\b/,
+          /\broad\s+worn\b/,
+          /\broad\s+worn\b/,
+          /\bamerican\s+(?:standard|professional|performer|ultra|original)\b/,
+          /\bprofessional\s+ii\b/,
+          /\bdeluxe\b/,
+          /\belite\b/,
+          /\bsignature\s+series\b/
+        ];
+
+        if (incompatibleFenderVariantPatterns.some(rx => rx.test(scoringText.toLowerCase()))) {
+          return null;
+        }
+      }
+
       // V11.8: HARD TITLE-YEAR GATE
       // Når målobjektet har kjent år, er år i selve annonsetittelen
       // det eneste som kan gjøre treffet eksakt. eBay-aspekter kan
@@ -3777,7 +3836,7 @@ Returner KUN gyldig JSON:
       market.source_weights.find(x => x.source === "ebay")?.percent || 0;
 
     const valuationMethod =
-      `V12.0 markedsmotor: ${market.basis}`;
+      `V12.1 markedsmotor: ${market.basis}`;
 
     // V12.0: Vis den faktiske rensede eBay-søkestrengen.
     // Dermed vises ikke serienummerfragmenter som f.eks. MN5,
@@ -3918,7 +3977,7 @@ Returner KUN gyldig JSON:
       market_sources: marketSources,
 
       market_engine_version:
-        "v12.0-market-first-pricing",
+        "v12.1-market-first-pricing",
 
       market_filter_version:
         "v12.0-hard-title-year-variant-cosmetic-secondary-clean-display"
