@@ -1,4 +1,4 @@
-// Kistefunn analysebackend v12.7
+// Kistefunn analysebackend v12.8
 // Strengere identifikasjon + hardere markedsfilter + multi-source markedsmotor
 // - V11.9: feil i søkemotorens variabelrekkefølge rettet + versjonsmerking samlet.
 // - V11.8: farge og gripebrett/materiale er sekundære signaler og skal ikke låse markedssøket.
@@ -6,6 +6,7 @@
 // - V11.7: videreføring av streng Fender-variantkontroll og mer robust markedsgrunnlag.
 // - V11.6: hard Fender-variantgate som ekskluderer 62/Special/American/Player/Vintera/Squier osv.
 // - V12.7: MERKING FØRST + sentral variantprofil før prisgrunnlag.
+// - V12.8: fanger også feilstavingen "Squire Series" og fjerner den før prisgrunnlag/visning.
 // - V12.7: synlig modell-/serie-/landmerking får høyeste identitetsvekt.
 // - V12.7: normal Fender MIM Stratocaster får én samlet hard variantgate.
 //
@@ -1213,7 +1214,7 @@ Returner KUN gyldig JSON:
       let fenderVariant = "other";
 
       if (isFenderStrat && isMim) {
-        if (has(/\bsquier(?:\s+series)?\b/)) fenderVariant = "squier_series";
+        if (has(/\bsqu(?:ier|ire)(?:[ -]+series)?\b/)) fenderVariant = "squier_series";
         else if (has(/\b62\s*(?:['’]s?|special|reissue)?\b/)) fenderVariant = "62_reissue";
         else if (has(/\b50th\s+anniversary\b|\banniversary\b/)) fenderVariant = "anniversary";
         else if (has(/\bspecial(?:\s+edition)?\b|\bfsr\b|\bspecial\s+run\b/)) fenderVariant = "special";
@@ -1243,7 +1244,7 @@ Returner KUN gyldig JSON:
 
       const text = `${title || ""} ${aspectText || ""}`.toLowerCase();
       const forbiddenNormal = [
-        [/\bsquier(?:\s+series)?\b/, "Squier/Squier Series"],
+        [/\bsqu(?:ier|ire)(?:[ -]+series)?\b/, "Squier/Squier Series"],
         [/\bfsr\b|\bspecial\s+run\b/, "FSR/Special Run"],
         [/\b62\s*(?:['’]s?|special|reissue)?\b/, "62/62 Special/Reissue"],
         [/\b50th\s+anniversary\b|\banniversary\b/, "Anniversary"],
@@ -1267,7 +1268,7 @@ Returner KUN gyldig JSON:
       }
 
       const variantPatterns = {
-        squier_series: /\bsquier(?:\s+series)?\b/,
+        squier_series: /\bsqu(?:ier|ire)(?:[ -]+series)?\b/,
         "62_reissue": /\b62\s*(?:['’]s?|special|reissue)?\b/,
         anniversary: /\b50th\s+anniversary\b|\banniversary\b/,
         special: /\bspecial(?:\s+edition)?\b|\bfsr\b|\bspecial\s+run\b/,
@@ -2222,7 +2223,7 @@ Returner KUN gyldig JSON:
           /\bperformer\b/i,
           /\bdeluxe\b/i,
           /\belite\b/i,
-          /\bsquier\b/i
+          /\bsqu(?:ier|ire)\b/i
         ];
 
         if (wrongFenderVariantTerms.some(rx => rx.test(t))) {
@@ -2637,8 +2638,8 @@ Returner KUN gyldig JSON:
         criteria.target_special !== true
       ) {
         const incompatibleFenderVariantPatterns = [
-          /\bsquier\b/,
-          /\bsquier\s+series\b/,
+          /\bsqu(?:ier|ire)\b/,
+          /\bsqu(?:ier|ire)[ -]+series\b/,
           /\bfsr\b/,
           /\bfender\s+special\s+run\b/,
           /\bspecial\s+run\b/,
@@ -2717,7 +2718,7 @@ Returner KUN gyldig JSON:
         const lowerTitle = scoringText.toLowerCase();
 
         const incompatibleVariantPatterns = [
-          /\bsquier\b/,
+          /\bsqu(?:ier|ire)\b/,
           /\bplayer\s*(ii|2)\b/,
           /\bvintera\b/,
           /\bamerican\s+(professional|performer|ultra|standard|original)\b/,
@@ -2836,7 +2837,7 @@ Returner KUN gyldig JSON:
 
       if (hardTargetFromQuery) {
         const hardForbidden = [
-          /\bsquier(?:\s+series)?\b/i,
+          /\bsqu(?:ier|ire)(?:[ -]+series)?\b/i,
           /\bfsr\b/i,
           /\b62\s*(?:['’]s?|special)\b/i,
           /\b50th\s+anniversary\b/i,
@@ -2932,7 +2933,7 @@ Returner KUN gyldig JSON:
       const text = `${title || ""} ${aspectText || ""}`.toLowerCase();
 
       const forbidden = [
-        /\bsquier(?:\s+series)?\b/,
+        /\bsqu(?:ier|ire)(?:[ -]+series)?\b/,
         /\bfsr\b/,
         /\bfender\s+special\s+run\b/,
         /\bspecial\s+run\b/,
@@ -3252,7 +3253,7 @@ Returner KUN gyldig JSON:
 
       if (normalFenderMimQuery) {
         const finalForbiddenFenderVariants = [
-          /\bsquier(?:\s+series)?\b/i,
+          /\bsqu(?:ier|ire)(?:[ -]+series)?\b/i,
           /\bfsr\b/i,
           /\b62\s*(?:['’]s?|special)\b/i,
           /\b50th\s+anniversary\b/i,
@@ -3272,6 +3273,25 @@ Returner KUN gyldig JSON:
         for (let i = all.length - 1; i >= 0; i--) {
           const listingTitle = String(all[i]?.title || "");
           if (finalForbiddenFenderVariants.some(rx => rx.test(listingTitle))) {
+            all.splice(i, 1);
+          }
+        }
+      }
+
+      /*
+       * V12.8 – ABSOLUTT SQUIER/SQUIRE-SIKKERHETSNett
+       * ---------------------------------------------------
+       * Noen eBay-selgere skriver "Squire Series" i stedet for
+       * korrekt "Squier Series". Tidligere regex fanget bare Squier,
+       * derfor kunne en slik annonse fortsatt vises som eksakt treff.
+       * For vanlig Fender MIM Stratocaster skal begge stavemåtene
+       * fjernes helt før exact/same-model/near bygges.
+       */
+      if (normalFenderMimQuery) {
+        const finalSquierLike = /\bsqu(?:ier|ire)(?:[ -]+series)?\b/i;
+        for (let i = all.length - 1; i >= 0; i--) {
+          const listingText = `${all[i]?.title || ""} ${all[i]?._ebay_aspect_text || ""}`;
+          if (finalSquierLike.test(listingText)) {
             all.splice(i, 1);
           }
         }
@@ -4312,10 +4332,10 @@ Returner KUN gyldig JSON:
       },
 
       market_engine_version:
-        "v12.7-marking-first-market-first-pricing",
+        "v12.8-marking-first-market-first-pricing",
 
       market_filter_version:
-        "v12.7-marking-first-central-variant-gate-hard-year-clean-display"
+        "v12.8-marking-first-central-variant-gate-hard-year-clean-display"
     });
 
   } catch (e) {
