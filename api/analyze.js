@@ -916,6 +916,66 @@ Returner KUN gyldig JSON:
           userText
         );
 
+      /*
+       * GUITAR-VARIANTPROFIL
+       *
+       * Ikke blokker bestemte Fender-varianter globalt. Hvis AI faktisk
+       * identifiserer en variant, skal vi derimot bruke den som modellprofil.
+       * Eksempel:
+       *   Standard -> ikke bland inn 62/Special/Anniversary/Vintage
+       *   62 Special -> ikke bland inn Standard/Player osv.
+       *
+       * Et treff uten variantord kan fortsatt brukes dersom det ikke
+       * eksplisitt beskriver en annen variant.
+       */
+      const guitarEvidence = [
+        parsed.name,
+        parsed.description,
+        info.model,
+        info.type,
+        info.year_or_period,
+        parsed.ebay_search_query,
+        userText
+      ].map(v => String(v || '')).join(' ').toLowerCase();
+
+      const guitarVariantProfile = (() => {
+        if (category !== 'guitar' || !/\bfender\b/.test(guitarEvidence)) {
+          return { target: null, terms: [] };
+        }
+
+        const groups = [
+          { key: '62_special', terms: ['62 special', '62\'', '62s', 'special'] },
+          { key: '50th_anniversary', terms: ['50th anniversary', '50th ann', 'anniversary'] },
+          { key: 'vintage_reissue', terms: ['vintage reissue', 'reissue', 'american vintage'] },
+          { key: 'standard', terms: ['standard', 'standard stratocaster'] },
+          { key: 'player', terms: ['player ii', 'player'] },
+          { key: 'professional', terms: ['american professional'] },
+          { key: 'ultra', terms: ['american ultra', 'ultra'] },
+          { key: 'performer', terms: ['performer'] },
+          { key: 'deluxe', terms: ['deluxe'] },
+          { key: 'elite', terms: ['elite'] }
+        ];
+
+        // Anniversary er mer spesifikk enn et generisk "special".
+        const matched = groups.filter(g =>
+          g.terms.some(term => {
+            const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            return new RegExp('(?:^|\\s)' + escaped + '(?:$|\\s)', 'i').test(guitarEvidence);
+          })
+        );
+
+        if (!matched.length) return { target: null, terms: [] };
+
+        // Velg den mest spesifikke varianten fremfor generiske termer.
+        const priority = [
+          '50th_anniversary', '62_special', 'vintage_reissue',
+          'standard', 'player', 'professional', 'ultra',
+          'performer', 'deluxe', 'elite'
+        ];
+        const target = priority.find(key => matched.some(m => m.key === key)) || matched[0].key;
+        return { target, terms: matched.flatMap(m => m.terms) };
+      })();
+
       const hardYear =
         category === "guitar"
           ? year
@@ -1045,25 +1105,33 @@ Returner KUN gyldig JSON:
           brand.toLowerCase() === "fender" &&
           /\bstratocaster\b/.test(modelLower)
         ) {
+          const variantQuery =
+            guitarVariantProfile.target === "standard"
+              ? "Standard Stratocaster"
+              : guitarVariantProfile.target === "62_special"
+                ? "62 Special Stratocaster"
+                : guitarVariantProfile.target === "50th_anniversary"
+                  ? "50th Anniversary Stratocaster"
+                  : guitarVariantProfile.target === "vintage_reissue"
+                    ? "Vintage Reissue Stratocaster"
+                    : "Stratocaster";
+
           if (hardYear) {
             candidates.push(
-              `${brand} Standard Stratocaster ${hardYear}`
+              `${brand} ${variantQuery} ${hardYear}`
             );
             candidates.push(
-              `${brand} Stratocaster ${hardYear} MIM`
+              `${brand} ${variantQuery} ${hardYear} MIM`
             );
             candidates.push(
-              `${brand} Stratocaster ${hardYear} Mexico`
-            );
-            candidates.push(
-              `${brand} Standard Stratocaster Mexico ${hardYear}`
+              `${brand} ${variantQuery} ${hardYear} Mexico`
             );
           } else {
             candidates.push(
-              `${brand} Standard Stratocaster MIM`
+              `${brand} ${variantQuery} MIM`
             );
             candidates.push(
-              `${brand} Stratocaster Mexico`
+              `${brand} ${variantQuery} Mexico`
             );
           }
         }
@@ -1117,12 +1185,23 @@ Returner KUN gyldig JSON:
         /\bstratocaster\b/i.test(model) &&
         hardYear
       ) {
-        // Disse skal alltid finnes, selv om AI har blandet serienummer
-        // eller annen støy inn i modell-/soekefeltene.
-        candidates.push(`Fender Standard Stratocaster ${hardYear}`);
-        candidates.push(`Fender Stratocaster ${hardYear} MIM`);
-        candidates.push(`Fender Stratocaster ${hardYear} Mexico`);
-        candidates.push(`Fender Standard Stratocaster Mexico ${hardYear}`);
+        // Robust fallback, men variantbevisst. Vi skal ikke tvinge
+        // "Standard" på en gitar som faktisk er identifisert som
+        // 62 Special, Anniversary eller Vintage Reissue.
+        const variantQuery =
+          guitarVariantProfile.target === "standard"
+            ? "Standard Stratocaster"
+            : guitarVariantProfile.target === "62_special"
+              ? "62 Special Stratocaster"
+              : guitarVariantProfile.target === "50th_anniversary"
+                ? "50th Anniversary Stratocaster"
+                : guitarVariantProfile.target === "vintage_reissue"
+                  ? "Vintage Reissue Stratocaster"
+                  : "Stratocaster";
+
+        candidates.push(`Fender ${variantQuery} ${hardYear}`);
+        candidates.push(`Fender ${variantQuery} ${hardYear} MIM`);
+        candidates.push(`Fender ${variantQuery} ${hardYear} Mexico`);
       }
 
       if (aiQuery) {
@@ -1167,7 +1246,8 @@ Returner KUN gyldig JSON:
         ageGroup,
         category,
         user_model_hint: userModelHint,
-        variant_uncertain: variantUncertain
+        variant_uncertain: variantUncertain,
+        guitar_variant: guitarVariantProfile
       };
     }
 
@@ -1202,6 +1282,9 @@ Returner KUN gyldig JSON:
 
       const category =
         criteria.category || "generic";
+
+      const guitarVariant =
+        criteria.guitar_variant || { target: null, terms: [] };
 
       let score = 0;
       const reasons = [];
@@ -1716,6 +1799,88 @@ Returner KUN gyldig JSON:
       ) {
         score += 10;
         reasons.push("type");
+      }
+
+      /* -------------------------------------------------------
+         GUITAR-VARIANT
+         ------------------------------------------------------- */
+
+      if (category === "guitar" && guitarVariant.target) {
+        const variantRules = {
+          standard: {
+            positive: /\bstandard(?:\s+stratocaster)?\b/i,
+            conflicts: [
+              /\b62(?:\s*['\u2019]s?)?\b/i,
+              /\b62\s*special\b/i,
+              /\bspecial\b/i,
+              /\b50th\s+ann(?:iversary)?\b/i,
+              /\banniversary\b/i,
+              /\bvintage\s+reissue\b/i,
+              /\breissue\b/i
+            ]
+          },
+          '62_special': {
+            positive: /\b62(?:\s*['\u2019]s?)?(?:\s+special)?\b|\bspecial\b/i,
+            conflicts: [
+              /\bstandard\b/i,
+              /\bplayer\b/i,
+              /\bvintage\s+reissue\b/i
+            ]
+          },
+          '50th_anniversary': {
+            positive: /\b50th\s+ann(?:iversary)?\b|\banniversary\b/i,
+            conflicts: [/\bstandard\b/i, /\bplayer\b/i]
+          },
+          'vintage_reissue': {
+            positive: /\bvintage\s+reissue\b|\breissue\b|\bamerican\s+vintage\b/i,
+            conflicts: [/\bstandard\b/i, /\bplayer\b/i]
+          },
+          player: {
+            positive: /\bplayer(?:\s+ii)?\b/i,
+            conflicts: [/\bstandard\b/i, /\bamerican\b/i, /\bvintage\b/i]
+          },
+          professional: {
+            positive: /\bamerican\s+professional\b/i,
+            conflicts: [/\bstandard\b/i, /\bplayer\b/i]
+          },
+          ultra: {
+            positive: /\b(?:american\s+ultra|ultra)\b/i,
+            conflicts: [/\bstandard\b/i, /\bplayer\b/i]
+          },
+          performer: {
+            positive: /\bperformer\b/i,
+            conflicts: [/\bstandard\b/i, /\bplayer\b/i]
+          },
+          deluxe: {
+            positive: /\bdeluxe\b/i,
+            conflicts: [/\bstandard\b/i, /\bplayer\b/i]
+          },
+          elite: {
+            positive: /\belite\b/i,
+            conflicts: [/\bstandard\b/i, /\bplayer\b/i]
+          }
+        };
+
+        const rule = variantRules[guitarVariant.target];
+        if (rule) {
+          const explicitConflict =
+            rule.conflicts.some(rx => rx.test(t));
+
+          if (explicitConflict) {
+            return {
+              score: -100,
+              accepted: false,
+              near_match: false,
+              year_match: year ? "missing" : "not_required",
+              reason: "annen gitarvariant"
+            };
+          }
+
+          if (rule.positive.test(t)) {
+            score += 35;
+            reasons.push("samme gitarvariant");
+          }
+        }
       }
 
       /* -------------------------------------------------------
