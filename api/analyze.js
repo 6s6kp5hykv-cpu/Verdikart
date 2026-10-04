@@ -1225,6 +1225,43 @@ Returner KUN gyldig JSON:
       }
 
       /* -------------------------------------------------------
+         GITAR – KOMPLETT GITAR VS. DELER
+         ------------------------------------------------------- */
+
+      if (category === "guitar") {
+        const guitarPartPatterns = [
+          /\bbody\s+(?:only|w\/?|with|and)\b/,
+          /\bbody\s+w\/\s*hardware\b/,
+          /\bbody\s+only\b/,
+          /\bonly\s+body\b/,
+          /\breplacement\s+body\b/,
+          /\bneck\s+only\b/,
+          /\bonly\s+neck\b/,
+          /\breplacement\s+neck\b/,
+          /\bpickup(?:s)?\s+only\b/,
+          /\bpickguard\s+only\b/,
+          /\bbridge\s+only\b/,
+          /\bhardware\s+only\b/,
+          /\bparts?\s+only\b/,
+          /\bfor\s+parts\b/,
+          /\bparts\s+and\s+hardware\b/,
+          /\bbody\s+with\s+hardware\b/,
+          /\bbody\s+w\/?\s*hardware\b/,
+          /\bguitar\s+body\b/
+        ];
+
+        if (guitarPartPatterns.some(pattern => pattern.test(t))) {
+          return {
+            score: -100,
+            accepted: false,
+            near_match: false,
+            year_match: year ? "missing" : "not_required",
+            reason: "gitar-del/kun kropp/hals/hardware"
+          };
+        }
+      }
+
+      /* -------------------------------------------------------
          SYKKEL
          ------------------------------------------------------- */
 
