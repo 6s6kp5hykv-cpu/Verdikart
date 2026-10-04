@@ -1918,7 +1918,7 @@ Returner KUN gyldig JSON:
       };
     }
 
-    async function searchEbaySingle(query) {
+    async function searchEbaySingle(query, marketplace) {
       const token =
         await getEbayToken();
 
@@ -1926,6 +1926,7 @@ Returner KUN gyldig JSON:
         return {
           enabled: false,
           query,
+          marketplace,
           sample_size: 0,
           listings: [],
           rawItems: [],
@@ -1947,7 +1948,7 @@ Returner KUN gyldig JSON:
           "Accept":
             "application/json",
           "X-EBAY-C-MARKETPLACE-ID":
-            "EBAY_DE"
+            marketplace
         }
       });
 
@@ -1958,6 +1959,7 @@ Returner KUN gyldig JSON:
         return {
           enabled: false,
           query,
+          marketplace,
           sample_size: 0,
           listings: [],
           rawItems: [],
@@ -1970,6 +1972,7 @@ Returner KUN gyldig JSON:
       return {
         enabled: true,
         query,
+        marketplace,
         rawItems:
           Array.isArray(d.itemSummaries)
             ? d.itemSummaries
@@ -2060,7 +2063,11 @@ Returner KUN gyldig JSON:
         nok: Math.round(nok),
         url:
           item.itemWebUrl || "",
+        item_id:
+          item.itemId ||
+          "",
         query,
+        marketplace: criteria.marketplace || "EBAY_UNKNOWN",
         relevance_score:
           relevance.score,
         relevance_reason:
@@ -2089,16 +2096,40 @@ Returner KUN gyldig JSON:
         };
       }
 
+      /*
+       * V10.4: Søk i flere eBay-markeder.
+       * EBAY_NO er viktig for norske priser, mens US/GB/DE
+       * gir ekstra dekning når det er få norske treff.
+       */
+      const marketplaces = [
+        "EBAY_NO",
+        "EBAY_DE",
+        "EBAY_GB",
+        "EBAY_US"
+      ];
+
+      const searchJobs = [];
+
+      for (const marketplace of marketplaces) {
+        for (const q of built.queries) {
+          searchJobs.push({ marketplace, query: q });
+        }
+      }
+
       const results =
         await Promise.all(
-          built.queries.map(
-            async q => {
+          searchJobs.map(
+            async job => {
               try {
-                return await searchEbaySingle(q);
+                return await searchEbaySingle(
+                  job.query,
+                  job.marketplace
+                );
               } catch {
                 return {
                   enabled: false,
-                  query: q,
+                  query: job.query,
+                  marketplace: job.marketplace,
                   rawItems: []
                 };
               }
@@ -2124,7 +2155,7 @@ Returner KUN gyldig JSON:
                   await prepareListing(
                     item,
                     result.query,
-                    built
+                    { ...built, marketplace: result.marketplace }
                   );
 
                 if (prepared) {
@@ -2148,6 +2179,7 @@ Returner KUN gyldig JSON:
         ) {
           const key =
             String(
+              item.item_id ||
               item.url ||
               `${item.title}|${item.nok}`
             )
@@ -2348,6 +2380,15 @@ Returner KUN gyldig JSON:
           )
         ];
 
+      const successfulMarketplaces =
+        [
+          ...new Set(
+            finalPool
+              .map(x => x.marketplace)
+              .filter(Boolean)
+          )
+        ];
+
       const nearMatchQueries =
         [
           ...new Set(
@@ -2403,7 +2444,9 @@ Returner KUN gyldig JSON:
 
       return {
         enabled: true,
-        marketplace: "EBAY_DE",
+        marketplaces,
+        successful_marketplaces:
+          successfulMarketplaces,
         query:
           built.queries[0],
         queries:
