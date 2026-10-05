@@ -1,4 +1,4 @@
-// Kistefunn analysebackend v13.8
+// Kistefunn analysebackend v14.1
 // V12.7: brukeroppgitt spesifikk modellvariant brukes som sterkt signal når bildet støtter merke/serie.
 // V12.7: nummererte sykkelvarianter (f.eks. Trekking 4 vs Trekking 6) hardfiltreres i markedet.
 // Strengere identifikasjon + hardere markedsfilter + multi-source markedsmotor
@@ -4803,7 +4803,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
           0.45 + Math.min(0.45, totalQuality * 0.35)
         );
 
-        // V14.0: når vi har minst fire eksakte eksterne referanser
+        // V14.1: når vi har minst fire eksakte eksterne referanser
         // og de robuste referansene er nok, skal markedet være klart
         // hovedankeret. Dette hindrer et lavt AI-estimat fra å trekke
         // verdien unødvendig langt ned.
@@ -4813,7 +4813,8 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
           Number(sources.web_reference.valuation_reference_count || 0) >= 3;
 
         if (strongWebReference) {
-          marketWeight = Math.max(marketWeight, 0.85);
+          // V14.1: Sterkt eksakt eksternt marked skal dominere AI-ankeret.
+          marketWeight = Math.max(marketWeight, 0.95);
         }
 
         if (marketCandidates.length >= 2) {
@@ -4934,6 +4935,43 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
     }
 
     const market = combineMarketSources(marketSources);
+
+    // V14.1: Når vi har minst fire eksakte eksterne referanser og minst
+    // tre robuste referanser, får den robuste eksterne markedsverdien
+    // direkte gjennomslag dersom eBay/FINN ikke har tilsvarende sterkt
+    // eksakt grunnlag. AI skal da være kontroll, ikke trekke verdien ned.
+    const strongExactWebMarket =
+      marketSources.web_reference?.enabled &&
+      Number(marketSources.web_reference.exact_match_count || 0) >= 4 &&
+      Number(marketSources.web_reference.valuation_reference_count || 0) >= 3 &&
+      Number.isFinite(Number(marketSources.web_reference.value_nok));
+
+    const strongExactEbayMarket =
+      marketSources.ebay?.enabled &&
+      Number(marketSources.ebay.exact_match_count || 0) >= 4 &&
+      Number(marketSources.ebay.distinct_count || 0) >= 3 &&
+      Number.isFinite(Number(marketSources.ebay.value_nok));
+
+    const strongExactFinnMarket =
+      marketSources.finn?.enabled &&
+      Number(marketSources.finn.exact_match_count || 0) >= 4 &&
+      Number(marketSources.finn.distinct_count || 0) >= 3 &&
+      Number.isFinite(Number(marketSources.finn.value_nok));
+
+    if (strongExactWebMarket && !strongExactEbayMarket && !strongExactFinnMarket) {
+      market.estimated_nok = Math.round(Number(marketSources.web_reference.value_nok));
+      market.low_nok = Number.isFinite(Number(marketSources.web_reference.low_nok))
+        ? Math.round(Number(marketSources.web_reference.low_nok))
+        : market.low_nok;
+      market.high_nok = Number.isFinite(Number(marketSources.web_reference.high_nok))
+        ? Math.round(Number(marketSources.web_reference.high_nok))
+        : market.high_nok;
+      market.confidence = "høy";
+      market.basis = "Eksakte web-markedsreferanser";
+      market.source_weights = [
+        { source: "web_reference", percent: 100 }
+      ];
+    }
 
     let finalEstimated =
       Number.isFinite(market.estimated_nok)
@@ -5115,10 +5153,10 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       },
 
       market_engine_version:
-        "v14.0-robust-exact-reference-market-value",
+        "v14.1-exact-market-anchor",
 
       market_filter_version:
-        "v14.0-hard-model-reference-gate-robust-exact-reference-market-value",
+        "v14.1-hard-model-reference-gate-exact-market-anchor",
 
       buy_opportunities:
         buy_opportunities,
