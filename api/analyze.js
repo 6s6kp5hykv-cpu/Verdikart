@@ -3053,10 +3053,18 @@ Returner KUN gyldig JSON:
       // skal vi IKKE stole på et feilaktig target_special-flagg fra AI.
       // Special/62/anniversary må være eksplisitt en del av selve søket for
       // at slike varianter skal tillates.
-      const queryRequestsSpecial =
-        /\b(?:62\s*(?:['’]s?|special)|special|anniversary|fsr|squier)\b/i.test(queryContext);
-
-      if (!isFenderStratMim || queryRequestsSpecial) {
+      /*
+       * V14.24 – IKKE TOLK NEGATIVE SØKEORD SOM MÅLVARIANT
+       * ----------------------------------------------------
+       * built.queries/query_context kan inneholde negative søkeord som
+       * "Squier", "Special", "Player" osv. Disse beskriver hva vi IKKE
+       * ønsker å finne, ikke at målobjektet faktisk er denne varianten.
+       *
+       * Derfor brukes query_context ikke lenger til å avgjøre om målet
+       * er en spesialvariant. Målidentiteten skal komme fra strukturerte
+       * identitetsfelt. Dette er avgjørende for Fender MIM + Squier-testen.
+       */
+      if (!isFenderStratMim) {
         return false;
       }
 
@@ -3945,13 +3953,31 @@ Returner KUN gyldig JSON:
        * Dette er spesielt viktig for Squier Series, som ellers kan bli
        * klassifisert som "Fender Stratocaster" av eBay/AI.
        */
+      /*
+       * V14.24: builtQueryText kan inneholde negative søkeord. Bruk derfor
+       * kun den positive, deterministiske identiteten til målet her.
+       * Et negativt "Squier" i søket skal aldri deaktivere Fender-gaten.
+       */
+      const positiveTargetQueryText =
+        [
+          built.brand,
+          built.model,
+          built.type,
+          built.manufacturer,
+          built.country,
+          built.year,
+          built.detected_year
+        ]
+          .filter(Boolean)
+          .join(" ");
+
       const deterministicNormalFenderStratTarget =
-        /\bfender\b/i.test(builtQueryText) &&
-        /\bstratocaster\b/i.test(builtQueryText) &&
-        /\b(?:mexico|mim|made\s+in\s+mexico)\b/i.test(builtQueryText) &&
-        /\b(?:19|20)\d{2}\b/.test(builtQueryText) &&
-        !/\bsquier(?:\s+series)?\b/i.test(builtQueryText) &&
-        !/\b(?:fsr|special|anniversary|player|vintera)\b/i.test(builtQueryText);
+        /\bfender\b/i.test(positiveTargetQueryText) &&
+        /\bstratocaster\b/i.test(positiveTargetQueryText) &&
+        /\b(?:mexico|mim|made\s+in\s+mexico)\b/i.test(positiveTargetQueryText) &&
+        /\b(?:19|20)\d{2}\b/.test(positiveTargetQueryText) &&
+        !/\bsquier(?:\s+series)?\b/i.test(positiveTargetQueryText) &&
+        !/\b(?:fsr|special|anniversary|player|vintera)\b/i.test(positiveTargetQueryText);
 
       const strictFenderStratComparableTarget =
         deterministicNormalFenderStratTarget ||
