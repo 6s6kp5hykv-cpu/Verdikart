@@ -1,7 +1,7 @@
-// Kistefunn analysebackend v14.10
+// Kistefunn analysebackend v14.11
 // V14.3: eksakte markedsreferanser forankrer også low/high slik at AI-low ikke trekker verdien kunstig ned.
 // V14.4: normal lavpris holdes separat fra godkjente kupp, slik at et legitimt billigfunn vises som kupp uten å senke markedsintervallet.
-// V14.10: eBay-feilhåndtering er diagnostisk; v14.9 variantfiltrering beholdes uendret. sikrer at rå eBay-treff som Squier/Player/Special osv. ikke kan dukke opp som eksakte referanser.
+// V14.11: retter scope-feil i finalForbiddenFenderVariants som stoppet eBay/markedspipelinen med ReferenceError. V14.10 eBay-diagnostikk beholdes.
 // V12.7: brukeroppgitt spesifikk modellvariant brukes som sterkt signal når bildet støtter merke/serie.
 // V12.7: nummererte sykkelvarianter (f.eks. Trekking 4 vs Trekking 6) hardfiltreres i markedet.
 // Strengere identifikasjon + hardere markedsfilter + multi-source markedsmotor
@@ -3428,8 +3428,7 @@ Returner KUN gyldig JSON:
           `${structuredTargetText} ${structuredTargetCountry}`
         );
 
-      if (normalFenderMimQuery) {
-        const finalForbiddenFenderVariants = [
+      const finalForbiddenFenderVariants = [
           /\bsquier(?:\s+series)?\b/i,
           /\bfsr\b/i,
           /\b62\s*(?:['’]s?|special)\b/i,
@@ -3447,6 +3446,7 @@ Returner KUN gyldig JSON:
           /\bsignature\s+series\b/i
         ];
 
+      if (normalFenderMimQuery) {
         for (let i = all.length - 1; i >= 0; i--) {
           const listingTitle = String(all[i]?.title || "");
 
@@ -5418,7 +5418,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
        --------------------------------------------------------- */
 
     return res.status(200).json({
-      version: "v14.10",
+      version: "v14.11",
       name:
         parsed.name ||
         "Ukjent",
