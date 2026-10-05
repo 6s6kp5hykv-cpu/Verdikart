@@ -3525,6 +3525,45 @@ Returner KUN gyldig JSON:
           .filter(Number.isFinite)
           .filter(x => x > 0);
 
+      const prices =
+        finalPool
+          .map(
+            x => Number(x.nok)
+          )
+          .filter(Number.isFinite)
+          .filter(x => x > 0);
+
+      /*
+       * V9 markedsmedian:
+       * Eksakte årstreff har hovedvekten.
+       * Same-model uten år får kun støttevekt.
+       */
+      const exactMedian =
+        median(exactPrices);
+
+      const sameModelMedian =
+        median(sameModelPrices);
+
+      let marketMedian = null;
+
+      if (
+        built.year &&
+        Number.isFinite(exactMedian)
+      ) {
+        // V11.8: same-model uten år påvirker ikke medianen når år er kjent.
+        marketMedian = Math.round(exactMedian);
+      } else if (
+        Number.isFinite(exactMedian)
+      ) {
+        marketMedian =
+          Math.round(exactMedian);
+      } else if (
+        Number.isFinite(sameModelMedian)
+      ) {
+        marketMedian =
+          Math.round(sameModelMedian);
+      }
+
       /*
        * V13.1 – KJØPSMULIGHETER / MULIGE KUPP
        * ---------------------------------------
@@ -3575,44 +3614,6 @@ Returner KUN gyldig JSON:
               .slice(0, 8)
           : [];
 
-      const prices =
-        finalPool
-          .map(
-            x => Number(x.nok)
-          )
-          .filter(Number.isFinite)
-          .filter(x => x > 0);
-
-      /*
-       * V9 markedsmedian:
-       * Eksakte årstreff har hovedvekten.
-       * Same-model uten år får kun støttevekt.
-       */
-      const exactMedian =
-        median(exactPrices);
-
-      const sameModelMedian =
-        median(sameModelPrices);
-
-      let marketMedian = null;
-
-      if (
-        built.year &&
-        Number.isFinite(exactMedian)
-      ) {
-        // V11.8: same-model uten år påvirker ikke medianen når år er kjent.
-        marketMedian = Math.round(exactMedian);
-      } else if (
-        Number.isFinite(exactMedian)
-      ) {
-        marketMedian =
-          Math.round(exactMedian);
-      } else if (
-        Number.isFinite(sameModelMedian)
-      ) {
-        marketMedian =
-          Math.round(sameModelMedian);
-      }
 
       const successfulQueries =
         [
