@@ -27,6 +27,7 @@ export default async function handler(req, res) {
   try {
     // Kupp-listen må være tilgjengelig i hele handler-scope.
     let buy_opportunities = [];
+    let buy_price_warnings = [];
     const { image, description } = req.body || {};
 
     if (!image || typeof image !== "string") {
@@ -3567,54 +3568,133 @@ Returner KUN gyldig JSON:
       }
 
       /*
-       * V13.1 – KJØPSMULIGHETER / MULIGE KUPP
+       * V13.5 – KJØPSMULIGHETER / MULIGE KUPP
        * ---------------------------------------
-       * Et svært lavt, men ellers godkjent eksakt treff skal ikke
-       * skjules bare fordi det er et prisavvik. Det kan være et reelt
-       * kupp for brukeren. Slike treff får derfor en egen kanal og
-       * påvirker ikke automatisk markedsverdien.
+       * Pris alene er ikke nok til å kalle noe et kupp.
        *
-       * 80 % av markedsmedianen = mulig kupp
-       * 70 % eller lavere = sterkt mulig kupp
+       * Et ekstremt lavt eksakt treff kan være et reelt kupp, men kan også
+       * skyldes feil variant, tilstand, manglende dokumentasjon eller en
+       * uvanlig annonse. Derfor gjør vi en kandidat-for-kandidat kontroll:
        *
-       * Vi bruker exactPool, ikke rå eBay-resultater. Det betyr at
-       * modell-/variantfilter, del-/tilbehørsfilter og øvrige harde
-       * kontroller allerede er passert før en annonse kan bli flagget.
+       * - exactPool er fortsatt eneste kilde.
+       * - Under 80 % av median = kandidat til mulig kupp.
+       * - Under 70 % = kandidat til sterkt mulig kupp.
+       * - Men dersom prisen er under 50 % av medianen og de øvrige eksakte
+       *   treffene ligger samlet mye høyere, behandles kandidaten som et
+       *   avvik og flyttes til buy_price_warnings.
+       * - Minst to andre eksakte treff må støtte et så kraftig lavprisnivå
+       *   før Kistefunn kaller det et sterkt mulig kupp.
+       *
+       * Dette hindrer at én ekstremt billig annonse alene kan skape et
+       * kunstig "kupp" på varer med store prisforskjeller mellom treffene.
        */
       const bargainReferenceMedian =
         Number.isFinite(exactMedian)
           ? exactMedian
           : (Number.isFinite(marketMedian) ? marketMedian : null);
 
-      buy_opportunities =
-        Number.isFinite(bargainReferenceMedian) && bargainReferenceMedian > 0
-          ? exactPool
-              .map(item => {
-                const price = Number(item.nok);
-                if (!Number.isFinite(price) || price <= 0) return null;
+      const exactPriceItems = exactPool
+        .map(item => ({
+          item,
+          price: Number(item?.nok)
+        }))
+        .filter(x => Number.isFinite(x.price) && x.price > 0);
 
-                const ratio = price / bargainReferenceMedian;
-                const discountPercent = Math.round((1 - ratio) * 100);
+      buy_opportunities = [];
+      buy_price_warnings = [];
 
-                if (ratio > 0.80) return null;
+      if (
+        Number.isFinite(bargainReferenceMedian) &&
+        bargainReferenceMedian > 0
+      ) {
+        for (const candidate of exactPriceItems) {
+          const item = candidate.item;
+          const price = candidate.price;
+          const ratio = price / bargainReferenceMedian;
+          const discountPercent = Math.round((1 - ratio) * 100);
 
-                return {
-                  title: item.title || "Ukjent annonse",
-                  price_nok: Math.round(price),
-                  market_median_nok: Math.round(bargainReferenceMedian),
-                  discount_percent: Math.max(0, discountPercent),
-                  potential_saving_nok: Math.max(0, Math.round(bargainReferenceMedian - price)),
-                  level: ratio <= 0.70 ? "sterkt_mulig_kupp" : "mulig_kupp",
-                  marketplace: item.marketplace || "eBay",
-                  url: item.url || "",
-                  query: item.query || "",
-                  reason: "Godkjent eksakt sammenligning som ligger betydelig under markedsmedianen."
-                };
-              })
-              .filter(Boolean)
-              .sort((a, b) => b.discount_percent - a.discount_percent)
-              .slice(0, 8)
-          : [];
+          if (ratio > 0.80) {
+            continue;
+          }
+
+          const peerPrices = exactPriceItems
+            .filter(x => x.item !== item)
+            .map(x => x.price);
+
+          const peerMedian = median(peerPrices);
+          const peerRatio =
+            Number.isFinite(peerMedian) && peerMedian > 0
+              ? price / peerMedian
+              : null;
+
+          const lowPeerSupportCount = peerPrices.filter(
+            peerPrice => peerPrice <= bargainReferenceMedian * 0.75
+          ).length;
+
+          // Et prisnivå mer enn 50 % under medianen er så uvanlig at vi
+          // krever støtte fra minst to andre eksakte annonser før det kan
+          // kalles et sterkt mulig kupp.
+          const extremeOutlier =
+            exactPriceItems.length >= 4 &&
+            Number.isFinite(peerRatio) &&
+            peerRatio < 0.50 &&
+            lowPeerSupportCount < 2;
+
+          const result = {
+            title: item.title || "Ukjent annonse",
+            price_nok: Math.round(price),
+            market_median_nok: Math.round(bargainReferenceMedian),
+            discount_percent: Math.max(0, discountPercent),
+            potential_saving_nok: Math.max(
+              0,
+              Math.round(bargainReferenceMedian - price)
+            ),
+            marketplace: item.marketplace || "eBay",
+            url: item.url || "",
+            query: item.query || ""
+          };
+
+          if (extremeOutlier) {
+            buy_price_warnings.push({
+              ...result,
+              level: "uventet_lav_pris",
+              peer_median_nok: Math.round(peerMedian),
+              reason:
+                "Prisen ligger uvanlig langt under de øvrige eksakte sammenligningene. Dette kan være et reelt kupp, men annonsen bør kontrolleres ekstra nøye for variant, tilstand, ekthet og hva som faktisk følger med."
+            });
+            continue;
+          }
+
+          const strongEnough =
+            ratio <= 0.70 &&
+            (
+              exactPriceItems.length < 4 ||
+              lowPeerSupportCount >= 2 ||
+              !Number.isFinite(peerRatio) ||
+              peerRatio >= 0.50
+            );
+
+          buy_opportunities.push({
+            ...result,
+            level: strongEnough
+              ? "sterkt_mulig_kupp"
+              : "mulig_kupp",
+            reason: strongEnough
+              ? "Godkjent eksakt sammenligning som ligger betydelig under markedsmedianen, uten et ekstremt avvik mot de øvrige eksakte treffene."
+              : "Godkjent eksakt sammenligning som ligger under markedsmedianen."
+          });
+        }
+
+        buy_opportunities.sort(
+          (a, b) => b.discount_percent - a.discount_percent
+        );
+        buy_price_warnings.sort(
+          (a, b) => b.discount_percent - a.discount_percent
+        );
+
+        buy_opportunities = buy_opportunities.slice(0, 8);
+        buy_price_warnings = buy_price_warnings.slice(0, 4);
+      }
 
 
       const successfulQueries =
@@ -4510,7 +4590,7 @@ Returner KUN gyldig JSON:
       market_sources: marketSources,
 
       market_engine_version:
-        "v13.4-market-first-pricing-buyfix",
+        "v13.5-market-first-pricing-buy-safety",
 
       market_filter_version:
         "v13.4-hard-title-year-variant-bicycle-gate-fender-gate-clean-display",
@@ -4519,7 +4599,13 @@ Returner KUN gyldig JSON:
         buy_opportunities,
 
       buy_opportunities_count:
-        buy_opportunities.length
+        buy_opportunities.length,
+
+      buy_price_warnings:
+        buy_price_warnings,
+
+      buy_price_warnings_count:
+        buy_price_warnings.length
     });
 
   } catch (e) {
