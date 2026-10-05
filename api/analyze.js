@@ -1,7 +1,7 @@
-// Kistefunn analysebackend v14.9
+// Kistefunn analysebackend v14.10
 // V14.3: eksakte markedsreferanser forankrer også low/high slik at AI-low ikke trekker verdien kunstig ned.
 // V14.4: normal lavpris holdes separat fra godkjente kupp, slik at et legitimt billigfunn vises som kupp uten å senke markedsintervallet.
-// V14.9: endelig Fender MIM-gate bruker strukturerte målobjektfelter og en siste direkte tittelkontroll rett før exactPool. sikrer at rå eBay-treff som Squier/Player/Special osv. ikke kan dukke opp som eksakte referanser.
+// V14.10: eBay-feilhåndtering er diagnostisk; v14.9 variantfiltrering beholdes uendret. sikrer at rå eBay-treff som Squier/Player/Special osv. ikke kan dukke opp som eksakte referanser.
 // V12.7: brukeroppgitt spesifikk modellvariant brukes som sterkt signal når bildet støtter merke/serie.
 // V12.7: nummererte sykkelvarianter (f.eks. Trekking 4 vs Trekking 6) hardfiltreres i markedet.
 // Strengere identifikasjon + hardere markedsfilter + multi-source markedsmotor
@@ -459,6 +459,10 @@ Returner KUN gyldig JSON:
     let ebayTokenCache = null;
     let ebayTokenPromise = null;
 
+    // V14.10: siste trygge eBay-feil for denne kjøringen.
+    // Inneholder aldri access-token eller Authorization-header.
+    let ebayDiagnosticError = null;
+
     async function getEbayToken() {
       if (ebayTokenCache) {
         return ebayTokenCache;
@@ -472,6 +476,18 @@ Returner KUN gyldig JSON:
       const clientSecret = process.env.EBAY_CLIENT_SECRET;
 
       if (!clientId || !clientSecret) {
+        ebayDiagnosticError = {
+          stage: "configuration",
+          status: null,
+          code:
+            !clientId && !clientSecret
+              ? "missing_client_id_and_secret"
+              : !clientId
+                ? "missing_client_id"
+                : "missing_client_secret",
+          message:
+            "EBAY_CLIENT_ID/EBAY_CLIENT_SECRET mangler i servermiljøet."
+        };
         return null;
       }
 
@@ -499,11 +515,32 @@ Returner KUN gyldig JSON:
         const d = await r.json();
 
         if (!r.ok) {
+          ebayDiagnosticError = {
+            stage: "oauth",
+            status: r.status,
+            code:
+              d?.errors?.[0]?.errorId ||
+              d?.error ||
+              "oauth_error",
+            message:
+              d?.errors?.[0]?.message ||
+              d?.error_description ||
+              "eBay OAuth-token kunne ikke hentes."
+          };
           return null;
         }
 
         ebayTokenCache =
           d.access_token || null;
+
+        if (!ebayTokenCache) {
+          ebayDiagnosticError = {
+            stage: "oauth",
+            status: r.status,
+            code: "missing_access_token",
+            message: "eBay OAuth svarte uten access_token."
+          };
+        }
 
         return ebayTokenCache;
       })();
@@ -2474,7 +2511,16 @@ Returner KUN gyldig JSON:
           listings: [],
           rawItems: [],
           reason:
-            "eBay-tilkobling er ikke tilgjengelig"
+            ebayDiagnosticError?.message ||
+            "eBay-tilkobling er ikke tilgjengelig",
+          diagnostic:
+            ebayDiagnosticError
+              ? {
+                  stage: ebayDiagnosticError.stage,
+                  status: ebayDiagnosticError.status,
+                  code: ebayDiagnosticError.code
+                }
+              : null
         };
       }
 
@@ -2499,6 +2545,18 @@ Returner KUN gyldig JSON:
         await r.json();
 
       if (!r.ok) {
+        ebayDiagnosticError = {
+          stage: "browse_search",
+          status: r.status,
+          code:
+            d?.errors?.[0]?.errorId ||
+            d?.errors?.[0]?.domain ||
+            "browse_api_error",
+          message:
+            d?.errors?.[0]?.message ||
+            "eBay Browse API-søk feilet."
+        };
+
         return {
           enabled: false,
           query,
@@ -2506,9 +2564,12 @@ Returner KUN gyldig JSON:
           sample_size: 0,
           listings: [],
           rawItems: [],
-          reason:
-            d?.errors?.[0]?.message ||
-            "eBay-søk feilet"
+          reason: ebayDiagnosticError.message,
+          diagnostic: {
+            stage: ebayDiagnosticError.stage,
+            status: ebayDiagnosticError.status,
+            code: ebayDiagnosticError.code
+          }
         };
       }
 
@@ -3106,14 +3167,31 @@ Returner KUN gyldig JSON:
                   job.query,
                   job.marketplace
                 );
-              } catch {
-                return {
-                  enabled: false,
-                  query: job.query,
-                  marketplace: job.marketplace,
-                  rawItems: []
-                };
-              }
+              } catch (error) {
+   const message =
+     error?.message ||
+     "Ukjent feil i eBay-søk.";
+
+   ebayDiagnosticError = {
+     stage: "search_exception",
+     status: error?.status ?? null,
+     code: error?.code || "search_exception",
+     message: String(message).slice(0, 300)
+   };
+
+   return {
+     enabled: false,
+     query: job.query,
+     marketplace: job.marketplace,
+     rawItems: [],
+     reason: ebayDiagnosticError.message,
+     diagnostic: {
+       stage: ebayDiagnosticError.stage,
+       status: ebayDiagnosticError.status,
+       code: ebayDiagnosticError.code
+     }
+   };
+ }
             }
           )
         );
@@ -4359,11 +4437,27 @@ Returner KUN gyldig JSON:
     try {
       ebay =
         await searchEbay(parsed);
-    } catch {
+    } catch (error) {
+      const message =
+        error?.message ||
+        ebayDiagnosticError?.message ||
+        "Ukjent feil i eBay-søket.";
+
       ebay = {
         enabled: false,
-        reason:
-          "eBay-søk kunne ikke gjennomføres",
+        reason: String(message).slice(0, 300),
+        diagnostic:
+          ebayDiagnosticError
+            ? {
+                stage: ebayDiagnosticError.stage,
+                status: ebayDiagnosticError.status,
+                code: ebayDiagnosticError.code
+              }
+            : {
+                stage: "search_exception",
+                status: error?.status ?? null,
+                code: error?.code || "search_exception"
+              },
         queries: [],
         successful_queries: []
       };
@@ -5324,7 +5418,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
        --------------------------------------------------------- */
 
     return res.status(200).json({
-      version: "v14.8",
+      version: "v14.10",
       name:
         parsed.name ||
         "Ukjent",
