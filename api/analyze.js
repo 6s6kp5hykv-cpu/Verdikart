@@ -1,7 +1,7 @@
-// Kistefunn analysebackend v14.5
+// Kistefunn analysebackend v14.6
 // V14.3: eksakte markedsreferanser forankrer også low/high slik at AI-low ikke trekker verdien kunstig ned.
 // V14.4: normal lavpris holdes separat fra godkjente kupp, slik at et legitimt billigfunn vises som kupp uten å senke markedsintervallet.
-// V14.5: endelig frontend/verdigrunnlags-gate sikrer at rå eBay-treff som Squier/Player/Special osv. ikke kan dukke opp som eksakte referanser.
+// V14.6: korrigert endelig frontend/verdigrunnlags-gate sikrer at rå eBay-treff som Squier/Player/Special osv. ikke kan dukke opp som eksakte referanser.
 // V12.7: brukeroppgitt spesifikk modellvariant brukes som sterkt signal når bildet støtter merke/serie.
 // V12.7: nummererte sykkelvarianter (f.eks. Trekking 4 vs Trekking 6) hardfiltreres i markedet.
 // Strengere identifikasjon + hardere markedsfilter + multi-source markedsmotor
@@ -3501,9 +3501,9 @@ Returner KUN gyldig JSON:
           ).toLowerCase();
 
         const isFenderMimStrat =
-          /\\bfender\\b/.test(queryContext) &&
-          /\\bstratocaster\\b/.test(queryContext) &&
-          /\\b(?:mexico|mim|made in mexico)\\b/.test(queryContext);
+          /\bfender\b/.test(queryContext) &&
+          /\bstratocaster\b/.test(queryContext) &&
+          /\b(?:mexico|mim|made in mexico)\b/.test(queryContext);
 
         if (!isFenderMimStrat) {
           return true;
@@ -3514,38 +3514,38 @@ Returner KUN gyldig JSON:
          * skal den selvsagt ikke filtreres bort.
          */
         const explicitlyRequestedVariant =
-          /\\bsquier(?:\\s+series)?\\b/.test(queryContext) ||
-          /\\bfsr\\b/.test(queryContext) ||
-          /\\b62\\s*(?:['’]s?|special)\\b/.test(queryContext) ||
-          /\\bspecial(?:\\s+edition)?\\b/.test(queryContext) ||
-          /\\banniversary\\b/.test(queryContext) ||
-          /\\bplayer(?:\\s+(?:ii|2))?\\b/.test(queryContext) ||
-          /\\bvintera\\b/.test(queryContext) ||
-          /\\bclassic\\s+(?:series|vibe)\\b/.test(queryContext) ||
-          /\\bamerican\\s+(?:standard|professional|performer|ultra|original|vintage)\\b/.test(queryContext);
+          /\bsquier(?:\s+series)?\b/.test(queryContext) ||
+          /\bfsr\b/.test(queryContext) ||
+          /\b62\s*(?:['’]s?|special)\b/.test(queryContext) ||
+          /\bspecial(?:\s+edition)?\b/.test(queryContext) ||
+          /\banniversary\b/.test(queryContext) ||
+          /\bplayer(?:\s+(?:ii|2))?\b/.test(queryContext) ||
+          /\bvintera\b/.test(queryContext) ||
+          /\bclassic\s+(?:series|vibe)\b/.test(queryContext) ||
+          /\bamerican\s+(?:standard|professional|performer|ultra|original|vintage)\b/.test(queryContext);
 
         if (explicitlyRequestedVariant) {
           return true;
         }
 
         const forbiddenVariant =
-          /\\bsquier(?:\\s+series)?\\b/.test(title) ||
-          /\\bfsr\\b/.test(title) ||
-          /\\bfender\\s+special\\s+run\\b/.test(title) ||
-          /\\bspecial\\s+run\\b/.test(title) ||
-          /\\b62\\s*(?:['’]s?|special)\\b/.test(title) ||
-          /\\b50th\\s+anniversary\\b/.test(title) ||
-          /\\banniversary\\b/.test(title) ||
-          /\\bspecial(?:\\s+edition)?\\b/.test(title) ||
-          /\\blimited\\s+edition\\b/.test(title) ||
-          /\\bvintage\\s+reissue\\b/.test(title) ||
-          /\\breissue\\b/.test(title) ||
-          /\\bplayer(?:\\s+(?:ii|2))?\\b/.test(title) ||
-          /\\bvintera\\b/.test(title) ||
-          /\\bclassic\\s+(?:series|vibe)\\b/.test(title) ||
-          /\\bamerican\\s+(?:standard|professional|performer|ultra|original|vintage)\\b/.test(title) ||
-          /\\bprofessional\\s+ii\\b/.test(title) ||
-          /\\bsignature\\s+series\\b/.test(title);
+          /\bsquier(?:\s+series)?\b/.test(title) ||
+          /\bfsr\b/.test(title) ||
+          /\bfender\s+special\s+run\b/.test(title) ||
+          /\bspecial\s+run\b/.test(title) ||
+          /\b62\s*(?:['’]s?|special)\b/.test(title) ||
+          /\b50th\s+anniversary\b/.test(title) ||
+          /\banniversary\b/.test(title) ||
+          /\bspecial(?:\s+edition)?\b/.test(title) ||
+          /\blimited\s+edition\b/.test(title) ||
+          /\bvintage\s+reissue\b/.test(title) ||
+          /\breissue\b/.test(title) ||
+          /\bplayer(?:\s+(?:ii|2))?\b/.test(title) ||
+          /\bvintera\b/.test(title) ||
+          /\bclassic\s+(?:series|vibe)\b/.test(title) ||
+          /\bamerican\s+(?:standard|professional|performer|ultra|original|vintage)\b/.test(title) ||
+          /\bprofessional\s+ii\b/.test(title) ||
+          /\bsignature\s+series\b/.test(title);
 
         return !forbiddenVariant;
       }
@@ -5317,10 +5317,10 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       },
 
       market_engine_version:
-        "v14.5-final-exact-reference-sanitizer",
+        "v14.6-final-exact-reference-sanitizer-regex-fix",
 
       market_filter_version:
-        "v14.5-hard-model-reference-gate-final-exact-reference-sanitizer",
+        "v14.6-hard-model-reference-gate-final-exact-reference-sanitizer-regex-fix",
 
       buy_opportunities:
         buy_opportunities,
