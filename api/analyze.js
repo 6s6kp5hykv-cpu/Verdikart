@@ -1,4 +1,4 @@
-// Kistefunn analysebackend v14.11
+// Kistefunn analysebackend v14.15
 // V14.3: eksakte markedsreferanser forankrer også low/high slik at AI-low ikke trekker verdien kunstig ned.
 // V14.4: normal lavpris holdes separat fra godkjente kupp, slik at et legitimt billigfunn vises som kupp uten å senke markedsintervallet.
 // V14.11: retter scope-feil i finalForbiddenFenderVariants som stoppet eBay/markedspipelinen med ReferenceError. V14.10 eBay-diagnostikk beholdes.
@@ -4375,7 +4375,15 @@ Returner KUN gyldig JSON:
         },
 
         listings:
-          all
+          (hardFenderMimTarget
+            ? all.filter(item => {
+                const title = String(item?.title || "");
+                return !finalForbiddenFenderVariants.some(rx =>
+                  rx.test(title)
+                );
+              })
+            : all
+          )
             .slice(0, 12)
             .map(
               item => ({
@@ -5487,7 +5495,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
        --------------------------------------------------------- */
 
     return res.status(200).json({
-      version: "v14.14",
+      version: "v14.15",
       name:
         parsed.name ||
         "Ukjent",
