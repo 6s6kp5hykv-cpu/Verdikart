@@ -1,4 +1,4 @@
-// Kistefunn analysebackend v14.1
+// Kistefunn analysebackend v14.2
 // V12.7: brukeroppgitt spesifikk modellvariant brukes som sterkt signal når bildet støtter merke/serie.
 // V12.7: nummererte sykkelvarianter (f.eks. Trekking 4 vs Trekking 6) hardfiltreres i markedet.
 // Strengere identifikasjon + hardere markedsfilter + multi-source markedsmotor
@@ -4936,10 +4936,9 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
 
     const market = combineMarketSources(marketSources);
 
-    // V14.1: Når vi har minst fire eksakte eksterne referanser og minst
-    // tre robuste referanser, får den robuste eksterne markedsverdien
-    // direkte gjennomslag dersom eBay/FINN ikke har tilsvarende sterkt
-    // eksakt grunnlag. AI skal da være kontroll, ikke trekke verdien ned.
+    // V14.2: Når en enkelt markedsdatakilde har minst fire sterke, eksakte
+    // referanser, får den robuste markedsverdien direkte gjennomslag. AI
+    // skal da være kontroll, ikke trekke verdien bort fra markedet.
     const strongExactWebMarket =
       marketSources.web_reference?.enabled &&
       Number(marketSources.web_reference.exact_match_count || 0) >= 4 &&
@@ -4958,6 +4957,18 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       Number(marketSources.finn.distinct_count || 0) >= 3 &&
       Number.isFinite(Number(marketSources.finn.value_nok));
 
+    /*
+     * V14.2 – STERKT EKSAKT MARKED = HOVEDVERDI
+     * ----------------------------------------------
+     * Når én markedsdatakilde alene har minst fire gode, eksakte
+     * sammenligninger, skal ikke AI-estimatet trekke verdien bort fra
+     * det dokumenterte markedet. Dette gjelder både eBay og eksterne
+     * web-referanser.
+     *
+     * Eksempel: Haibike Trekking 6 hadde 5 eksakte eBay-referanser
+     * med median 16 879 kr, mens AI trakk totalverdien opp til 18 262 kr.
+     * Fra v14.2 skal markedets median være hovedverdien i et slikt tilfelle.
+     */
     if (strongExactWebMarket && !strongExactEbayMarket && !strongExactFinnMarket) {
       market.estimated_nok = Math.round(Number(marketSources.web_reference.value_nok));
       market.low_nok = Number.isFinite(Number(marketSources.web_reference.low_nok))
@@ -4970,6 +4981,32 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       market.basis = "Eksakte web-markedsreferanser";
       market.source_weights = [
         { source: "web_reference", percent: 100 }
+      ];
+    } else if (strongExactEbayMarket && !strongExactWebMarket && !strongExactFinnMarket) {
+      market.estimated_nok = Math.round(Number(marketSources.ebay.value_nok));
+      market.low_nok = Number.isFinite(Number(marketSources.ebay.low_nok))
+        ? Math.round(Number(marketSources.ebay.low_nok))
+        : market.low_nok;
+      market.high_nok = Number.isFinite(Number(marketSources.ebay.high_nok))
+        ? Math.round(Number(marketSources.ebay.high_nok))
+        : market.high_nok;
+      market.confidence = "høy";
+      market.basis = "Eksakte eBay-markedsreferanser";
+      market.source_weights = [
+        { source: "ebay", percent: 100 }
+      ];
+    } else if (strongExactFinnMarket && !strongExactWebMarket && !strongExactEbayMarket) {
+      market.estimated_nok = Math.round(Number(marketSources.finn.value_nok));
+      market.low_nok = Number.isFinite(Number(marketSources.finn.low_nok))
+        ? Math.round(Number(marketSources.finn.low_nok))
+        : market.low_nok;
+      market.high_nok = Number.isFinite(Number(marketSources.finn.high_nok))
+        ? Math.round(Number(marketSources.finn.high_nok))
+        : market.high_nok;
+      market.confidence = "høy";
+      market.basis = "Eksakte FINN-markedsreferanser";
+      market.source_weights = [
+        { source: "finn", percent: 100 }
       ];
     }
 
@@ -4992,7 +5029,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       market.source_weights.find(x => x.source === "ebay")?.percent || 0;
 
     const valuationMethod =
-      `V12.1 markedsmotor: ${market.basis}`;
+      `V14.2 markedsmotor: ${market.basis}`;
 
     // V12.0: Vis den faktiske rensede eBay-søkestrengen.
     // Dermed vises ikke serienummerfragmenter som f.eks. MN5,
@@ -5008,6 +5045,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
        --------------------------------------------------------- */
 
     return res.status(200).json({
+      version: "v14.2",
       name:
         parsed.name ||
         "Ukjent",
