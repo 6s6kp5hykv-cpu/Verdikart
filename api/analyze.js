@@ -4404,6 +4404,54 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
           .filter(Number.isFinite)
           .sort((a, b) => a - b);
 
+        /*
+         * V14.0 – ROBUST EKSAKT-REFERANSE VERDIBEREGNING
+         * ------------------------------------------------
+         * Alle eksakte referanser skal fortsatt vises, men én svært høy
+         * eller lav aktiv forhandlerpris skal ikke alene få bestemme
+         * markedsverdien. Vi bruker IQR (interkvartilavstand) til å finne
+         * statistiske avvik og beregner markedsverdien fra de robuste
+         * treffene. Avvik beholdes som synlige referanser, men merkes som
+         * ikke brukt i verdiberegningen.
+         */
+        let valuationValues = values.slice();
+        let outlierIndexes = new Set();
+
+        if (values.length >= 4) {
+          const q1 = values[Math.floor((values.length - 1) * 0.25)];
+          const q3 = values[Math.floor((values.length - 1) * 0.75)];
+          const iqr = q3 - q1;
+          const lowerFence = q1 - 1.5 * iqr;
+          const upperFence = q3 + 1.5 * iqr;
+
+          const candidateValues = values.filter(v =>
+            v >= lowerFence && v <= upperFence
+          );
+
+          if (candidateValues.length >= 3 && candidateValues.length < values.length) {
+            valuationValues = candidateValues;
+          }
+
+          for (let i = 0; i < unique.length; i++) {
+            const v = Number(unique[i]?.price_nok);
+            if (Number.isFinite(v) && !valuationValues.includes(v)) {
+              outlierIndexes.add(i);
+            }
+          }
+        }
+
+        const valuationMedian = median(valuationValues);
+        const valuationLow = valuationValues[0];
+        const valuationHigh = valuationValues[valuationValues.length - 1];
+
+        const referencesWithValuation = unique.map((item, index) => ({
+          ...item,
+          valuation_included: !outlierIndexes.has(index),
+          valuation_exclusion_reason: outlierIndexes.has(index)
+            ? "Ekstremt prisavvik – beholdes som referanse, men brukes ikke til markedsverdien."
+            : "Eksakt referanse brukt i markedsverdien."
+        }));
+
         if (!values.length) {
           return {
             enabled: false,
@@ -4421,13 +4469,17 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
         return {
           enabled: true,
           status: "ok",
-          reason: "Eksakte referansepriser funnet via web-søk.",
+          reason: outlierIndexes.size
+            ? `Eksakte referansepriser funnet. ${outlierIndexes.size} ekstremt prisavvik er ikke brukt i markedsverdien.`
+            : "Eksakte referansepriser funnet via web-søk.",
           exact_match_count: values.length,
           distinct_count: new Set(values.map(v => Math.round(v))).size,
-          value_nok: Math.round(median(values)),
-          low_nok: Math.round(values[0]),
-          high_nok: Math.round(values[values.length - 1]),
-          references: unique.slice(0, 8)
+          value_nok: Math.round(valuationMedian),
+          low_nok: Math.round(valuationLow),
+          high_nok: Math.round(valuationHigh),
+          valuation_reference_count: valuationValues.length,
+          outlier_count: outlierIndexes.size,
+          references: referencesWithValuation.slice(0, 8)
         };
       } catch (error) {
         return {
@@ -4519,6 +4571,8 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
         exact_match_count: Number(webReferenceSearch?.exact_match_count || 0),
         same_model_match_count: 0,
         distinct_count: Number(webReferenceSearch?.distinct_count || 0),
+        valuation_reference_count: Number(webReferenceSearch?.valuation_reference_count || 0),
+        outlier_count: Number(webReferenceSearch?.outlier_count || 0),
         status: webReferenceSearch?.status || "not_available",
         reason: webReferenceSearch?.reason || "",
         references: Array.isArray(webReferenceSearch?.references) ? webReferenceSearch.references.slice(0, 8) : []
@@ -4628,9 +4682,14 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       if (!source?.enabled || !Number.isFinite(source.value_nok)) return 0;
       const exact = Math.max(0, Number(source.exact_match_count || 0));
       const distinct = Math.max(0, Number(source.distinct_count || 0));
-      if (exact >= 4 && distinct >= 3) return 0.78;
-      if (exact >= 3 && distinct >= 2) return 0.68;
-      if (exact >= 2 && distinct >= 2) return 0.55;
+      const valuationRefs = Math.max(0, Number(source.valuation_reference_count || 0));
+
+      // Fire eller flere eksakte, robuste referanser er et sterkt
+      // markedsgrunnlag. AI skal da være kontrollanker, ikke hovedkilde.
+      if (exact >= 6 && valuationRefs >= 4 && distinct >= 4) return 0.95;
+      if (exact >= 4 && valuationRefs >= 3 && distinct >= 3) return 0.90;
+      if (exact >= 3 && valuationRefs >= 3 && distinct >= 2) return 0.78;
+      if (exact >= 2 && valuationRefs >= 2 && distinct >= 2) return 0.60;
       if (exact === 1) return 0.25;
       return 0;
     }
@@ -4743,6 +4802,19 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
           0.90,
           0.45 + Math.min(0.45, totalQuality * 0.35)
         );
+
+        // V14.0: når vi har minst fire eksakte eksterne referanser
+        // og de robuste referansene er nok, skal markedet være klart
+        // hovedankeret. Dette hindrer et lavt AI-estimat fra å trekke
+        // verdien unødvendig langt ned.
+        const strongWebReference =
+          sources.web_reference?.enabled &&
+          Number(sources.web_reference.exact_match_count || 0) >= 4 &&
+          Number(sources.web_reference.valuation_reference_count || 0) >= 3;
+
+        if (strongWebReference) {
+          marketWeight = Math.max(marketWeight, 0.85);
+        }
 
         if (marketCandidates.length >= 2) {
           marketWeight = Math.min(
@@ -5043,10 +5115,10 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       },
 
       market_engine_version:
-        "v13.9-exact-reference-web-fallback-structured",
+        "v14.0-robust-exact-reference-market-value",
 
       market_filter_version:
-        "v13.9-hard-model-reference-gate-exact-reference-web-fallback-structured",
+        "v14.0-hard-model-reference-gate-robust-exact-reference-market-value",
 
       buy_opportunities:
         buy_opportunities,
