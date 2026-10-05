@@ -3380,6 +3380,27 @@ Returner KUN gyldig JSON:
           ? built.queries.join(" | ")
           : String(built.queries || "");
 
+      /*
+       * V14.13 – DETERMINISTISK FENDER MIM TARGET-GATE
+       * ------------------------------------------------
+       * Når selve eBay-søkestrengen entydig beskriver Fender +
+       * Stratocaster + Mexico/MIM + år, skal den harde Fender-variantgaten
+       * aktiveres uavhengig av hvordan AI-en fylte de strukturerte feltene.
+       * Dette er viktig fordi et manglende "Mexico" i ett AI-felt tidligere
+       * kunne deaktivere gaten og la Squier slippe inn i exactPool.
+       *
+       * Søket er kun et sikkerhetssignal for MÅLIDENTITETEN. Det brukes ikke
+       * til å gjøre en annen variant tillatt.
+       */
+      const deterministicFenderMimTarget =
+        /\bfender\b/i.test(builtQueryText) &&
+        /\bstratocaster\b/i.test(builtQueryText) &&
+        /\b(?:mexico|mim|made\s+in\s+mexico)\b/i.test(builtQueryText) &&
+        /\b(?:19|20)\d{2}\b/.test(builtQueryText);
+
+      const hardFenderMimTarget =
+        Boolean(normalFenderMimQuery || deterministicFenderMimTarget);
+
       // V12.5: Ikke stol på søketeksten alene. En Fender MIM Stratocaster
       // med kjent år skal ha samme harde variantgate selv om AI/eBay-
       // metadata mangler "Mexico" i ett av feltene.
@@ -3488,7 +3509,7 @@ Returner KUN gyldig JSON:
             // V12.5: Siste uavhengige tittelkontroll før prisgrunnlaget.
             // Denne kjører selv om en tidligere AI-score skulle ha feilklassifisert treffet.
             !(
-              normalFenderMimQuery &&
+              hardFenderMimTarget &&
               /\b(?:squier(?:\s+series)?|fsr|62\s*(?:['’]s?|special)|50th\s+anniversary|anniversary|special(?:\s+edition)?|limited\s+edition|vintage\s+reissue|reissue|player(?:\s+ii|\s+2)?|vintera|classic\s+series|american\s+(?:standard|professional|performer|ultra|original|vintage)|professional\s+ii|signature\s+series)\b/i.test(String(x.title || ""))
             ) &&
             x.relevance_score >= 45 &&
@@ -3797,7 +3818,7 @@ Returner KUN gyldig JSON:
        * via en alternativ kodevei.
        */
       const finalExactPool =
-        normalFenderMimQuery
+        hardFenderMimTarget
           ? sanitizedExactPool.filter(item => {
               const title = String(item?.title || "");
               return !finalForbiddenFenderVariants.some(rx =>
@@ -3807,21 +3828,15 @@ Returner KUN gyldig JSON:
           : sanitizedExactPool;
 
       /*
-       * V14.12 – ABSOLUTT SLUTTGATE FOR FENDER MIM
+       * V14.13 – ABSOLUTT SLUTTGATE FOR FENDER MIM
        * ----------------------------------------------
        * Selv om en tidligere gate av en eller annen grunn ikke aktiveres,
        * skal en inkompatibel Fender-variant aldri kunne sendes til frontend
        * når målet er en normal Fender Stratocaster MIM med kjent år.
        * Dette er bevisst kun en tittelbasert sikkerhetsventil.
        */
-      const finalExactPoolV1412 =
-        targetIsFender &&
-        /\bstratocaster\b/i.test(structuredTargetText) &&
-        structuredTargetYear >= 1900 &&
-        structuredTargetYear <= 2100 &&
-        /\b(?:mexico|mim|made\s+in\s+mexico)\b/i.test(
-          `${structuredTargetText} ${structuredTargetCountry}`
-        )
+      const finalExactPoolV1413 =
+        hardFenderMimTarget
           ? finalExactPool.filter(item => {
               const title = String(item?.title || "");
               return !finalForbiddenFenderVariants.some(rx =>
@@ -3831,7 +3846,7 @@ Returner KUN gyldig JSON:
           : finalExactPool;
 
       const exactPool =
-        finalExactPoolV1412;
+        finalExactPoolV1413;
 
       /*
        * Same-model treff:
@@ -5463,7 +5478,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
        --------------------------------------------------------- */
 
     return res.status(200).json({
-      version: "v14.12",
+      version: "v14.13",
       name:
         parsed.name ||
         "Ukjent",
