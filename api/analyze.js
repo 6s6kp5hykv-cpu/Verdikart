@@ -3525,6 +3525,56 @@ Returner KUN gyldig JSON:
           .filter(Number.isFinite)
           .filter(x => x > 0);
 
+      /*
+       * V13.1 – KJØPSMULIGHETER / MULIGE KUPP
+       * ---------------------------------------
+       * Et svært lavt, men ellers godkjent eksakt treff skal ikke
+       * skjules bare fordi det er et prisavvik. Det kan være et reelt
+       * kupp for brukeren. Slike treff får derfor en egen kanal og
+       * påvirker ikke automatisk markedsverdien.
+       *
+       * 80 % av markedsmedianen = mulig kupp
+       * 70 % eller lavere = sterkt mulig kupp
+       *
+       * Vi bruker exactPool, ikke rå eBay-resultater. Det betyr at
+       * modell-/variantfilter, del-/tilbehørsfilter og øvrige harde
+       * kontroller allerede er passert før en annonse kan bli flagget.
+       */
+      const bargainReferenceMedian =
+        Number.isFinite(exactMedian)
+          ? exactMedian
+          : (Number.isFinite(marketMedian) ? marketMedian : null);
+
+      const buyOpportunities =
+        Number.isFinite(bargainReferenceMedian) && bargainReferenceMedian > 0
+          ? exactPool
+              .map(item => {
+                const price = Number(item.nok);
+                if (!Number.isFinite(price) || price <= 0) return null;
+
+                const ratio = price / bargainReferenceMedian;
+                const discountPercent = Math.round((1 - ratio) * 100);
+
+                if (ratio > 0.80) return null;
+
+                return {
+                  title: item.title || "Ukjent annonse",
+                  price_nok: Math.round(price),
+                  market_median_nok: Math.round(bargainReferenceMedian),
+                  discount_percent: Math.max(0, discountPercent),
+                  potential_saving_nok: Math.max(0, Math.round(bargainReferenceMedian - price)),
+                  level: ratio <= 0.70 ? "sterkt_mulig_kupp" : "mulig_kupp",
+                  marketplace: item.marketplace || "eBay",
+                  url: item.url || "",
+                  query: item.query || "",
+                  reason: "Godkjent eksakt sammenligning som ligger betydelig under markedsmedianen."
+                };
+              })
+              .filter(Boolean)
+              .sort((a, b) => b.discount_percent - a.discount_percent)
+              .slice(0, 8)
+          : [];
+
       const prices =
         finalPool
           .map(
@@ -4457,10 +4507,16 @@ Returner KUN gyldig JSON:
       market_sources: marketSources,
 
       market_engine_version:
-        "v12.8-market-first-pricing",
+        "v13.1-market-first-pricing",
 
       market_filter_version:
-        "v12.8-hard-title-year-variant-bicycle-gate-fender-gate-clean-display"
+        "v13.1-hard-title-year-variant-bicycle-gate-fender-gate-clean-display",
+
+      buy_opportunities:
+        buyOpportunities,
+
+      buy_opportunities_count:
+        buyOpportunities.length
     });
 
   } catch (e) {
