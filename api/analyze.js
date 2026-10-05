@@ -1,12 +1,5 @@
-// Kistefunn analysebackend v14.2
-// V12.7: brukeroppgitt spesifikk modellvariant brukes som sterkt signal når bildet støtter merke/serie.
-// V12.7: nummererte sykkelvarianter (f.eks. Trekking 4 vs Trekking 6) hardfiltreres i markedet.
+// Kistefunn analysebackend v11.8
 // Strengere identifikasjon + hardere markedsfilter + multi-source markedsmotor
-// - V11.9: feil i søkemotorens variabelrekkefølge rettet + versjonsmerking samlet.
-// - V11.8: farge og gripebrett/materiale er sekundære signaler og skal ikke låse markedssøket.
-// - V12.0: visningssøket bruker den faktiske rensede eBay-søkestrengen, slik at serienummerfragmenter som MN5 ikke vises.
-// - V11.7: videreføring av streng Fender-variantkontroll og mer robust markedsgrunnlag.
-// - V11.6: hard Fender-variantgate som ekskluderer 62/Special/American/Player/Vintera/Squier osv.
 //
 // Viktige endringer fra v7:
 // - Når konkret år er kjent, kan KUN annonser med samme år brukes i verdiberegningen.
@@ -25,9 +18,6 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Kupp- og prisundersøkelseslister må være tilgjengelige i hele handler-scope.
-    let buy_opportunities = [];
-    let priceInvestigations = [];
     const { image, description } = req.body || {};
 
     if (!image || typeof image !== "string") {
@@ -44,7 +34,7 @@ export default async function handler(req, res) {
     const contextText = userDescription
       ? `Brukeren har også skrevet følgende informasjon om gjenstanden:
 "${userDescription}"
-Bruk dette som et sterkt identifikasjonssignal. Hvis brukeren oppgir en konkret modell eller variant, skal dette brukes aktivt i identifikasjonen og markedssøket når bildet støtter samme merke og produktserie. Dette er spesielt viktig når flere modeller ser nesten identiske ut, som Haibike Trekking 4 og Trekking 6. Ikke avvis en brukerspesifikk modell bare fordi modellnummeret ikke kan leses i bildet. Hvis bildet viser et annet merke, en annen serie eller en tydelig annen variant, skal du markere konflikten i stedet for å gjette.`
+Bruk dette som ekstra identifikasjonssignal. Hvis brukeren oppgir en konkret modell, skal du kontrollere om bildet støtter den. Ikke avvis modellen bare fordi modellnavnet ikke kan leses i bildet, men ikke bruk den ukritisk dersom bildet viser et annet merke eller en tydelig annen modell.`
       : "Brukeren har ikke gitt noen ekstra informasjon om gjenstanden.";
 
     /* ---------------------------------------------------------
@@ -90,7 +80,7 @@ ${contextText}
 FOR SYKLER:
 Kontroller spesielt:
 - merkenavn/logo på ramme
-- modellnavn/dekal og eventuelle modellnummer
+- modellnavn/dekal
 - motorprodusent
 - motorplassering
 - batteritype og plassering
@@ -98,8 +88,6 @@ Kontroller spesielt:
 - hjulstørrelse
 - synlige komponenter
 - eventuelt produksjonsår
-
-Hvis brukeren skriver en konkret variant som "Haibike Trekking 4", skal du ikke bare svare "Haibike Trekking" dersom bildet er kompatibelt med brukerens opplysning. Bruk "Trekking 4" som modellidentitet for markedssøket, og oppgi at modellnummeret kommer fra brukerens tekst dersom det ikke kan leses på bildet.
 
 FOR GITARER:
 Kontroller spesielt:
@@ -173,8 +161,6 @@ Returner KUN gyldig JSON:
     "identifying_features": ["synlige kjennetegn"],
     "brand_evidence": "hva som støtter merkeidentifikasjonen",
     "model_evidence": "hva som støtter modellidentifikasjonen",
-    "user_model_evidence": "eventuell konkret modell oppgitt av brukeren og om bildet støtter den",
-    "identification_basis": "bilde, synlig merking, brukeropplysning eller kombinasjon",
     "modifications": "modifikasjoner eller ingen synlig",
     "condition_details": "detaljert tilstand",
     "value_factors": ["forhold som påvirker verdi"],
@@ -284,8 +270,6 @@ Returner KUN gyldig JSON:
       identifying_features: infoList(info.identifying_features),
       brand_evidence: infoText(info.brand_evidence),
       model_evidence: infoText(info.model_evidence),
-      user_model_evidence: infoText(info.user_model_evidence, "Ingen konkret modellopplysning fra bruker."),
-      identification_basis: infoText(info.identification_basis, "Bildeanalyse."),
       modifications: infoText(
         info.modifications,
         "Ingen sikre modifikasjoner bekreftet."
@@ -795,20 +779,7 @@ Returner KUN gyldig JSON:
           .trim();
       }
 
-      // V11.8: kosmetiske egenskaper skal ikke styre markedssoeket.
-      // Farge og gripebrett/materiale brukes som sekundære relevanssignaler
-      // i stedet. Dette hindrer f.eks. "black rosewood" fra å låse søket
-      // til et lite og ofte dyrere delmarked.
-      function removeGuitarCosmeticSearchTerms(value) {
-        return String(value || "")
-          .replace(/\b(?:black|svart|sort|white|hvit|olympic\s+white|red|rød|blue|blå|sunburst|sun\s+burst|3[- ]tone\s+sunburst|3ts)\b/gi, " ")
-          .replace(/\b(?:rosewood|palisander|maple|lønnet|ebony|pau\s+ferro|pauferro)\b/gi, " ")
-          .replace(/\b(?:fingerboard|fretboard|gripebrett)\b/gi, " ")
-          .replace(/\s+/g, " ")
-          .trim();
-      }
-
-      let model =
+      const model =
         removeSearchSerialTokens(
           removeSerialArtifacts(rawModel, serialNumber)
         );
@@ -833,41 +804,6 @@ Returner KUN gyldig JSON:
           )
         );
 
-      // V11.9: category må bestemmes før marketAiQuery brukes.
-      // I v11.8 lå marketAiQuery foran category-deklarasjonen, som kunne
-      // gi ReferenceError (Temporal Dead Zone) og stoppe hele analysen.
-      const category =
-        detectCategory(
-          parsed.name,
-          parsed.description,
-          info.type,
-          info.model,
-          info.brand,
-          parsed.ebay_search_query,
-          userText
-        );
-
-      /* V12.7: løft en spesifikk nummerert sykkelvariant fra brukerens tekst. */
-      let userSpecificModel = null;
-
-      if (category === "bicycle" && brand && model && userText) {
-        const baseModel = model.replace(/\s+/g, " ").trim();
-        if (baseModel.length >= 3) {
-          const escaped = baseModel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-          const rx = new RegExp("\\b" + escaped + "\\b\\s+([0-9]+(?:[.,][0-9]+)?(?:[A-Za-z]+)?)", "i");
-          const match = userText.match(rx);
-          if (match && match[1]) {
-            userSpecificModel = `${baseModel} ${match[1]}`.trim();
-            model = userSpecificModel;
-          }
-        }
-      }
-
-      const marketAiQuery =
-        category === "guitar"
-          ? removeGuitarCosmeticSearchTerms(aiQuery)
-          : aiQuery;
-
       const year =
         extractYear(info.year_or_period) ||
         extractYear(parsed.name) ||
@@ -889,6 +825,17 @@ Returner KUN gyldig JSON:
           info.type,
           info.model,
           info.year_or_period,
+          userText
+        );
+
+      const category =
+        detectCategory(
+          parsed.name,
+          parsed.description,
+          info.type,
+          info.model,
+          info.brand,
+          parsed.ebay_search_query,
           userText
         );
 
@@ -919,6 +866,19 @@ Returner KUN gyldig JSON:
       const targetSpecial =
         /\b(anniversary|50th ann|50th anniversary|special edition|62['’]? special)\b/.test(objectText);
 
+      // V11.8: konkret Fender Standard-variant og produksjonsland.
+      const targetStandard =
+        category === "guitar" &&
+        /^fender$/i.test(String(brand || "")) &&
+        /\bstratocaster\b/i.test(String(model || "")) &&
+        /\bstandard\b/i.test(String(model || ""));
+
+      const targetMexico =
+        category === "guitar" &&
+        /^fender$/i.test(String(brand || "")) &&
+        /\bstratocaster\b/i.test(String(model || "")) &&
+        country === "mexico";
+
       const hardYear =
         category === "guitar"
           ? year
@@ -938,17 +898,13 @@ Returner KUN gyldig JSON:
           brand &&
           model &&
           userText &&
-          userText.toLowerCase().includes(brand.toLowerCase()) &&
-          userText.toLowerCase().includes(model.toLowerCase())
+          userText.toLowerCase().includes(
+            brand.toLowerCase()
+          ) &&
+          userText.toLowerCase().includes(
+            model.toLowerCase()
+          )
         );
-
-      if (userModelHint && userSpecificModel) {
-        parsed.item_info.model = model;
-        parsed.item_info.user_model_evidence =
-          `Brukeren oppga ${model}. Bildet støtter merke/serie, men modellnummeret er ikke nødvendigvis lesbart i bildet.`;
-        parsed.item_info.identification_basis =
-          "Bilde + brukeroppgitt spesifikk modellvariant.";
-      }
 
       if (
         category === "bicycle" &&
@@ -1094,20 +1050,15 @@ Returner KUN gyldig JSON:
         candidates.push(`Fender Standard Stratocaster Mexico ${hardYear}`);
       }
 
-      if (marketAiQuery) {
-        candidates.push(marketAiQuery);
+      if (aiQuery) {
+        candidates.push(aiQuery);
       }
 
       const out = [];
       const seen = new Set();
 
       for (const raw of candidates) {
-        const normalizedRaw =
-          category === "guitar"
-            ? removeGuitarCosmeticSearchTerms(raw)
-            : raw;
-
-        const q = compact(normalizedRaw, 7);
+        const q = compact(raw, 7);
 
         if (!q || q.length < 4) continue;
 
@@ -1140,11 +1091,7 @@ Returner KUN gyldig JSON:
       const discoverySeen = new Set();
 
       function addDiscovery(value) {
-        const normalizedValue =
-          category === "guitar"
-            ? removeGuitarCosmeticSearchTerms(value)
-            : value;
-        const q = compact(normalizedValue, 7);
+        const q = compact(value, 7);
         if (!q || q.length < 4) return;
         const key = q.toLowerCase();
         if (discoverySeen.has(key)) return;
@@ -1189,12 +1136,9 @@ Returner KUN gyldig JSON:
         target_fingerboard: targetFingerboard,
         target_color: targetColor,
         target_special: targetSpecial,
+        target_standard: targetStandard,
+        target_mexico: targetMexico,
         user_model_hint: userModelHint,
-        user_model_text: userSpecificModel || null,
-        identification_basis:
-          userModelHint && userSpecificModel
-            ? "bilde + brukeroppgitt spesifikk modellvariant"
-            : "bildeanalyse",
         variant_uncertain: variantUncertain
       };
     }
@@ -1230,6 +1174,12 @@ Returner KUN gyldig JSON:
 
       const category =
         criteria.category || "generic";
+
+      // V11.8: exact-variant gate.
+      // true betyr at annonsen dokumenterer samme variant/produksjonsland.
+      // false betyr at treffet kan være relevant, men ikke er godt nok til
+      // å få status "exact" eller påvirke hovedverdien for et kjent år.
+      let strictVariantMatch = true;
 
       let score = 0;
       const reasons = [];
@@ -1419,16 +1369,6 @@ Returner KUN gyldig JSON:
          ------------------------------------------------------- */
 
       if (category === "bicycle") {
-        /*
-         * V12.9 – HARD BICYCLE LISTING GATE
-         * ----------------------------------
-         * A model query such as "Haibike Trekking 4" must never let a
-         * Trekking 6 (or another numbered Trekking sibling) become an
-         * exact comparable. We also reject bicycle components such as
-         * headset bearings, replacement parts and non-working bikes.
-         * These checks happen before normal relevance scoring so a high
-         * textual score can never override them.
-         */
         const bicyclePartTerms = [
           "akku schloss",
           "battery lock",
@@ -1454,27 +1394,6 @@ Returner KUN gyldig JSON:
           "bremsrotor",
           "brake lever",
           "bremshebel",
-          "headset",
-          "headset bearing",
-          "headset bearings",
-          "steuersatz",
-          "steuersatzlager",
-          "steuerlager",
-          "bearing",
-          "bearings",
-          "ersatzteil",
-          "replacement part",
-          "spare part",
-          "parts only",
-          "for parts",
-          "non working",
-          "non-working",
-          "not working",
-          "broken",
-          "damaged",
-          "repair project",
-          "needs repair",
-          "for repair",
           "charger",
           "ladegerät",
           "ladegerat",
@@ -1499,134 +1418,6 @@ Returner KUN gyldig JSON:
               ? "missing"
               : "not_required",
             reason: "sykkeldel/tilbehør"
-          };
-        }
-
-        /*
-         * V12.9 – HARD MODELL/VARIANT-GATE
-         * ----------------------------------
-         * V12.8 brukte `query` direkte her. `query` finnes ikke som lokal
-         * variabel i scoreListing(), og kunne derfor gi ReferenceError.
-         *
-         * I tillegg skal ikke alle tall i hele eBay-søket tolkes som
-         * modellnummer. Vi henter først variantnummer fra den faktiske
-         * modellidentiteten (brukeroppgitt modell + AI-modell), og bruker
-         * søkekonteksten bare som reserve. Årstall ignoreres.
-         *
-         * Resultat: Haibike Trekking 4 kan ikke få Trekking 6 som exact,
-         * same_model eller prisgrunnlag. Samme regel kan brukes på andre
-         * produkter med nummererte modeller.
-         */
-        const bicycleIdentityText =
-          `${criteria.user_model_text || ""} ${criteria.model || ""}`
-            .toLowerCase();
-
-        const bicycleQueryContext =
-          String(criteria.query_context || "").toLowerCase();
-
-        function extractModelVariantNumbers(text) {
-          return [
-            ...new Set(
-              (String(text || "").match(/\b\d+(?:[.,]\d+)?[a-z]*\b/g) || [])
-                .map(x => x.toLowerCase())
-                .filter(x => !/^19\d{2}$/.test(x))
-                .filter(x => !/^20\d{2}$/.test(x))
-            )
-          ];
-        }
-
-        let targetVariantNumbers =
-          extractModelVariantNumbers(bicycleIdentityText);
-
-        // Hvis AI-modellen er normalisert for mye, bruk søkekonteksten
-        // som reserve – men bare når identiteten ellers mangler nummer.
-        if (!targetVariantNumbers.length) {
-          targetVariantNumbers =
-            extractModelVariantNumbers(bicycleQueryContext);
-        }
-
-        if (targetVariantNumbers.length) {
-          const listingVariantNumbers =
-            extractModelVariantNumbers(t);
-
-          const missingTargetVariant =
-            targetVariantNumbers.some(
-              token => !listingVariantNumbers.includes(token)
-            );
-
-          if (missingTargetVariant) {
-            return {
-              score: -100,
-              accepted: false,
-              near_match: false,
-              year_match: year ? "missing" : "not_required",
-              reason: `annen modellvariant enn målet ${criteria.user_model_text || criteria.model || criteria.query_context}`
-            };
-          }
-        }
-
-        /*
-         * Ekstra eksplisitt sibling-gate for nummererte Trekking-modeller.
-         * Hvis målet er Trekking 4 og annonsen eksplisitt sier Trekking 6,
-         * skal den ut selv om andre deler av tittelen gir høy relevansscore.
-         */
-        const targetTrekkingMatch =
-          `${bicycleIdentityText} ${bicycleQueryContext}`
-            .match(/\btrekking\s+(\d+(?:[.,]\d+)?[a-z]*)\b/i);
-
-        if (targetTrekkingMatch) {
-          const targetTrekkingVariant = targetTrekkingMatch[1].toLowerCase();
-          const listingTrekkingMatches = [
-            ...t.matchAll(/\btrekking\s+(\d+(?:[.,]\d+)?[a-z]*)\b/gi)
-          ].map(m => m[1].toLowerCase());
-
-          if (
-            listingTrekkingMatches.length &&
-            listingTrekkingMatches.some(v => v !== targetTrekkingVariant)
-          ) {
-            return {
-              score: -100,
-              accepted: false,
-              near_match: false,
-              year_match: year ? "missing" : "not_required",
-              reason: `annen Haibike Trekking-variant enn ${targetTrekkingVariant}`
-            };
-          }
-
-          if (
-            listingTrekkingMatches.length &&
-            !listingTrekkingMatches.includes(targetTrekkingVariant)
-          ) {
-            return {
-              score: -100,
-              accepted: false,
-              near_match: false,
-              year_match: year ? "missing" : "not_required",
-              reason: `mangler riktig Haibike Trekking-variant ${targetTrekkingVariant}`
-            };
-          }
-        }
-
-        const bicycleBadConditionPatterns = [
-          /\bnon[- ]?working\b/i,
-          /\bnot\s+working\b/i,
-          /\bbroken\b/i,
-          /\bdamaged\b/i,
-          /\bneeds?\s+repair\b/i,
-          /\bfor\s+repair\b/i,
-          /\brepair\s+project\b/i,
-          /\bfor\s+parts\b/i,
-          /\bparts\s+only\b/i,
-          /\bincomplete\b/i
-        ];
-
-        if (bicycleBadConditionPatterns.some(rx => rx.test(t))) {
-          return {
-            score: -100,
-            accepted: false,
-            near_match: false,
-            year_match: year ? "missing" : "not_required",
-            reason: "defekt/skadet/til reparasjon"
           };
         }
 
@@ -2205,15 +1996,17 @@ Returner KUN gyldig JSON:
                 : null;
 
         if (criteria.target_fingerboard && listingFingerboard) {
-          if (criteria.target_fingerboard === listingFingerboard) {
-            score += 8;
-            reasons.push("samme gripebrett");
-          } else {
-            // V11.8: gripebrett/materiale er sekundært. Feil materiale
-            // skal ikke kaste ut en ellers riktig modell og årgang.
-            score -= 2;
-            reasons.push("annet gripebrett");
+          if (criteria.target_fingerboard !== listingFingerboard) {
+            return {
+              score: Math.max(0, score - 20),
+              accepted: false,
+              near_match: true,
+              year_match: year ? "missing" : "not_required",
+              reason: "annet gripebrett"
+            };
           }
+          score += 15;
+          reasons.push("samme gripebrett");
         }
 
         const listingSpecial =
@@ -2248,14 +2041,17 @@ Returner KUN gyldig JSON:
             .find(([, pattern]) => pattern.test(t))?.[0] || null;
 
           if (listingColor && listingColor !== criteria.target_color) {
-            // V11.8: farge er sekundær. En annen farge skal ikke
-            // ekskludere en ellers korrekt modell/variant/årgang.
-            score -= 1;
-            reasons.push("annen farge");
+            return {
+              score: Math.max(0, score - 15),
+              accepted: false,
+              near_match: true,
+              year_match: year ? "missing" : "not_required",
+              reason: "annen farge"
+            };
           }
 
           if (listingColor === criteria.target_color) {
-            score += 5;
+            score += 8;
             reasons.push("samme farge");
           }
         }
@@ -2303,6 +2099,40 @@ Returner KUN gyldig JSON:
             year_match: year ? "missing" : "not_required",
             reason: "Fender feil variant – ekskludert"
           };
+        }
+      }
+
+      /* -------------------------------------------------------
+         V11.8 – FENDER STANDARD + MEXICO EXACTNESS GATE
+         -------------------------------------------------------
+         En Fender Standard Stratocaster MIM skal ikke få "exact"
+         bare fordi annonsen sier Fender Stratocaster + riktig år.
+         "Standard" og produksjonsland Mexico må være dokumentert i
+         annonsetittelen for at treffet skal kunne brukes som eksakt
+         prisreferanse.
+      */
+      if (
+        category === "guitar" &&
+        brand === "fender" &&
+        /\\bstratocaster\\b/i.test(model)
+      ) {
+        const listingSaysStandard =
+          /\\bstandard\\b/.test(t) &&
+          /\\bstratocaster\\b/.test(t);
+
+        const listingSaysMexico =
+          /\\bmexic(?:o|an)\\b/.test(t) ||
+          /\\bmade\\s+in\\s+mexico\\b/.test(t) ||
+          /\\bmim\\b/.test(t);
+
+        if (criteria.target_standard && !listingSaysStandard) {
+          strictVariantMatch = false;
+          reasons.push("Standard ikke dokumentert");
+        }
+
+        if (criteria.target_mexico && !listingSaysMexico) {
+          strictVariantMatch = false;
+          reasons.push("Mexico ikke dokumentert");
         }
       }
 
@@ -2450,6 +2280,8 @@ Returner KUN gyldig JSON:
         same_model:
           yearMatch === "missing" &&
           accepted,
+        variant_match:
+          strictVariantMatch ? "exact" : "partial",
         year_match:
           yearMatch,
         reason:
@@ -2582,7 +2414,7 @@ Returner KUN gyldig JSON:
           // Bare, selektiv aspekttekst. Vi tar ikke med alle aspekter
           // fordi f.eks. "Pickup" ellers kan bli feiltolket som en del.
           if (
-            /year|manufactured|production|fretboard|fingerboard|\bboard\b|color|colour|finish|model|series|country|region|brand|type|body color|body colour/i.test(name)
+            /year|manufactured|production|fretboard|fingerboard|board|color|colour|finish|model|series|country|region|brand|type|body color|body colour/i.test(name)
           ) {
             aspectText.push(`${name}: ${cleanValues.join(", ")}`);
           }
@@ -2669,65 +2501,6 @@ Returner KUN gyldig JSON:
           scoringText,
           criteria
         );
-
-      /*
-       * V12.1 – ABSOLUTT FENDER STANDARD-GATE
-       * ---------------------------------------
-       * Siste sikkerhetsnett etter scoreListing().
-       *
-       * Problemet i tidligere versjoner var at AI/eBay noen ganger
-       * ikke satte criteria.brand/model helt rent. Da kunne f.eks.
-       * "Squier Series", "FSR" eller "62 Special" slippe gjennom
-       * selv om målet var en vanlig Fender Standard Stratocaster MIM.
-       *
-       * Når målet tydelig er Fender Stratocaster Made in Mexico og
-       * ikke selv er en spesialvariant, skal disse variantene fjernes
-       * fullstendig – både fra exact, same_model og nærmeste referanser.
-       */
-      const targetIdentityText =
-        `${criteria.brand || ""} ${criteria.manufacturer || ""} ${criteria.model || ""} ${criteria.type || ""} ${criteria.country || ""} ${criteria.user_model_hint || ""}`
-          .toLowerCase();
-
-      const targetIsFenderStratMim =
-        /\bfender\b/.test(targetIdentityText) &&
-        /\bstratocaster\b/.test(targetIdentityText) &&
-        /\b(?:made in mexico|mexico|mim)\b/.test(targetIdentityText);
-
-      if (
-        criteria.category === "guitar" &&
-        targetIsFenderStratMim &&
-        criteria.target_special !== true
-      ) {
-        const incompatibleFenderVariantPatterns = [
-          /\bsquier\b/,
-          /\bsquier\s+series\b/,
-          /\bfsr\b/,
-          /\bfender\s+special\s+run\b/,
-          /\bspecial\s+run\b/,
-          /\b62\s*(?:['’]s?|special)?\b/,
-          /\b50th\s+anniversary\b/,
-          /\banniversary\b/,
-          /\bspecial(?:\s+edition)?\b/,
-          /\blimited\s+edition\b/,
-          /\bvintage\s+reissue\b/,
-          /\breissue\b/,
-          /\bplayer(?:\s+ii|\s+2)?\b/,
-          /\bvintera\b/,
-          /\bclassic\s+series\b/,
-          /\bclassic\s+player\b/,
-          /\broad\s+worn\b/,
-          /\broad\s+worn\b/,
-          /\bamerican\s+(?:standard|professional|performer|ultra|original)\b/,
-          /\bprofessional\s+ii\b/,
-          /\bdeluxe\b/,
-          /\belite\b/,
-          /\bsignature\s+series\b/
-        ];
-
-        if (incompatibleFenderVariantPatterns.some(rx => rx.test(scoringText.toLowerCase()))) {
-          return null;
-        }
-      }
 
       // V11.8: HARD TITLE-YEAR GATE
       // Når målobjektet har kjent år, er år i selve annonsetittelen
@@ -2870,10 +2643,16 @@ Returner KUN gyldig JSON:
         // Manglende år er alltid same_model og skal aldri havne i
         // exact_listings eller i hovedverdigrunnlaget.
         if (criteria.year) {
-          if (relevance.year_match === "exact") {
+          if (
+            relevance.year_match === "exact" &&
+            relevance.variant_match === "exact"
+          ) {
             matchTier = "exact";
             valuationTier = "exact";
-          } else if (relevance.year_match === "missing") {
+          } else if (
+            relevance.year_match === "missing" &&
+            relevance.variant_match === "exact"
+          ) {
             matchTier = "same_model";
             valuationTier = "same_model";
           } else {
@@ -2881,41 +2660,13 @@ Returner KUN gyldig JSON:
             valuationTier = "near";
           }
         } else {
-          matchTier = "exact";
-          valuationTier = "exact";
-        }
-      }
-
-      // V12.4: dersom søket eksplisitt er Fender Stratocaster Made in Mexico,
-      // skal kjente konkurrerende varianter aldri kunne passere som exact.
-      // Dette er uavhengig av AI-klassifiseringen i criteria.
-      const hardQueryText = String(query || "").toLowerCase();
-      const hardTargetFromQuery =
-        /\bfender\b/.test(hardQueryText) &&
-        /\bstratocaster\b/.test(hardQueryText) &&
-        /\b(?:mexico|mim|made in mexico)\b/.test(hardQueryText) &&
-        criteria?.target_special !== true;
-
-      if (hardTargetFromQuery) {
-        const hardForbidden = [
-          /\bsquier(?:\s+series)?\b/i,
-          /\bfsr\b/i,
-          /\b62\s*(?:['’]s?|special)\b/i,
-          /\b50th\s+anniversary\b/i,
-          /\banniversary\b/i,
-          /\bspecial(?:\s+edition)?\b/i,
-          /\blimited\s+edition\b/i,
-          /\bvintage\s+reissue\b/i,
-          /\breissue\b/i,
-          /\bplayer(?:\s+ii|\s+2)?\b/i,
-          /\bvintera\b/i,
-          /\bclassic\s+series\b/i,
-          /\bamerican\s+(?:standard|professional|performer|ultra|original|vintage)\b/i,
-          /\bprofessional\s+ii\b/i,
-          /\bsignature\s+series\b/i
-        ];
-        if (hardForbidden.some(rx => rx.test(String(title || "")))) {
-          return null;
+          if (relevance.variant_match === "exact") {
+            matchTier = "exact";
+            valuationTier = "exact";
+          } else {
+            matchTier = "near";
+            valuationTier = "near";
+          }
         }
       }
 
@@ -2940,84 +2691,14 @@ Returner KUN gyldig JSON:
         year_match:
           relevance.year_match ||
           "not_required",
+        variant_match:
+          relevance.variant_match ||
+          "exact",
         match_tier:
           matchTier,
         valuation_tier:
           valuationTier
       };
-    }
-
-    /* ---------------------------------------------------------
-       V12.2 – FINAL FENDER COMPARABLE GATE
-       ---------------------------------------------------------
-       Dette filteret ligger helt etter eBay-resultatet og før annonsen
-       får lov til å bli en markedsreferanse. Det er med vilje uavhengig
-       av scoreListing(), slik at en feil eller uklar AI-klassifisering
-       ikke kan slippe en Squier/FSR/Special inn i prisgrunnlaget.
-    */
-    function isHardIncompatibleFenderComparable(title, aspectText, criteria) {
-      if (criteria?.category !== "guitar") return false;
-
-      const identity =
-        `${criteria?.brand || ""} ${criteria?.model || ""} ${criteria?.country || ""} ${criteria?.manufacturer || ""} ${criteria?.user_model_hint || ""}`
-          .toLowerCase();
-
-      // V12.4: bruk også selve søkestrengen som sikkerhetsnett.
-      // AI-en kan i enkelte kjøringer fylle criteria.country/model ufullstendig,
-      // selv om buildStrictQueries allerede har laget et eksplisitt
-      // "Fender ... Stratocaster ... Mexico"-søk.
-      const queryContext = String(criteria?.query_context || "").toLowerCase();
-
-      const isFenderStratMim =
-        (
-          /\bfender\b/.test(identity) &&
-          /\bstratocaster\b/.test(identity) &&
-          /\b(?:mexico|mim|made in mexico)\b/.test(identity)
-        ) ||
-        (
-          /\bfender\b/.test(queryContext) &&
-          /\bstratocaster\b/.test(queryContext) &&
-          /\b(?:mexico|mim|made in mexico)\b/.test(queryContext)
-        );
-
-      // Hvis søket eksplisitt er laget for en vanlig Fender MIM Stratocaster,
-      // skal vi IKKE stole på et feilaktig target_special-flagg fra AI.
-      // Special/62/anniversary må være eksplisitt en del av selve søket for
-      // at slike varianter skal tillates.
-      const queryRequestsSpecial =
-        /\b(?:62\s*(?:['’]s?|special)|special|anniversary|fsr|squier)\b/i.test(queryContext);
-
-      if (!isFenderStratMim || queryRequestsSpecial) {
-        return false;
-      }
-
-      const text = `${title || ""} ${aspectText || ""}`.toLowerCase();
-
-      const forbidden = [
-        /\bsquier(?:\s+series)?\b/,
-        /\bfsr\b/,
-        /\bfender\s+special\s+run\b/,
-        /\bspecial\s+run\b/,
-        /\b62\s*(?:['’]s?|special)\b/,
-        /\b50th\s+anniversary\b/,
-        /\banniversary\b/,
-        /\bspecial(?:\s+edition)?\b/,
-        /\blimited\s+edition\b/,
-        /\bvintage\s+reissue\b/,
-        /\breissue\b/,
-        /\bplayer(?:\s+ii|\s+2)?\b/,
-        /\bvintera\b/,
-        /\bclassic\s+series\b/,
-        /\bclassic\s+vibe\b/,
-        /\bamerican\s+(?:standard|professional|performer|ultra|original|vintage)\b/,
-        /\bprofessional\s+ii\b/,
-        /\bdeluxe\b/,
-        /\belite\b/,
-        /\bsignature\s+series\b/,
-        /\bmi[j]\b/
-      ];
-
-      return forbidden.some(rx => rx.test(text));
     }
 
     async function searchEbay(parsed) {
@@ -3201,18 +2882,6 @@ Returner KUN gyldig JSON:
                   );
 
                 if (prepared) {
-                  // V12.2: siste, uavhengige sikkerhetsnett.
-                  // Squier/FSR/Special/62 osv. skal ikke eksistere i
-                  // exact, same-model eller nærtreff når målet er en
-                  // vanlig Fender Stratocaster Made in Mexico.
-                  if (isHardIncompatibleFenderComparable(
-                    prepared.title,
-                    item?._ebay_aspect_text || "",
-                    { ...built, marketplace: result.marketplace, query_context: result.query }
-                  )) {
-                    continue;
-                  }
-
                   list.push(prepared);
                 }
               }
@@ -3248,16 +2917,6 @@ Returner KUN gyldig JSON:
           }
 
           seen.add(key);
-
-          // V12.2: siste sikkerhetsnett før noen markedsdata kan brukes.
-          if (isHardIncompatibleFenderComparable(
-            item.title,
-            item._ebay_aspect_text || "",
-            { ...built, query_context: built.queries.join(" | ") }
-          )) {
-            continue;
-          }
-
           all.push(item);
         }
       }
@@ -3291,64 +2950,10 @@ Returner KUN gyldig JSON:
        * exact kan brukes.
        */
 
-      // V12.5: ABSOLUTT SISTE FENDER-GATE.
-      // Eksakte referanser skal aldri kunne vise en inkompatibel Fender-variant.
-      // Denne filtreringen skjer direkte på `all`, rett før exactPool bygges.
-      const builtQueryText =
-        Array.isArray(built.queries)
-          ? built.queries.join(" | ")
-          : String(built.queries || "");
-
-      // V12.5: Ikke stol på søketeksten alene. En Fender MIM Stratocaster
-      // med kjent år skal ha samme harde variantgate selv om AI/eBay-
-      // metadata mangler "Mexico" i ett av feltene.
-      // V12.6: bruk selve markedssøket som siste sikkerhetssignal.
-      // Tidligere var denne gaten avhengig av built.category/brand/model.
-      // Hvis AI-en satte category feil eller feltene var tomme, kunne Squier
-      // derfor slippe gjennom selv om søket tydelig var Fender Stratocaster
-      // Mexico. Query-teksten er nå tilstrekkelig til å aktivere hardgaten.
-      const normalFenderMimQuery =
-        /\bfender\b/i.test(builtQueryText) &&
-        /\bstratocaster\b/i.test(builtQueryText) &&
-        /\b(?:mexico|mim|made in mexico)\b/i.test(builtQueryText);
-
-      if (normalFenderMimQuery) {
-        const finalForbiddenFenderVariants = [
-          /\bsquier(?:\s+series)?\b/i,
-          /\bfsr\b/i,
-          /\b62\s*(?:['’]s?|special)\b/i,
-          /\b50th\s+anniversary\b/i,
-          /\banniversary\b/i,
-          /\bspecial(?:\s+edition)?\b/i,
-          /\blimited\s+edition\b/i,
-          /\bvintage\s+reissue\b/i,
-          /\breissue\b/i,
-          /\bplayer(?:\s+ii|\s+2)?\b/i,
-          /\bvintera\b/i,
-          /\bclassic\s+series\b/i,
-          /\bamerican\s+(?:standard|professional|performer|ultra|original|vintage)\b/i,
-          /\bprofessional\s+ii\b/i,
-          /\bsignature\s+series\b/i
-        ];
-
-        for (let i = all.length - 1; i >= 0; i--) {
-          const listingTitle = String(all[i]?.title || "");
-          if (finalForbiddenFenderVariants.some(rx => rx.test(listingTitle))) {
-            all.splice(i, 1);
-          }
-        }
-      }
-
       const rawExactPool =
         all.filter(
           x =>
             x.match_tier === "exact" &&
-            // V12.5: Siste uavhengige tittelkontroll før prisgrunnlaget.
-            // Denne kjører selv om en tidligere AI-score skulle ha feilklassifisert treffet.
-            !(
-              normalFenderMimQuery &&
-              /\b(?:squier(?:\s+series)?|fsr|62\s*(?:['’]s?|special)|50th\s+anniversary|anniversary|special(?:\s+edition)?|limited\s+edition|vintage\s+reissue|reissue|player(?:\s+ii|\s+2)?|vintera|classic\s+series|american\s+(?:standard|professional|performer|ultra|original|vintage)|professional\s+ii|signature\s+series)\b/i.test(String(x.title || ""))
-            ) &&
             x.relevance_score >= 45 &&
             // V11.8 HARD TITLE-YEAR GATE: kjent år krever dokumentert
             // samme år i annonsen. Ingen fallback til manglende år.
@@ -3358,64 +2963,35 @@ Returner KUN gyldig JSON:
       // Ekstra sikkerhetskontroll før prisberegning og visning.
       // Dette gjør at en annonse uten år aldri kan bli med i exactPool
       // selv om et senere steg skulle endre match_tier.
-      /*
-       * V13.6 – HARD MODELLNUMMER-GATE
-       * -------------------------------
-       * Når Kistefunn kjenner en spesifikk modellreferanse, f.eks.
-       * Patek Philippe 5308G-001, er merke + serie ikke nok.
-       *
-       * 5308G-001 skal ikke sammenlignes med 5304/301R-001,
-       * 5204/1R-001, 5905/1A001 osv.
-       *
-       * Vi normaliserer bindestrek, skråstrek og mellomrom slik at
-       * 5308G-001 / 5308G 001 / 5308G001 behandles som samme referanse.
-       * Hvis modellen ikke har en tydelig spesifikk modellkode, brukes
-       * den eksisterende exact-logikken uendret.
-       */
-      function normalizeModelCode(value) {
-        return String(value || "")
-          .toLowerCase()
-          .replace(/[^a-z0-9]/g, "");
-      }
-
-      const targetModelCandidates = [
-        built.model,
-        built.user_model_hint,
-        built.model_number,
-        built.reference,
-        parsed?.model
-      ]
-        .map(v => String(v || "").trim())
-        .filter(Boolean);
-
-      const targetModelCode =
-        targetModelCandidates
-          .map(normalizeModelCode)
-          .find(code =>
-            code.length >= 4 &&
-            /[a-z]/i.test(code) &&
-            /\d/.test(code)
-          ) || "";
-
-      const modelCodeExactPool =
-        targetModelCode
-          ? rawExactPool.filter(x => {
-              const listingText =
-                normalizeModelCode(
-                  `${x.title || ""} ${x._ebay_aspect_text || ""}`
-                );
-              return listingText.includes(targetModelCode);
-            })
-          : rawExactPool;
-
       const strictExactPool =
         built.year
-          ? modelCodeExactPool.filter(x => {
-              const titleYears = extractYears(String(x.title || "").toLowerCase());
+          ? rawExactPool.filter(x => {
+              const titleText = String(x.title || "").toLowerCase();
+              const titleYears = extractYears(titleText);
+
+              const strictFenderStandard =
+                built.target_standard &&
+                /^fender$/i.test(String(built.brand || "")) &&
+                /\\bstratocaster\\b/i.test(String(built.model || ""));
+
+              const standardOk =
+                !strictFenderStandard ||
+                (/\\bstandard\\b/.test(titleText) &&
+                 /\\bstratocaster\\b/.test(titleText));
+
+              const mexicoOk =
+                !built.target_mexico ||
+                /\\bmexic(?:o|an)\\b/.test(titleText) ||
+                /\\bmade\\s+in\\s+mexico\\b/.test(titleText) ||
+                /\\bmim\\b/.test(titleText);
+
               return x.year_match === "exact" &&
-                titleYears.includes(Number(built.year));
+                x.variant_match === "exact" &&
+                titleYears.includes(Number(built.year)) &&
+                standardOk &&
+                mexicoOk;
             })
-          : modelCodeExactPool;
+          : rawExactPool;
 
       /*
        * V11.1: stabiliser eksakte markedsreferanser.
@@ -3515,44 +3091,10 @@ Returner KUN gyldig JSON:
           valuationPool
         );
 
-      const valuationFilterApplied =
-        filteredPool.length >= 2;
-
       const finalPool =
-        valuationFilterApplied
+        filteredPool.length >= 2
           ? filteredPool
           : valuationPool;
-
-      /*
-       * V13.0: SKILL MELLOM SAMMENLIGNBAR OG VERDIBERETTIGET
-       * ------------------------------------------------------
-       * En annonse kan være en ekte, god modellmatch og derfor vises som
-       * "eksakt markedsreferanse", samtidig som et senere prisfilter
-       * vurderer den som et statistisk avvik. Tidligere kunne UI-et vise
-       * en slik annonse som eksakt uten å forklare at den ikke påvirket
-       * verdien.
-       *
-       * Vi skiller derfor eksplisitt mellom:
-       * 1) exactPool = godkjente sammenlignbare annonser
-       * 2) finalPool = annonser som faktisk påvirker verdien
-       * 3) valuationExcluded = godkjente sammenligninger som ble filtrert
-       *    bort fra selve verdiberegningen.
-       */
-      const finalPoolKeys = new Set(
-        finalPool.map(
-          x =>
-            `${String(x.title || "").toLowerCase().trim()}|${Math.round(Number(x.nok) || 0)}|${String(x.url || "")}`
-        )
-      );
-
-      const valuationExcluded =
-        valuationFilterApplied
-          ? valuationPool.filter(x => {
-              const key =
-                `${String(x.title || "").toLowerCase().trim()}|${Math.round(Number(x.nok) || 0)}|${String(x.url || "")}`;
-              return !finalPoolKeys.has(key);
-            })
-          : [];
 
       const nearMatches =
         all
@@ -3617,158 +3159,6 @@ Returner KUN gyldig JSON:
           Math.round(sameModelMedian);
       }
 
-      /*
-       * V13.5 – SIKRERE KUPP-FILTER
-       * ----------------------------
-       * Et ekstremt lavt enkeltfunn skal ikke automatisk bli kalt et kupp.
-       *
-       * Vi bruker fortsatt KUN exactPool, men legger på et robust
-       * distribusjonsfilter:
-       *   - minst 4 eksakte sammenligninger før "mulig kupp"
-       *   - minst 5 eksakte sammenligninger før "sterkt mulig kupp"
-       *   - svært ekstreme avvik flagges som "pris som bør undersøkes"
-       *   - et slikt avvik påvirker ikke markedsverdien
-       *
-       * Dette beskytter mot f.eks. én feilregistrert annonse, en
-       * mistenkelig pris eller en ufullstendig vare som har passert
-       * tittel-/modellfilteret.
-       */
-      const bargainReferenceMedian =
-        Number.isFinite(exactMedian)
-          ? exactMedian
-          : (Number.isFinite(marketMedian) ? marketMedian : null);
-
-      const exactPositiveItems =
-        exactPool
-          .map(item => ({
-            item,
-            price: Number(item.nok)
-          }))
-          .filter(x => Number.isFinite(x.price) && x.price > 0);
-
-      const exactPositivePrices =
-        exactPositiveItems.map(x => x.price);
-
-      const exactQ1 =
-        percentile(exactPositivePrices, 0.25);
-
-      const exactQ3 =
-        percentile(exactPositivePrices, 0.75);
-
-      const exactIqr =
-        Number.isFinite(exactQ1) && Number.isFinite(exactQ3)
-          ? Math.max(0, exactQ3 - exactQ1)
-          : null;
-
-      const robustLowFence =
-        Number.isFinite(exactQ1) && Number.isFinite(exactIqr)
-          ? Math.max(0, exactQ1 - 1.5 * exactIqr)
-          : null;
-
-      priceInvestigations = [];
-
-      buy_opportunities =
-        Number.isFinite(bargainReferenceMedian) &&
-        bargainReferenceMedian > 0 &&
-        exactPositiveItems.length >= 4
-          ? exactPositiveItems
-              .map(({ item, price }) => {
-                const ratio = price / bargainReferenceMedian;
-                const discountPercent = Math.round((1 - ratio) * 100);
-
-                if (ratio > 0.80) return null;
-
-                /*
-                 * Ekstremt avvik:
-                 * - minst 50 % under median, eller
-                 * - under robust IQR-nedre grense.
-                 *
-                 * Dette skal ikke presenteres som et sikkert kupp.
-                 */
-                const extremeByMedian =
-                  ratio < 0.50;
-
-                const extremeByIqr =
-                  Number.isFinite(robustLowFence) &&
-                  price < robustLowFence;
-
-                const isolatedExtreme =
-                  (extremeByMedian || extremeByIqr) &&
-                  exactPositiveItems.length < 6;
-
-                if (isolatedExtreme) {
-                  priceInvestigations.push({
-                    title: item.title || "Ukjent annonse",
-                    price_nok: Math.round(price),
-                    market_median_nok: Math.round(bargainReferenceMedian),
-                    discount_percent: Math.max(0, discountPercent),
-                    marketplace: item.marketplace || "eBay",
-                    url: item.url || "",
-                    query: item.query || "",
-                    reason:
-                      "Prisen er et uvanlig stort avvik fra de øvrige eksakte sammenligningene. Kistefunn kaller derfor ikke dette et kupp uten mer dokumentasjon."
-                  });
-                  return null;
-                }
-
-                /*
-                 * "Sterkt mulig kupp" krever både større datagrunnlag
-                 * og at prisen ikke er et ekstremt isolert avvik.
-                 */
-                const strongBargain =
-                  ratio <= 0.70 &&
-                  exactPositiveItems.length >= 5;
-
-                return {
-                  title: item.title || "Ukjent annonse",
-                  price_nok: Math.round(price),
-                  market_median_nok: Math.round(bargainReferenceMedian),
-                  discount_percent: Math.max(0, discountPercent),
-                  potential_saving_nok:
-                    Math.max(
-                      0,
-                      Math.round(
-                        bargainReferenceMedian - price
-                      )
-                    ),
-                  level:
-                    strongBargain
-                      ? "sterkt_mulig_kupp"
-                      : "mulig_kupp",
-                  marketplace: item.marketplace || "eBay",
-                  url: item.url || "",
-                  query: item.query || "",
-                  reason:
-                    "Godkjent eksakt sammenligning som ligger betydelig under markedsmedianen og ikke er et ekstremt isolert prisavvik."
-                };
-              })
-              .filter(Boolean)
-              .sort(
-                (a, b) =>
-                  b.discount_percent -
-                  a.discount_percent
-              )
-              .slice(0, 8)
-          : [];
-
-      /*
-       * Et svært lavt funn kan fortsatt være interessant for brukeren,
-       * men skal vises separat som noe som bør undersøkes.
-       */
-      priceInvestigations
-        .sort(
-          (a, b) =>
-            b.discount_percent -
-            a.discount_percent
-        );
-
-      /*
-       * Frontend kan bruke denne listen senere. Den er bevisst separat
-       * fra buy_opportunities slik at "pris som bør undersøkes" aldri
-       * blir presentert som et kupp.
-       */
-
-
       const successfulQueries =
         [
           ...new Set(
@@ -3777,9 +3167,6 @@ Returner KUN gyldig JSON:
             )
           )
         ];
-
-      const exact_model_code_gate =
-        targetModelCode || null;
 
       const successfulMarketplaces =
         [
@@ -3880,12 +3267,6 @@ Returner KUN gyldig JSON:
         exact_price_filter_removed:
           Math.max(0, balancedRawExactPool.length - exactPool.length),
 
-        valuation_filter_applied:
-          valuationFilterApplied,
-
-        valuation_excluded_count:
-          valuationExcluded.length,
-
         same_model_match_count:
           sameModelPool.length,
 
@@ -3958,12 +3339,6 @@ Returner KUN gyldig JSON:
               built.user_model_hint
             ),
 
-          user_model_text:
-            built.user_model_text || null,
-
-          identification_basis:
-            built.identification_basis || "bildeanalyse",
-
           detected_year:
             built.detected_year,
 
@@ -4009,11 +3384,12 @@ Returner KUN gyldig JSON:
                 match_tier:
                   item.match_tier,
                 year_match:
-                  item.year_match
+                  item.year_match,
+                variant_match:
+                  item.variant_match
               })
             ),
 
-        // V12.6: exactPool er allerede hard-filtrert mot Squier/FSR/Special osv.
         exact_listings:
           exactPool
             .slice(0, 12)
@@ -4037,46 +3413,11 @@ Returner KUN gyldig JSON:
                   "exact",
                 year_match:
                   item.year_match,
-                valuation_included:
-                  finalPoolKeys.has(
-                    `${String(item.title || "").toLowerCase().trim()}|${Math.round(Number(item.nok) || 0)}|${String(item.url || "")}`
-                  ),
-                valuation_exclusion_reason:
-                  valuationExcluded.some(x => x === item)
-                    ? "prisavvik filtrert fra verdiberegningen"
-                    : null,
                 exact_year_verified:
                   !built.year ||
                   (item.year_match === "exact" &&
+                    item.variant_match === "exact" &&
                     extractYears(String(item.title || "").toLowerCase()).includes(Number(built.year)))
-              })
-            ),
-
-        valuation_excluded_listings:
-          valuationExcluded
-            .slice(0, 12)
-            .map(
-              item => ({
-                title:
-                  item.title,
-                price:
-                  item.price,
-                price_nok:
-                  item.nok,
-                url:
-                  item.url,
-                query:
-                  item.query,
-                marketplace:
-                  item.marketplace,
-                relevance_score:
-                  item.relevance_score,
-                match_tier:
-                  item.match_tier,
-                year_match:
-                  item.year_match,
-                reason:
-                  "prisavvik filtrert fra verdiberegningen"
               })
             ),
 
@@ -4098,7 +3439,9 @@ Returner KUN gyldig JSON:
               match_tier:
                 "near",
               year_match:
-                item.year_match
+                item.year_match,
+              variant_match:
+                item.variant_match
             })
           )
       };
@@ -4129,23 +3472,6 @@ Returner KUN gyldig JSON:
       };
     }
 
-    // V12.7: vis og bruk den spesifikke modellen brukeren oppga når
-    // bildet støtter samme merke/serie.
-    if (ebay?.filtering?.user_model_hint && ebay?.filtering?.user_model_text) {
-      const confirmedUserModel = String(ebay.filtering.user_model_text).trim();
-      if (confirmedUserModel) {
-        itemInfo.model = confirmedUserModel;
-        itemInfo.user_model_evidence =
-          `Brukeren oppga ${confirmedUserModel}. Bildet støtter merke/serie; modellvarianten er hentet fra brukerens opplysning.`;
-        itemInfo.identification_basis =
-          ebay.filtering.identification_basis || "Bilde + brukeroppgitt spesifikk modellvariant.";
-        if (String(itemInfo.brand || "").toLowerCase() === "haibike" && String(itemInfo.type || "").toLowerCase().includes("sykkel")) {
-          parsed.name = `${itemInfo.brand} ${confirmedUserModel} elsykkel`;
-        }
-        parsed.confidence = "høy";
-      }
-    }
-
     /* ---------------------------------------------------------
        7. MARKEDSMOTOR
        ---------------------------------------------------------
@@ -4159,379 +3485,6 @@ Returner KUN gyldig JSON:
        - Hver kilde kan få egen vekt og kvalitetspoeng.
        - Frontend beholder de gamle feltene for bakoverkompatibilitet.
        --------------------------------------------------------- */
-
-    /*
-     * V13.7 – EKSAKT REFERANSE WEB-FALLBACK
-     * --------------------------------------
-     * Hvis eBay ikke finner nok eksakte treff på en kjent modellreferanse,
-     * bruker vi OpenAI Responses API + web_search for å finne aktuelle
-     * markedsreferanser på andre nettsteder.
-     *
-     * Søket er låst til samme modellreferanse. Andre modeller skal ikke
-     * brukes som prisgrunnlag.
-     */
-    async function searchExactReferenceWeb(referenceCode, brand, modelName) {
-      /*
-       * V13.9 – ROBUST WEB-REFERANSE-SØK
-       * --------------------------------
-       * Web-søket bruker nå Structured Outputs slik at resultatet faktisk
-       * kommer tilbake som maskinlesbar JSON. Tidligere stolte vi på at
-       * output_text alltid var ren JSON, noe som kan feile når web-søk
-       * legger til tekst/citasjoner rundt svaret.
-       *
-       * Referansen er fortsatt hardlåst: 5308G-001 kan aldri bruke 5304,
-       * 5204, 5905 eller andre modeller som eksakt prisgrunnlag.
-       */
-      const code = String(referenceCode || "").trim();
-      const brandText = String(brand || "").trim();
-      const modelText = String(modelName || "").trim();
-
-      function normalizeModelCode(value) {
-        return String(value || "")
-          .toLowerCase()
-          .replace(/[^a-z0-9]/g, "");
-      }
-
-      if (!code || code.length < 4 || !process.env.OPENAI_API_KEY) {
-        return {
-          enabled: false,
-          status: "not_available",
-          reason: "Ingen spesifikk modellreferanse eller API-nøkkel.",
-          exact_match_count: 0,
-          distinct_count: 0,
-          value_nok: null,
-          low_nok: null,
-          high_nok: null,
-          references: []
-        };
-      }
-
-      try {
-        const normalizedTarget = normalizeModelCode(code);
-
-        const searchPrompt = `
-Søk på nettet etter AKTUELLE PRISER for NØYAKTIG produktreferanse "${code}".
-
-Merke: ${brandText}
-Modell: ${modelText}
-Eksakt referanse: ${code}
-
-KRITISK MATCH-REGEL:
-- En kilde teller bare hvis siden/listingen selv viser den eksakte referansen "${code}".
-- ${code} må være identisk med referansen, med bindestrek, mellomrom og store/små bokstaver ignorert.
-- Ikke bruk 5304, 5204, 5905 eller andre Patek Philippe Grand Complications som erstatning.
-- Ikke bruk generelle artikler, auksjonsestimater, prisguider, forum eller sider uten en faktisk oppgitt pris.
-- Prioriter seriøse forhandlere, markedsplasser og produsent.
-- Se etter sider der både "${code}" og en konkret pris faktisk finnes.
-
-Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eksakt pris, returner en tom references-liste.
-`;
-
-        const r = await fetch("https://api.openai.com/v1/responses", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
-          },
-          body: JSON.stringify({
-            model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
-            tools: [{ type: "web_search" }],
-            tool_choice: "required",
-            input: searchPrompt,
-            text: {
-              format: {
-                type: "json_schema",
-                name: "exact_reference_market_prices",
-                description: "Eksakte markedspriser for én konkret produktreferanse.",
-                strict: true,
-                schema: {
-                  type: "object",
-                  additionalProperties: false,
-                  properties: {
-                    references: {
-                      type: "array",
-                      maxItems: 8,
-                      items: {
-                        type: "object",
-                        additionalProperties: false,
-                        properties: {
-                          reference: { type: "string" },
-                          title: { type: "string" },
-                          url: { type: "string" },
-                          price: { type: "number" },
-                          currency: { type: "string" },
-                          source_type: { type: "string" },
-                          exact_reference_evidence: { type: "string" }
-                        },
-                        required: [
-                          "reference",
-                          "title",
-                          "url",
-                          "price",
-                          "currency",
-                          "source_type",
-                          "exact_reference_evidence"
-                        ]
-                      }
-                    }
-                  },
-                  required: ["references"]
-                }
-              }
-            }
-          })
-        });
-
-        if (!r.ok) {
-          const errorText = await r.text().catch(() => "");
-          return {
-            enabled: false,
-            status: "web_search_error",
-            reason: `Web-søk feilet (${r.status})${errorText ? `: ${errorText.slice(0, 180)}` : "."}`,
-            exact_match_count: 0,
-            distinct_count: 0,
-            value_nok: null,
-            low_nok: null,
-            high_nok: null,
-            references: []
-          };
-        }
-
-        const data = await r.json();
-        const outputText = String(data?.output_text || "").trim();
-
-        let parsedWeb = null;
-        if (outputText) {
-          try {
-            parsedWeb = JSON.parse(outputText);
-          } catch (_) {
-            const match = outputText.match(/\{[\s\S]*\}/);
-            if (match) {
-              try { parsedWeb = JSON.parse(match[0]); } catch (_) {}
-            }
-          }
-        }
-
-        // Fallback for environments where output_text is not populated by the SDK/API response.
-        if (!parsedWeb && Array.isArray(data?.output)) {
-          const outputParts = [];
-          for (const item of data.output) {
-            if (Array.isArray(item?.content)) {
-              for (const part of item.content) {
-                if (part?.type === "output_text" && typeof part.text === "string") {
-                  outputParts.push(part.text);
-                }
-              }
-            }
-          }
-          const fallbackText = outputParts.join("\n").trim();
-          if (fallbackText) {
-            try {
-              parsedWeb = JSON.parse(fallbackText);
-            } catch (_) {
-              const match = fallbackText.match(/\{[\s\S]*\}/);
-              if (match) {
-                try { parsedWeb = JSON.parse(match[0]); } catch (_) {}
-              }
-            }
-          }
-        }
-
-        const references = Array.isArray(parsedWeb?.references)
-          ? parsedWeb.references
-              .map(item => ({
-                reference: String(item?.reference || "").trim(),
-                title: String(item?.title || "").trim(),
-                url: String(item?.url || "").trim(),
-                price: Number(item?.price),
-                currency: String(item?.currency || "").trim().toUpperCase(),
-                price_nok: null,
-                source_type: String(item?.source_type || "").trim(),
-                exact_reference_evidence: String(item?.exact_reference_evidence || "").trim()
-              }))
-              .filter(item => {
-                const normalizedText = normalizeModelCode(
-                  `${item.reference} ${item.title} ${item.exact_reference_evidence}`
-                );
-                return (
-                  normalizedTarget &&
-                  normalizedText.includes(normalizedTarget) &&
-                  item.url.startsWith("http") &&
-                  Number.isFinite(item.price) &&
-                  item.price > 0 &&
-                  item.price < 1000000000 &&
-                  item.currency.length === 3
-                );
-              })
-          : [];
-
-        // Convert source prices to NOK on the server instead of asking the web-search model to calculate currency conversion.
-        const converted = [];
-        for (const item of references) {
-          let priceNok = null;
-          if (item.currency === "NOK") {
-            priceNok = item.price;
-          } else {
-            try {
-              const rate = await getExchangeRate(item.currency, "NOK");
-              if (Number.isFinite(rate) && rate > 0) {
-                priceNok = item.price * rate;
-              }
-            } catch (_) {}
-          }
-
-          if (Number.isFinite(priceNok) && priceNok > 0 && priceNok < 1000000000) {
-            converted.push({
-              ...item,
-              price_nok: Math.round(priceNok)
-            });
-          }
-        }
-
-        // Deduplicate by URL + rounded NOK price.
-        const unique = [];
-        const seen = new Set();
-        for (const item of converted) {
-          const key = `${item.url}|${Math.round(item.price_nok)}`;
-          if (!seen.has(key)) {
-            seen.add(key);
-            unique.push(item);
-          }
-        }
-
-        const values = unique
-          .map(x => x.price_nok)
-          .filter(Number.isFinite)
-          .sort((a, b) => a - b);
-
-        /*
-         * V14.0 – ROBUST EKSAKT-REFERANSE VERDIBEREGNING
-         * ------------------------------------------------
-         * Alle eksakte referanser skal fortsatt vises, men én svært høy
-         * eller lav aktiv forhandlerpris skal ikke alene få bestemme
-         * markedsverdien. Vi bruker IQR (interkvartilavstand) til å finne
-         * statistiske avvik og beregner markedsverdien fra de robuste
-         * treffene. Avvik beholdes som synlige referanser, men merkes som
-         * ikke brukt i verdiberegningen.
-         */
-        let valuationValues = values.slice();
-        let outlierIndexes = new Set();
-
-        if (values.length >= 4) {
-          const q1 = values[Math.floor((values.length - 1) * 0.25)];
-          const q3 = values[Math.floor((values.length - 1) * 0.75)];
-          const iqr = q3 - q1;
-          const lowerFence = q1 - 1.5 * iqr;
-          const upperFence = q3 + 1.5 * iqr;
-
-          const candidateValues = values.filter(v =>
-            v >= lowerFence && v <= upperFence
-          );
-
-          if (candidateValues.length >= 3 && candidateValues.length < values.length) {
-            valuationValues = candidateValues;
-          }
-
-          for (let i = 0; i < unique.length; i++) {
-            const v = Number(unique[i]?.price_nok);
-            if (Number.isFinite(v) && !valuationValues.includes(v)) {
-              outlierIndexes.add(i);
-            }
-          }
-        }
-
-        const valuationMedian = median(valuationValues);
-        const valuationLow = valuationValues[0];
-        const valuationHigh = valuationValues[valuationValues.length - 1];
-
-        const referencesWithValuation = unique.map((item, index) => ({
-          ...item,
-          valuation_included: !outlierIndexes.has(index),
-          valuation_exclusion_reason: outlierIndexes.has(index)
-            ? "Ekstremt prisavvik – beholdes som referanse, men brukes ikke til markedsverdien."
-            : "Eksakt referanse brukt i markedsverdien."
-        }));
-
-        if (!values.length) {
-          return {
-            enabled: false,
-            status: "no_exact_web_prices",
-            reason: "Ingen verifiserbare priser på eksakt modellreferanse ble funnet.",
-            exact_match_count: 0,
-            distinct_count: 0,
-            value_nok: null,
-            low_nok: null,
-            high_nok: null,
-            references: []
-          };
-        }
-
-        return {
-          enabled: true,
-          status: "ok",
-          reason: outlierIndexes.size
-            ? `Eksakte referansepriser funnet. ${outlierIndexes.size} ekstremt prisavvik er ikke brukt i markedsverdien.`
-            : "Eksakte referansepriser funnet via web-søk.",
-          exact_match_count: values.length,
-          distinct_count: new Set(values.map(v => Math.round(v))).size,
-          value_nok: Math.round(valuationMedian),
-          low_nok: Math.round(valuationLow),
-          high_nok: Math.round(valuationHigh),
-          valuation_reference_count: valuationValues.length,
-          outlier_count: outlierIndexes.size,
-          references: referencesWithValuation.slice(0, 8)
-        };
-      } catch (error) {
-        return {
-          enabled: false,
-          status: "web_search_exception",
-          reason: error?.message || "Ukjent web-søkfeil.",
-          exact_match_count: 0,
-          distinct_count: 0,
-          value_nok: null,
-          low_nok: null,
-          high_nok: null,
-          references: []
-        };
-      }
-    }
-
-    // V13.7.1 – WEB-REFERANSE-FIKS
-    // targetModelCode ble tidligere deklarert inne i markedsblokken og
-    // var derfor ikke tilgjengelig her når web-fallbacken skulle kjøre.
-    // Vi beregner referansekoden på nytt i riktig scope.
-    // V13.7.3 – GLOBAL MODELLREFERANSE-NORMALISERING
-    // Web-fallbacken kjører utenfor blokken som inneholder v13.6-gaten.
-    // Derfor må funksjonen være tilgjengelig i dette scopet også.
-    function normalizeModelCode(value) {
-      return String(value || "")
-        .toLowerCase()
-        .replace(/[^a-z0-9]/g, "");
-    }
-
-    const webTargetModelCandidates = [
-      itemInfo?.model,
-      itemInfo?.model_number,
-      itemInfo?.reference,
-      parsed?.model,
-      parsed?.name
-    ]
-      .map(v => String(v || "").trim())
-      .filter(Boolean);
-
-    const webTargetModelCode =
-      webTargetModelCandidates
-        .map(normalizeModelCode)
-        .find(code =>
-          code.length >= 4 &&
-          /[a-z]/i.test(code) &&
-          /\d/.test(code)
-        ) || "";
-
-    const webReferenceSearch =
-      webTargetModelCode && Number(ebay?.exact_match_count || 0) < 2
-        ? await searchExactReferenceWeb(webTargetModelCode, itemInfo.brand, itemInfo.model || parsed.name)
-        : { enabled: false, status: "not_needed", reason: "eBay har tilstrekkelig eksakt grunnlag.", exact_match_count: 0, distinct_count: 0, value_nok: null, low_nok: null, high_nok: null, references: [] };
 
     const marketSources = {
       ai: {
@@ -4561,21 +3514,6 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
         exact_match_count: Number(ebay?.exact_match_count || 0),
         same_model_match_count: Number(ebay?.same_model_match_count || 0),
         distinct_count: Number(ebay?.distinct_valuation_count || 0)
-      },
-
-      web_reference: {
-        enabled: Boolean(webReferenceSearch?.enabled),
-        value_nok: Number.isFinite(Number(webReferenceSearch?.value_nok)) ? Math.round(Number(webReferenceSearch.value_nok)) : null,
-        low_nok: Number.isFinite(Number(webReferenceSearch?.low_nok)) ? Math.round(Number(webReferenceSearch.low_nok)) : null,
-        high_nok: Number.isFinite(Number(webReferenceSearch?.high_nok)) ? Math.round(Number(webReferenceSearch.high_nok)) : null,
-        exact_match_count: Number(webReferenceSearch?.exact_match_count || 0),
-        same_model_match_count: 0,
-        distinct_count: Number(webReferenceSearch?.distinct_count || 0),
-        valuation_reference_count: Number(webReferenceSearch?.valuation_reference_count || 0),
-        outlier_count: Number(webReferenceSearch?.outlier_count || 0),
-        status: webReferenceSearch?.status || "not_available",
-        reason: webReferenceSearch?.reason || "",
-        references: Array.isArray(webReferenceSearch?.references) ? webReferenceSearch.references.slice(0, 8) : []
       },
 
       finn: {
@@ -4678,22 +3616,6 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       return weight;
     }
 
-    function calculateWebReferenceQuality(source) {
-      if (!source?.enabled || !Number.isFinite(source.value_nok)) return 0;
-      const exact = Math.max(0, Number(source.exact_match_count || 0));
-      const distinct = Math.max(0, Number(source.distinct_count || 0));
-      const valuationRefs = Math.max(0, Number(source.valuation_reference_count || 0));
-
-      // Fire eller flere eksakte, robuste referanser er et sterkt
-      // markedsgrunnlag. AI skal da være kontrollanker, ikke hovedkilde.
-      if (exact >= 6 && valuationRefs >= 4 && distinct >= 4) return 0.95;
-      if (exact >= 4 && valuationRefs >= 3 && distinct >= 3) return 0.90;
-      if (exact >= 3 && valuationRefs >= 3 && distinct >= 2) return 0.78;
-      if (exact >= 2 && valuationRefs >= 2 && distinct >= 2) return 0.60;
-      if (exact === 1) return 0.25;
-      return 0;
-    }
-
     /*
      * V11.0 bruker source weights i stedet for at kombinasjonslogikken
      * er bundet direkte til eBay. Når FINN senere aktiveres, kan samme
@@ -4729,18 +3651,6 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
           low: sources.ebay.low_nok,
           high: sources.ebay.high_nok,
           quality_weight: ebayQuality
-        });
-      }
-
-      const webReferenceQuality = calculateWebReferenceQuality(sources.web_reference);
-
-      if (sources.web_reference?.enabled && Number.isFinite(sources.web_reference.value_nok) && webReferenceQuality > 0) {
-        candidates.push({
-          source: "web_reference",
-          value: sources.web_reference.value_nok,
-          low: sources.web_reference.low_nok,
-          high: sources.web_reference.high_nok,
-          quality_weight: webReferenceQuality
         });
       }
 
@@ -4803,20 +3713,6 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
           0.45 + Math.min(0.45, totalQuality * 0.35)
         );
 
-        // V14.1: når vi har minst fire eksakte eksterne referanser
-        // og de robuste referansene er nok, skal markedet være klart
-        // hovedankeret. Dette hindrer et lavt AI-estimat fra å trekke
-        // verdien unødvendig langt ned.
-        const strongWebReference =
-          sources.web_reference?.enabled &&
-          Number(sources.web_reference.exact_match_count || 0) >= 4 &&
-          Number(sources.web_reference.valuation_reference_count || 0) >= 3;
-
-        if (strongWebReference) {
-          // V14.1: Sterkt eksakt eksternt marked skal dominere AI-ankeret.
-          marketWeight = Math.max(marketWeight, 0.95);
-        }
-
         if (marketCandidates.length >= 2) {
           marketWeight = Math.min(
             0.95,
@@ -4875,9 +3771,6 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
           if (x.source === "finn") {
             return sum + (sources.finn.exact_match_count || 0);
           }
-          if (x.source === "web_reference") {
-            return sum + (sources.web_reference.exact_match_count || 0);
-          }
           return sum;
         },
         0
@@ -4911,11 +3804,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       ];
 
       const names = marketCandidates.map(x =>
-        x.source === "ebay"
-          ? "eBay"
-          : x.source === "finn"
-            ? "FINN"
-            : "web-referanser"
+        x.source === "ebay" ? "eBay" : "FINN"
       );
 
       return {
@@ -4936,80 +3825,6 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
 
     const market = combineMarketSources(marketSources);
 
-    // V14.2: Når en enkelt markedsdatakilde har minst fire sterke, eksakte
-    // referanser, får den robuste markedsverdien direkte gjennomslag. AI
-    // skal da være kontroll, ikke trekke verdien bort fra markedet.
-    const strongExactWebMarket =
-      marketSources.web_reference?.enabled &&
-      Number(marketSources.web_reference.exact_match_count || 0) >= 4 &&
-      Number(marketSources.web_reference.valuation_reference_count || 0) >= 3 &&
-      Number.isFinite(Number(marketSources.web_reference.value_nok));
-
-    const strongExactEbayMarket =
-      marketSources.ebay?.enabled &&
-      Number(marketSources.ebay.exact_match_count || 0) >= 4 &&
-      Number(marketSources.ebay.distinct_count || 0) >= 3 &&
-      Number.isFinite(Number(marketSources.ebay.value_nok));
-
-    const strongExactFinnMarket =
-      marketSources.finn?.enabled &&
-      Number(marketSources.finn.exact_match_count || 0) >= 4 &&
-      Number(marketSources.finn.distinct_count || 0) >= 3 &&
-      Number.isFinite(Number(marketSources.finn.value_nok));
-
-    /*
-     * V14.2 – STERKT EKSAKT MARKED = HOVEDVERDI
-     * ----------------------------------------------
-     * Når én markedsdatakilde alene har minst fire gode, eksakte
-     * sammenligninger, skal ikke AI-estimatet trekke verdien bort fra
-     * det dokumenterte markedet. Dette gjelder både eBay og eksterne
-     * web-referanser.
-     *
-     * Eksempel: Haibike Trekking 6 hadde 5 eksakte eBay-referanser
-     * med median 16 879 kr, mens AI trakk totalverdien opp til 18 262 kr.
-     * Fra v14.2 skal markedets median være hovedverdien i et slikt tilfelle.
-     */
-    if (strongExactWebMarket && !strongExactEbayMarket && !strongExactFinnMarket) {
-      market.estimated_nok = Math.round(Number(marketSources.web_reference.value_nok));
-      market.low_nok = Number.isFinite(Number(marketSources.web_reference.low_nok))
-        ? Math.round(Number(marketSources.web_reference.low_nok))
-        : market.low_nok;
-      market.high_nok = Number.isFinite(Number(marketSources.web_reference.high_nok))
-        ? Math.round(Number(marketSources.web_reference.high_nok))
-        : market.high_nok;
-      market.confidence = "høy";
-      market.basis = "Eksakte web-markedsreferanser";
-      market.source_weights = [
-        { source: "web_reference", percent: 100 }
-      ];
-    } else if (strongExactEbayMarket && !strongExactWebMarket && !strongExactFinnMarket) {
-      market.estimated_nok = Math.round(Number(marketSources.ebay.value_nok));
-      market.low_nok = Number.isFinite(Number(marketSources.ebay.low_nok))
-        ? Math.round(Number(marketSources.ebay.low_nok))
-        : market.low_nok;
-      market.high_nok = Number.isFinite(Number(marketSources.ebay.high_nok))
-        ? Math.round(Number(marketSources.ebay.high_nok))
-        : market.high_nok;
-      market.confidence = "høy";
-      market.basis = "Eksakte eBay-markedsreferanser";
-      market.source_weights = [
-        { source: "ebay", percent: 100 }
-      ];
-    } else if (strongExactFinnMarket && !strongExactWebMarket && !strongExactEbayMarket) {
-      market.estimated_nok = Math.round(Number(marketSources.finn.value_nok));
-      market.low_nok = Number.isFinite(Number(marketSources.finn.low_nok))
-        ? Math.round(Number(marketSources.finn.low_nok))
-        : market.low_nok;
-      market.high_nok = Number.isFinite(Number(marketSources.finn.high_nok))
-        ? Math.round(Number(marketSources.finn.high_nok))
-        : market.high_nok;
-      market.confidence = "høy";
-      market.basis = "Eksakte FINN-markedsreferanser";
-      market.source_weights = [
-        { source: "finn", percent: 100 }
-      ];
-    }
-
     let finalEstimated =
       Number.isFinite(market.estimated_nok)
         ? market.estimated_nok
@@ -5029,23 +3844,13 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       market.source_weights.find(x => x.source === "ebay")?.percent || 0;
 
     const valuationMethod =
-      `V14.2 markedsmotor: ${market.basis}`;
-
-    // V12.0: Vis den faktiske rensede eBay-søkestrengen.
-    // Dermed vises ikke serienummerfragmenter som f.eks. MN5,
-    // selv om AI-en opprinnelig la dette inn i søkefeltet.
-    const displayEbaySearchQuery =
-      ebay?.discovery_queries?.[0] ||
-      ebay?.queries?.[0] ||
-      parsed.ebay_search_query ||
-      "";
+      `V11.3 markedsmotor: ${market.basis}`;
 
     /* ---------------------------------------------------------
        8. RETURNER
        --------------------------------------------------------- */
 
     return res.status(200).json({
-      version: "v14.2",
       name:
         parsed.name ||
         "Ukjent",
@@ -5134,12 +3939,6 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       model_evidence:
         itemInfo.model_evidence,
 
-      user_model_evidence:
-        itemInfo.user_model_evidence,
-
-      identification_basis:
-        itemInfo.identification_basis,
-
       modifications:
         itemInfo.modifications,
 
@@ -5156,7 +3955,8 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
         itemInfo,
 
       ebay_search_query:
-        displayEbaySearchQuery,
+        parsed.ebay_search_query ||
+        "",
 
       ebay_search_queries:
         ebay?.queries ||
@@ -5174,39 +3974,17 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
 
       market,
 
+      market_engine_version: "v11.0-finn-ready",
       market_sources: marketSources,
 
-      // V13.8: eksplisitt web-markedsgrunnlag til frontend.
-      // Dette gjør at eksterne eksakte referanser kan vises selv når eBay har 0 treff.
-      web_reference_market: {
-        enabled: Boolean(marketSources.web_reference?.enabled),
-        status: marketSources.web_reference?.status || "not_available",
-        reason: marketSources.web_reference?.reason || "",
-        exact_match_count: Number(marketSources.web_reference?.exact_match_count || 0),
-        distinct_count: Number(marketSources.web_reference?.distinct_count || 0),
-        value_nok: Number.isFinite(Number(marketSources.web_reference?.value_nok)) ? Math.round(Number(marketSources.web_reference.value_nok)) : null,
-        low_nok: Number.isFinite(Number(marketSources.web_reference?.low_nok)) ? Math.round(Number(marketSources.web_reference.low_nok)) : null,
-        high_nok: Number.isFinite(Number(marketSources.web_reference?.high_nok)) ? Math.round(Number(marketSources.web_reference.high_nok)) : null,
-        references: Array.isArray(marketSources.web_reference?.references) ? marketSources.web_reference.references.slice(0, 8) : []
-      },
-
       market_engine_version:
-        "v14.1-exact-market-anchor",
+        "v11.8-market-first-pricing",
 
       market_filter_version:
-        "v14.1-hard-model-reference-gate-exact-market-anchor",
+        "v11.8-hard-title-year-variant-validation",
 
-      buy_opportunities:
-        buy_opportunities,
-
-      buy_opportunities_count:
-        buy_opportunities.length,
-
-      price_investigations:
-        priceInvestigations.slice(0, 8),
-
-      price_investigations_count:
-        priceInvestigations.length
+      market_variant_gate:
+        "v11.8-fender-standard-mexico-exactness"
     });
 
   } catch (e) {
