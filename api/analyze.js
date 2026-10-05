@@ -1,8 +1,5 @@
-// Kistefunn analysebackend v15.2
-import { createFenderVariantContext } from "../lib/variants.js";
-import { balanceByQuery } from "../lib/matching.js";
-// V14.21: frontend-listings bruker nå samme Fender/Squier-gate som prisgrunnlaget. Dette lukker lekkasjen der avviste Squier-treff fortsatt kunne vises via `all`.
-// V14.20: eksplisitt Squier i annonsetittel overstyrer motstridende/feil strukturert Fender-metadata.
+// Kistefunn analysebackend v14.20
+// V14.20: Squier/Squire behandles som samme variant i alle Fender/Squier-gater.
 // V14.19: produktmerke-gate skiller strukturerte merkeopplysninger fra fritekst/omtaler.
 // V14.18: felles Fender/Squier brand-gate. Når målobjektet er Fender og ikke Squier, forkastes alle Squier/Squier by Fender-treff før exactPool, sameModelPool, valuationPool og kuppberegning. Motsatt forkastes Fender-treff når målobjektet faktisk er Squier.
 // V14.17: endelig deterministisk Fender-filter basert på den faktiske eBay-søkestrengen, slik at Squier/andre varianter ikke kan påvirke verken exactPool, verdiberegning eller visning.
@@ -2339,7 +2336,7 @@ Returner KUN gyldig JSON:
           /\bperformer\b/i,
           /\bdeluxe\b/i,
           /\belite\b/i,
-          /\bsquier\b/i
+          /\bsqu(?:ier|ire)\b/i
         ];
 
         if (wrongFenderVariantTerms.some(rx => rx.test(t))) {
@@ -2448,6 +2445,7 @@ Returner KUN gyldig JSON:
         "deluxe",
         "lead iii",
         "squier",
+         "squire",
         "telecaster",
         "jazzmaster",
         "jaguar"
@@ -2770,8 +2768,8 @@ Returner KUN gyldig JSON:
         criteria.target_special !== true
       ) {
         const incompatibleFenderVariantPatterns = [
-          /\bsquier\b/,
-          /\bsquier\s+series\b/,
+          /\bsqu(?:ier|ire)\b/,
+          /\bsqu(?:ier|ire)\s+series\b/,
           /\bfsr\b/,
           /\bfender\s+special\s+run\b/,
           /\bspecial\s+run\b/,
@@ -2850,7 +2848,7 @@ Returner KUN gyldig JSON:
         const lowerTitle = scoringText.toLowerCase();
 
         const incompatibleVariantPatterns = [
-          /\bsquier\b/,
+          /\bsqu(?:ier|ire)\b/,
           /\bplayer\s*(ii|2)\b/,
           /\bvintera\b/,
           /\bamerican\s+(professional|performer|ultra|standard|original)\b/,
@@ -2969,7 +2967,7 @@ Returner KUN gyldig JSON:
 
       if (hardTargetFromQuery) {
         const hardForbidden = [
-          /\bsquier(?:\s+series)?\b/i,
+          /\bsqu(?:ier|ire)(?:\s+series)?\b/i,
           /\bfsr\b/i,
           /\b62\s*(?:['’]s?|special)\b/i,
           /\b50th\s+anniversary\b/i,
@@ -3055,25 +3053,17 @@ Returner KUN gyldig JSON:
       // skal vi IKKE stole på et feilaktig target_special-flagg fra AI.
       // Special/62/anniversary må være eksplisitt en del av selve søket for
       // at slike varianter skal tillates.
-      /*
-       * V14.24 – IKKE TOLK NEGATIVE SØKEORD SOM MÅLVARIANT
-       * ----------------------------------------------------
-       * built.queries/query_context kan inneholde negative søkeord som
-       * "Squier", "Special", "Player" osv. Disse beskriver hva vi IKKE
-       * ønsker å finne, ikke at målobjektet faktisk er denne varianten.
-       *
-       * Derfor brukes query_context ikke lenger til å avgjøre om målet
-       * er en spesialvariant. Målidentiteten skal komme fra strukturerte
-       * identitetsfelt. Dette er avgjørende for Fender MIM + Squier-testen.
-       */
-      if (!isFenderStratMim) {
+      const queryRequestsSpecial =
+        /\b(?:62\s*(?:['’]s?|special)|special|anniversary|fsr|squ(?:ier|ire))\b/i.test(queryContext);
+
+      if (!isFenderStratMim || queryRequestsSpecial) {
         return false;
       }
 
       const text = `${title || ""} ${aspectText || ""}`.toLowerCase();
 
       const forbidden = [
-        /\bsquier(?:\s+series)?\b/,
+        /\bsqu(?:ier|ire)(?:\s+series)?\b/,
         /\bfsr\b/,
         /\bfender\s+special\s+run\b/,
         /\bspecial\s+run\b/,
@@ -3468,25 +3458,120 @@ Returner KUN gyldig JSON:
             .join(" ")
         ).toLowerCase();
 
-      const {
-        targetIsSquier,
-        targetIsFender,
-        normalFenderMimQuery,
-        hardFenderMimTarget,
-        finalForbiddenFenderVariants,
-        targetBrandText,
-        targetIsSquierBrand,
-        targetIsFenderBrand,
-        passesFenderSquierBrandGate
-      } = createFenderVariantContext({
-        built,
-        itemInfo,
-        parsed,
-        structuredTargetText,
-        structuredTargetYear,
-        structuredTargetCountry,
-        deterministicFenderMimTarget
-      });
+      const targetIsSquier =
+        /\bsqu(?:ier|ire)(?:\s+series)?\b/i.test(structuredTargetText);
+
+      /*
+       * V14.12: normal Fender MIM-target skal identifiseres robust.
+       * Tidligere brukte vi /^fender$/ på brand-feltet. Hvis AI-en svarte
+       * f.eks. "Fender Musical Instruments", ble hardgaten deaktivert og
+       * et Squier-treff kunne slippe gjennom. Brand-feltet er nå tokenbasert,
+       * mens identiteten fortsatt krever Stratocaster + år + Mexico/MIM.
+       */
+      const targetIsFender =
+        /\bfender\b/i.test(String(built.brand || "")) &&
+        !targetIsSquier;
+
+      const normalFenderMimQuery =
+        targetIsFender &&
+        /\bstratocaster\b/i.test(structuredTargetText) &&
+        structuredTargetYear >= 1900 &&
+        structuredTargetYear <= 2100 &&
+        /\b(?:mexico|mim|made\s+in\s+mexico)\b/i.test(
+          `${structuredTargetText} ${structuredTargetCountry}`
+        );
+
+      const hardFenderMimTarget =
+        Boolean(normalFenderMimQuery || deterministicFenderMimTarget);
+
+      const finalForbiddenFenderVariants = [
+          /\bsqu(?:ier|ire)(?:\s+series)?\b/i,
+          /\bfsr\b/i,
+          /\b62\s*(?:['’]s?|special)\b/i,
+          /\b50th\s+anniversary\b/i,
+          /\banniversary\b/i,
+          /\bspecial(?:\s+edition)?\b/i,
+          /\blimited\s+edition\b/i,
+          /\bvintage\s+reissue\b/i,
+          /\breissue\b/i,
+          /\bplayer(?:\s+ii|\s+2)?\b/i,
+          /\bvintera\b/i,
+          /\bclassic\s+series\b/i,
+          /\bamerican\s+(?:standard|professional|performer|ultra|original|vintage)\b/i,
+          /\bprofessional\s+ii\b/i,
+          /\bsignature\s+series\b/i
+        ];
+
+      /*
+       * V14.18 – FELLES FENDER/SQUIER BRAND-GATE
+       * -----------------------------------------
+       * Fender og Squier deler produktnavn som Stratocaster og Telecaster,
+       * men skal aldri behandles som samme merke i markedsverdien.
+       *
+       * Denne gaten skal brukes på ALLE markeds-pooler, ikke bare
+       * normalFenderMimQuery. Den er bevisst basert på målidentiteten
+       * og selve annonsedataene, slik at en Squier-annonse ikke kan
+       * påvirke exact, same-model, valuation eller kuppberegning.
+       */
+      const targetBrandText = String(
+        [
+          built.brand,
+          built.manufacturer,
+          itemInfo?.brand,
+          itemInfo?.manufacturer,
+          parsed?.name
+        ]
+          .filter(Boolean)
+          .join(" ")
+      ).toLowerCase();
+
+      const targetIsSquierBrand =
+        /\bsqu(?:ier|ire)(?:\s+by\s+fender)?(?:\s+series)?\b/i.test(targetBrandText);
+
+      const targetIsFenderBrand =
+        /\bfender\b/i.test(targetBrandText) &&
+        !targetIsSquierBrand;
+
+      function passesFenderSquierBrandGate(item) {
+        // V14.19: Produktmerke skal bestemmes fra strukturerte
+        // brand/manufacturer-felter og selve tittelen. Fritekst/aspekter
+        // kan inneholde omtaler som "not Squier" eller "Squier comparison"
+        // og skal derfor ikke alene gjøre en ekte Fender til Squier.
+        const structuredBrandText = String(
+          [item?.brand, item?.manufacturer]
+            .filter(Boolean)
+            .join(" ")
+        );
+
+        const titleText = String(item?.title || "");
+
+        const structuredIsSquier =
+          /\bsqu(?:ier|ire)(?:\s+by\s+fender)?(?:\s+series)?\b/i.test(structuredBrandText);
+        const structuredIsFender =
+          /\bfender\b/i.test(structuredBrandText) &&
+          !structuredIsSquier;
+
+        // Tittelen brukes som produktidentitet når metadata mangler.
+        // Negative/omtaleformuleringer skal ikke telle som merke.
+        const positiveSquierTitle =
+          /\bsqu(?:ier|ire)(?:\s+by\s+fender)?(?:\s+series)?\b/i.test(titleText) &&
+          !/\b(?:not|no|without|ikke|versus|vs\.?|comparison|compare|replacement|compatible|for)\s+squ(?:ier|ire)\b/i.test(titleText);
+
+        const positiveFenderTitle =
+          /\bfender\b/i.test(titleText) &&
+          !/\b(?:not|no|without|ikke|versus|vs\.?|comparison|compare|replacement|compatible|for)\s+fender\b/i.test(titleText);
+
+        const listingIsSquier =
+          structuredIsSquier || (!structuredIsFender && positiveSquierTitle);
+        const listingIsFender =
+          structuredIsFender || (!structuredIsSquier && positiveFenderTitle);
+
+        if (targetIsFenderBrand && listingIsSquier) return false;
+        if (targetIsSquierBrand && listingIsFender) return false;
+
+        return true;
+      }
+
 
       if (normalFenderMimQuery) {
         for (let i = all.length - 1; i >= 0; i--) {
@@ -3519,7 +3604,7 @@ Returner KUN gyldig JSON:
             // Denne kjører selv om en tidligere AI-score skulle ha feilklassifisert treffet.
             !(
               hardFenderMimTarget &&
-              /\b(?:squier(?:\s+series)?|fsr|62\s*(?:['’]s?|special)|50th\s+anniversary|anniversary|special(?:\s+edition)?|limited\s+edition|vintage\s+reissue|reissue|player(?:\s+ii|\s+2)?|vintera|classic\s+series|american\s+(?:standard|professional|performer|ultra|original|vintage)|professional\s+ii|signature\s+series)\b/i.test(String(x.title || ""))
+              /\b(?:squ(?:ier|ire)(?:\s+series)?|fsr|62\s*(?:['’]s?|special)|50th\s+anniversary|anniversary|special(?:\s+edition)?|limited\s+edition|vintage\s+reissue|reissue|player(?:\s+ii|\s+2)?|vintera|classic\s+series|american\s+(?:standard|professional|performer|ultra|original|vintage)|professional\s+ii|signature\s+series)\b/i.test(String(x.title || ""))
             ) &&
             x.relevance_score >= 45 &&
             // V11.8 HARD TITLE-YEAR GATE: kjent år krever dokumentert
@@ -3604,7 +3689,37 @@ Returner KUN gyldig JSON:
        * et annet søk gir få. Uten balansering kan ett søk dermed dominere
        * medianen. Vi tar derfor maks 6 sterke eksakte treff per søk.
        */
-      // V15.2: balanceByQuery ligger i lib/matching.js.
+      function balanceByQuery(items, maxPerQuery = 6) {
+        const groups = new Map();
+
+        for (const item of items) {
+          const key =
+            String(item.query || "")
+              .trim()
+              .toLowerCase();
+
+          if (!groups.has(key)) {
+            groups.set(key, []);
+          }
+
+          groups.get(key).push(item);
+        }
+
+        const balanced = [];
+
+        for (const group of groups.values()) {
+          group
+            .sort(
+              (a, b) =>
+                (b.relevance_score || 0) -
+                (a.relevance_score || 0)
+            )
+            .slice(0, maxPerQuery)
+            .forEach(item => balanced.push(item));
+        }
+
+        return balanced;
+      }
 
       const balancedRawExactPool =
         balanceByQuery(strictExactPool, 6);
@@ -3668,22 +3783,7 @@ Returner KUN gyldig JSON:
           /\bstratocaster\b/.test(targetIdentity) &&
           /\b(?:mexico|mim|made in mexico)\b/.test(targetIdentity);
 
-        /*
-         * V14.25 – FINAL TARGET-IDENTITY FALLBACK
-         * ---------------------------------------
-         * Hvis itemInfo mangler Mexico/MIM, men de strukturerte mål-
-         * feltene allerede identifiserer Fender + Stratocaster + Mexico/MIM
-         * med kjent år, skal den strenge Fender-gaten likevel være aktiv.
-         * Dette hindrer Squier fra å slippe gjennom på grunn av manglende
-         * landfelt i én AI-identitetsvariant.
-         */
-        const isStrictNormalFenderMimTarget =
-          targetIsFender &&
-          /\bstratocaster\b/i.test(structuredTargetText) &&
-          /\b(?:mexico|mim|made\s+in\s+mexico)\b/i.test(structuredTargetText) &&
-          structuredTargetYear >= 1900;
-
-        if (!isFenderMimStrat && !isStrictNormalFenderMimTarget) {
+        if (!isFenderMimStrat) {
           return true;
         }
 
@@ -3696,7 +3796,7 @@ Returner KUN gyldig JSON:
          * derfor ikke en sikker beskrivelse av objektet.
          */
         const targetIsSquier =
-          /\bsquier(?:\s+series)?\b/.test(targetIdentity);
+          /\bsqu(?:ier|ire)(?:\s+series)?\b/.test(targetIdentity);
 
         const targetIsFsr =
           /\bfsr\b/.test(targetIdentity) ||
@@ -3737,7 +3837,7 @@ Returner KUN gyldig JSON:
          * harde stoppord. Det gjelder både exact-visning og verdigrunnlag.
          */
         if (
-          /\bsquier(?:\s+series)?\b/.test(title) &&
+          /\bsqu(?:ier|ire)(?:\s+series)?\b/.test(title) &&
           !targetIsSquier
         ) return false;
 
@@ -3837,31 +3937,13 @@ Returner KUN gyldig JSON:
        * Dette er spesielt viktig for Squier Series, som ellers kan bli
        * klassifisert som "Fender Stratocaster" av eBay/AI.
        */
-      /*
-       * V14.24: builtQueryText kan inneholde negative søkeord. Bruk derfor
-       * kun den positive, deterministiske identiteten til målet her.
-       * Et negativt "Squier" i søket skal aldri deaktivere Fender-gaten.
-       */
-      const positiveTargetQueryText =
-        [
-          built.brand,
-          built.model,
-          built.type,
-          built.manufacturer,
-          built.country,
-          built.year,
-          built.detected_year
-        ]
-          .filter(Boolean)
-          .join(" ");
-
       const deterministicNormalFenderStratTarget =
-        /\bfender\b/i.test(positiveTargetQueryText) &&
-        /\bstratocaster\b/i.test(positiveTargetQueryText) &&
-        /\b(?:mexico|mim|made\s+in\s+mexico)\b/i.test(positiveTargetQueryText) &&
-        /\b(?:19|20)\d{2}\b/.test(positiveTargetQueryText) &&
-        !/\bsquier(?:\s+series)?\b/i.test(positiveTargetQueryText) &&
-        !/\b(?:fsr|special|anniversary|player|vintera)\b/i.test(positiveTargetQueryText);
+        /\bfender\b/i.test(builtQueryText) &&
+        /\bstratocaster\b/i.test(builtQueryText) &&
+        /\b(?:mexico|mim|made\s+in\s+mexico)\b/i.test(builtQueryText) &&
+        /\b(?:19|20)\d{2}\b/.test(builtQueryText) &&
+        !/\bsqu(?:ier|ire)(?:\s+series)?\b/i.test(builtQueryText) &&
+        !/\b(?:fsr|special|anniversary|player|vintera)\b/i.test(builtQueryText);
 
       const strictFenderStratComparableTarget =
         deterministicNormalFenderStratTarget ||
@@ -3903,26 +3985,8 @@ Returner KUN gyldig JSON:
             })
           : finalExactPool;
 
-      /*
-       * V14.25 – ABSOLUTT SISTE SQUIER-SIKKERHET
-       * ------------------------------------------
-       * Dette filteret ligger etter ALLE tidligere exact-filtre.
-       * For et normalt Fender MIM Stratocaster-mål kan en annonse med
-       * "Squier" i tittel/aspekter aldri bli en exact-referanse.
-       * Et faktisk Squier-mål er eksplisitt unntatt.
-       */
-      const finalExactPoolV1425 =
-        (!targetIsSquier && strictFenderStratComparableTarget)
-          ? finalExactPoolV1413.filter(item => {
-              const text =
-                `${String(item?.title || "")} ${String(item?._ebay_aspect_text || "")}`.toLowerCase();
-
-              return !/\bsquier(?:\s+series)?\b/.test(text);
-            })
-          : finalExactPoolV1413;
-
       const exactPool =
-        finalExactPoolV1425;
+        finalExactPoolV1413;
 
       /*
        * Same-model treff:
@@ -4013,12 +4077,7 @@ Returner KUN gyldig JSON:
         all
           .filter(
             x =>
-              x.match_tier === "near" &&
-              passesFenderSquierBrandGate(x) &&
-              (!strictFenderStratComparableTarget ||
-                !finalForbiddenFenderVariants.some(rx =>
-                  rx.test(String(x?.title || ""))
-                ))
+              x.match_tier === "near"
           )
           .slice(0, 8);
 
@@ -4456,12 +4515,15 @@ Returner KUN gyldig JSON:
         },
 
         listings:
-          // V14.22: FRONTEND-DISPLAY-GATE – BRUK KUN GODKJENTE REFERANSER
-          // `all` er råmarkedet og skal aldri brukes direkte til listen
-          // som frontend presenterer som markedsreferanser. `exactPool`
-          // har allerede passert Fender/Squier-, variant-, år- og
-          // relevansfiltrene. Ingen alternativ kodevei fra `all`.
-          exactPool
+          (strictFenderStratComparableTarget
+            ? all.filter(item => {
+                const title = String(item?.title || "");
+                return !finalForbiddenFenderVariants.some(rx =>
+                  rx.test(title)
+                );
+              })
+            : all
+          )
             .slice(0, 12)
             .map(
               item => ({
