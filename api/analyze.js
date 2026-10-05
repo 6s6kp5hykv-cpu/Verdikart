@@ -2103,7 +2103,7 @@ Returner KUN gyldig JSON:
       }
 
       /* -------------------------------------------------------
-         V11.8 – FENDER STANDARD + MEXICO EXACTNESS GATE
+         V11.9 – FENDER STANDARD + MEXICO EXACTNESS GATE
          -------------------------------------------------------
          En Fender Standard Stratocaster MIM skal ikke få "exact"
          bare fordi annonsen sier Fender Stratocaster + riktig år.
@@ -2114,16 +2114,16 @@ Returner KUN gyldig JSON:
       if (
         category === "guitar" &&
         brand === "fender" &&
-        /\\bstratocaster\\b/i.test(model)
+        /\bstratocaster\\b/i.test(model)
       ) {
         const listingSaysStandard =
-          /\\bstandard\\b/.test(t) &&
-          /\\bstratocaster\\b/.test(t);
+          /\bstandard\\b/.test(t) &&
+          /\bstratocaster\\b/.test(t);
 
         const listingSaysMexico =
-          /\\bmexic(?:o|an)\\b/.test(t) ||
-          /\\bmade\\s+in\\s+mexico\\b/.test(t) ||
-          /\\bmim\\b/.test(t);
+          /\bmexic(?:o|an)\\b/.test(t) ||
+          /\bmade\\s+in\\s+mexico\\b/.test(t) ||
+          /\bmim\\b/.test(t);
 
         if (criteria.target_standard && !listingSaysStandard) {
           strictVariantMatch = false;
@@ -2972,18 +2972,18 @@ Returner KUN gyldig JSON:
               const strictFenderStandard =
                 built.target_standard &&
                 /^fender$/i.test(String(built.brand || "")) &&
-                /\\bstratocaster\\b/i.test(String(built.model || ""));
+                /\bstratocaster\\b/i.test(String(built.model || ""));
 
               const standardOk =
                 !strictFenderStandard ||
-                (/\\bstandard\\b/.test(titleText) &&
-                 /\\bstratocaster\\b/.test(titleText));
+                (/\bstandard\\b/.test(titleText) &&
+                 /\bstratocaster\\b/.test(titleText));
 
               const mexicoOk =
                 !built.target_mexico ||
-                /\\bmexic(?:o|an)\\b/.test(titleText) ||
-                /\\bmade\\s+in\\s+mexico\\b/.test(titleText) ||
-                /\\bmim\\b/.test(titleText);
+                /\bmexic(?:o|an)\\b/.test(titleText) ||
+                /\bmade\\s+in\\s+mexico\\b/.test(titleText) ||
+                /\bmim\\b/.test(titleText);
 
               return x.year_match === "exact" &&
                 x.variant_match === "exact" &&
