@@ -1,4 +1,4 @@
-// Kistefunn analysebackend v13.4
+// Kistefunn analysebackend v13.8
 // V12.7: brukeroppgitt spesifikk modellvariant brukes som sterkt signal når bildet støtter merke/serie.
 // V12.7: nummererte sykkelvarianter (f.eks. Trekking 4 vs Trekking 6) hardfiltreres i markedet.
 // Strengere identifikasjon + hardere markedsfilter + multi-source markedsmotor
@@ -4867,11 +4867,25 @@ Hvis du er usikker på om referansen er identisk, skal kilden ikke tas med.
 
       market_sources: marketSources,
 
+      // V13.8: eksplisitt web-markedsgrunnlag til frontend.
+      // Dette gjør at eksterne eksakte referanser kan vises selv når eBay har 0 treff.
+      web_reference_market: {
+        enabled: Boolean(marketSources.web_reference?.enabled),
+        status: marketSources.web_reference?.status || "not_available",
+        reason: marketSources.web_reference?.reason || "",
+        exact_match_count: Number(marketSources.web_reference?.exact_match_count || 0),
+        distinct_count: Number(marketSources.web_reference?.distinct_count || 0),
+        value_nok: Number.isFinite(Number(marketSources.web_reference?.value_nok)) ? Math.round(Number(marketSources.web_reference.value_nok)) : null,
+        low_nok: Number.isFinite(Number(marketSources.web_reference?.low_nok)) ? Math.round(Number(marketSources.web_reference.low_nok)) : null,
+        high_nok: Number.isFinite(Number(marketSources.web_reference?.high_nok)) ? Math.round(Number(marketSources.web_reference.high_nok)) : null,
+        references: Array.isArray(marketSources.web_reference?.references) ? marketSources.web_reference.references.slice(0, 8) : []
+      },
+
       market_engine_version:
-        "v13.7-exact-reference-web-fallback",
+        "v13.8-exact-reference-web-fallback",
 
       market_filter_version:
-        "v13.7-hard-model-reference-gate-exact-reference-web-fallback",
+        "v13.8-hard-model-reference-gate-exact-reference-web-fallback",
 
       buy_opportunities:
         buy_opportunities,
