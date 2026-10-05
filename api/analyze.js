@@ -1,4 +1,4 @@
-// Kistefunn analysebackend v12.9
+// Kistefunn analysebackend v13.4
 // V12.7: brukeroppgitt spesifikk modellvariant brukes som sterkt signal når bildet støtter merke/serie.
 // V12.7: nummererte sykkelvarianter (f.eks. Trekking 4 vs Trekking 6) hardfiltreres i markedet.
 // Strengere identifikasjon + hardere markedsfilter + multi-source markedsmotor
@@ -3527,6 +3527,45 @@ Returner KUN gyldig JSON:
           .filter(Number.isFinite)
           .filter(x => x > 0);
 
+      const prices =
+        finalPool
+          .map(
+            x => Number(x.nok)
+          )
+          .filter(Number.isFinite)
+          .filter(x => x > 0);
+
+      /*
+       * V9 markedsmedian:
+       * Eksakte årstreff har hovedvekten.
+       * Same-model uten år får kun støttevekt.
+       */
+      const exactMedian =
+        median(exactPrices);
+
+      const sameModelMedian =
+        median(sameModelPrices);
+
+      let marketMedian = null;
+
+      if (
+        built.year &&
+        Number.isFinite(exactMedian)
+      ) {
+        // V11.8: same-model uten år påvirker ikke medianen når år er kjent.
+        marketMedian = Math.round(exactMedian);
+      } else if (
+        Number.isFinite(exactMedian)
+      ) {
+        marketMedian =
+          Math.round(exactMedian);
+      } else if (
+        Number.isFinite(sameModelMedian)
+      ) {
+        marketMedian =
+          Math.round(sameModelMedian);
+      }
+
       /*
        * V13.1 – KJØPSMULIGHETER / MULIGE KUPP
        * ---------------------------------------
@@ -3577,44 +3616,6 @@ Returner KUN gyldig JSON:
               .slice(0, 8)
           : [];
 
-      const prices =
-        finalPool
-          .map(
-            x => Number(x.nok)
-          )
-          .filter(Number.isFinite)
-          .filter(x => x > 0);
-
-      /*
-       * V9 markedsmedian:
-       * Eksakte årstreff har hovedvekten.
-       * Same-model uten år får kun støttevekt.
-       */
-      const exactMedian =
-        median(exactPrices);
-
-      const sameModelMedian =
-        median(sameModelPrices);
-
-      let marketMedian = null;
-
-      if (
-        built.year &&
-        Number.isFinite(exactMedian)
-      ) {
-        // V11.8: same-model uten år påvirker ikke medianen når år er kjent.
-        marketMedian = Math.round(exactMedian);
-      } else if (
-        Number.isFinite(exactMedian)
-      ) {
-        marketMedian =
-          Math.round(exactMedian);
-      } else if (
-        Number.isFinite(sameModelMedian)
-      ) {
-        marketMedian =
-          Math.round(sameModelMedian);
-      }
 
       const successfulQueries =
         [
@@ -4509,10 +4510,10 @@ Returner KUN gyldig JSON:
       market_sources: marketSources,
 
       market_engine_version:
-        "v13.1-market-first-pricing",
+        "v13.4-market-first-pricing-buyfix",
 
       market_filter_version:
-        "v13.1-hard-title-year-variant-bicycle-gate-fender-gate-clean-display",
+        "v13.4-hard-title-year-variant-bicycle-gate-fender-gate-clean-display",
 
       buy_opportunities:
         buy_opportunities,
