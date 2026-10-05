@@ -4287,6 +4287,15 @@ Hvis du er usikker på om referansen er identisk, skal kilden ikke tas med.
     // targetModelCode ble tidligere deklarert inne i markedsblokken og
     // var derfor ikke tilgjengelig her når web-fallbacken skulle kjøre.
     // Vi beregner referansekoden på nytt i riktig scope.
+    // V13.7.3 – GLOBAL MODELLREFERANSE-NORMALISERING
+    // Web-fallbacken kjører utenfor blokken som inneholder v13.6-gaten.
+    // Derfor må funksjonen være tilgjengelig i dette scopet også.
+    function normalizeModelCode(value) {
+      return String(value || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, "");
+    }
+
     const webTargetModelCandidates = [
       itemInfo?.model,
       itemInfo?.model_number,
