@@ -3403,7 +3403,9 @@ Returner KUN gyldig JSON:
             built.brand,
             built.model,
             built.type,
-            built.manufacturer
+            built.manufacturer,
+            parsed.name,
+            info.year_or_period
           ]
             .filter(Boolean)
             .join(" ")
@@ -3413,18 +3415,37 @@ Returner KUN gyldig JSON:
         Number(built.year || built.detected_year || 0);
 
       const structuredTargetCountry =
-        String(built.country || "").toLowerCase();
+        String(
+          [
+            built.country,
+            info.year_or_period,
+            info.manufacturer,
+            parsed.name
+          ]
+            .filter(Boolean)
+            .join(" ")
+        ).toLowerCase();
 
       const targetIsSquier =
         /\bsquier(?:\s+series)?\b/i.test(structuredTargetText);
 
+      /*
+       * V14.12: normal Fender MIM-target skal identifiseres robust.
+       * Tidligere brukte vi /^fender$/ på brand-feltet. Hvis AI-en svarte
+       * f.eks. "Fender Musical Instruments", ble hardgaten deaktivert og
+       * et Squier-treff kunne slippe gjennom. Brand-feltet er nå tokenbasert,
+       * mens identiteten fortsatt krever Stratocaster + år + Mexico/MIM.
+       */
+      const targetIsFender =
+        /\bfender\b/i.test(String(built.brand || "")) &&
+        !targetIsSquier;
+
       const normalFenderMimQuery =
-        /^fender$/i.test(String(built.brand || "").trim()) &&
+        targetIsFender &&
         /\bstratocaster\b/i.test(structuredTargetText) &&
-        !targetIsSquier &&
         structuredTargetYear >= 1900 &&
         structuredTargetYear <= 2100 &&
-        /\b(?:mexico|mim|made in mexico)\b/i.test(
+        /\b(?:mexico|mim|made\s+in\s+mexico)\b/i.test(
           `${structuredTargetText} ${structuredTargetCountry}`
         );
 
@@ -3785,8 +3806,32 @@ Returner KUN gyldig JSON:
             })
           : sanitizedExactPool;
 
+      /*
+       * V14.12 – ABSOLUTT SLUTTGATE FOR FENDER MIM
+       * ----------------------------------------------
+       * Selv om en tidligere gate av en eller annen grunn ikke aktiveres,
+       * skal en inkompatibel Fender-variant aldri kunne sendes til frontend
+       * når målet er en normal Fender Stratocaster MIM med kjent år.
+       * Dette er bevisst kun en tittelbasert sikkerhetsventil.
+       */
+      const finalExactPoolV1412 =
+        targetIsFender &&
+        /\bstratocaster\b/i.test(structuredTargetText) &&
+        structuredTargetYear >= 1900 &&
+        structuredTargetYear <= 2100 &&
+        /\b(?:mexico|mim|made\s+in\s+mexico)\b/i.test(
+          `${structuredTargetText} ${structuredTargetCountry}`
+        )
+          ? finalExactPool.filter(item => {
+              const title = String(item?.title || "");
+              return !finalForbiddenFenderVariants.some(rx =>
+                rx.test(title)
+              );
+            })
+          : finalExactPool;
+
       const exactPool =
-        finalExactPool;
+        finalExactPoolV1412;
 
       /*
        * Same-model treff:
@@ -5418,7 +5463,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
        --------------------------------------------------------- */
 
     return res.status(200).json({
-      version: "v14.11",
+      version: "v14.12",
       name:
         parsed.name ||
         "Ukjent",
