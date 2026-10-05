@@ -25,6 +25,8 @@ export default async function handler(req, res) {
   }
 
   try {
+    // Kupp-listen må være tilgjengelig i hele handler-scope.
+    let buy_opportunities = [];
     const { image, description } = req.body || {};
 
     if (!image || typeof image !== "string") {
@@ -3545,7 +3547,7 @@ Returner KUN gyldig JSON:
           ? exactMedian
           : (Number.isFinite(marketMedian) ? marketMedian : null);
 
-      const buy_opportunities =
+      buy_opportunities =
         Number.isFinite(bargainReferenceMedian) && bargainReferenceMedian > 0
           ? exactPool
               .map(item => {
