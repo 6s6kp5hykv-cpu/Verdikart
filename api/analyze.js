@@ -3358,14 +3358,64 @@ Returner KUN gyldig JSON:
       // Ekstra sikkerhetskontroll før prisberegning og visning.
       // Dette gjør at en annonse uten år aldri kan bli med i exactPool
       // selv om et senere steg skulle endre match_tier.
+      /*
+       * V13.6 – HARD MODELLNUMMER-GATE
+       * -------------------------------
+       * Når Kistefunn kjenner en spesifikk modellreferanse, f.eks.
+       * Patek Philippe 5308G-001, er merke + serie ikke nok.
+       *
+       * 5308G-001 skal ikke sammenlignes med 5304/301R-001,
+       * 5204/1R-001, 5905/1A001 osv.
+       *
+       * Vi normaliserer bindestrek, skråstrek og mellomrom slik at
+       * 5308G-001 / 5308G 001 / 5308G001 behandles som samme referanse.
+       * Hvis modellen ikke har en tydelig spesifikk modellkode, brukes
+       * den eksisterende exact-logikken uendret.
+       */
+      function normalizeModelCode(value) {
+        return String(value || "")
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, "");
+      }
+
+      const targetModelCandidates = [
+        built.model,
+        built.user_model_hint,
+        built.model_number,
+        built.reference,
+        parsed?.model
+      ]
+        .map(v => String(v || "").trim())
+        .filter(Boolean);
+
+      const targetModelCode =
+        targetModelCandidates
+          .map(normalizeModelCode)
+          .find(code =>
+            code.length >= 4 &&
+            /[a-z]/i.test(code) &&
+            /\d/.test(code)
+          ) || "";
+
+      const modelCodeExactPool =
+        targetModelCode
+          ? rawExactPool.filter(x => {
+              const listingText =
+                normalizeModelCode(
+                  `${x.title || ""} ${x._ebay_aspect_text || ""}`
+                );
+              return listingText.includes(targetModelCode);
+            })
+          : rawExactPool;
+
       const strictExactPool =
         built.year
-          ? rawExactPool.filter(x => {
+          ? modelCodeExactPool.filter(x => {
               const titleYears = extractYears(String(x.title || "").toLowerCase());
               return x.year_match === "exact" &&
                 titleYears.includes(Number(built.year));
             })
-          : rawExactPool;
+          : modelCodeExactPool;
 
       /*
        * V11.1: stabiliser eksakte markedsreferanser.
@@ -3727,6 +3777,9 @@ Returner KUN gyldig JSON:
             )
           )
         ];
+
+      const exact_model_code_gate =
+        targetModelCode || null;
 
       const successfulMarketplaces =
         [
