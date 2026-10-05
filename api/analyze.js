@@ -1,6 +1,5 @@
-// Kistefunn analysebackend v14.21
+// Kistefunn analysebackend v14.22
 // V14.20: Squier/Squire behandles som samme variant i alle Fender/Squier-gater.
-// V14.22: Squier Affinity/Classic Vibe får strengere undervariant-gate for Junior/HSS/FMT og serieblanding.
 // V14.21: Eksakte gitarreferanser avviser eksplisitte bundle/pakke/kit/produktpakke-treff når målobjektet ikke selv er en pakke. Dette stopper f.eks. Squier Affinity Stratocaster + Mustang Micro Pack.
 // V14.19: produktmerke-gate skiller strukturerte merkeopplysninger fra fritekst/omtaler.
 // V14.18: felles Fender/Squier brand-gate. Når målobjektet er Fender og ikke Squier, forkastes alle Squier/Squier by Fender-treff før exactPool, sameModelPool, valuationPool og kuppberegning. Motsatt forkastes Fender-treff når målobjektet faktisk er Squier.
@@ -578,8 +577,7 @@ Returner KUN gyldig JSON:
 
     function cleanText(value) {
       return String(value || "")
-        .replace(/[
-\r\t,;:()[\]{}"']/g, " ")
+        .replace(/[\n\r\t,;:()[\]{}"']/g, " ")
         .replace(/[\/|_-]+/g, " ")
         .replace(/\s+/g, " ")
         .trim();
@@ -3811,57 +3809,6 @@ Returner KUN gyldig JSON:
           return false;
         }
 
-        /*
-         * V14.22 – SQUIER AFFINITY UNDERVARIANT-GATE
-         * ---------------------------------------------
-         * "Squier Affinity Stratocaster" er ikke en tilstrekkelig
-         * variantbeskrivelse til at alle Affinity-varianter kan brukes
-         * som exact. Junior, HSS og FMT er egne varianter og skal derfor
-         * bare godkjennes når målobjektet selv er identifisert som samme
-         * undervariant.
-         *
-         * Vi gjør ikke farge eller "Series" til harde krav. Dermed er
-         * vanlig Affinity Stratocaster fortsatt kompatibel med annonser
-         * som sier "Affinity Series Stratocaster".
-         */
-        const targetIsSquierGuitar =
-          /\bsqu(?:ier|ire)\b/.test(targetIdentity) &&
-          /\b(?:stratocaster|strat)\b/.test(targetIdentity);
-
-        if (targetIsSquierGuitar) {
-          const targetIsAffinity = /\baffinity\b/.test(targetIdentity);
-          const targetIsJunior = /\b(?:junior|mini|short\s+scale|youth)\b/.test(targetIdentity);
-          const targetIsHss = /\bhss\b/.test(targetIdentity);
-          const targetIsFmt = /\bfmt\b/.test(targetIdentity);
-          const targetIsClassicVibe = /\bclassic\s+vibe\b/.test(targetIdentity);
-
-          const listingIsAffinity = /\baffinity\b/.test(title);
-          const listingIsJunior = /\b(?:junior|mini|short\s+scale|youth)\b/.test(title);
-          const listingIsHss = /\bhss\b/.test(title);
-          const listingIsFmt = /\bfmt\b/.test(title);
-          const listingIsClassicVibe = /\bclassic\s+vibe\b/.test(title);
-
-          // Riktig serie må være samme serie når målet eksplisitt er Affinity
-          // eller Classic Vibe.
-          if (targetIsAffinity && !listingIsAffinity) return false;
-          if (targetIsClassicVibe && !listingIsClassicVibe) return false;
-
-          // Affinity og Classic Vibe skal ikke blandes.
-          if (targetIsAffinity && listingIsClassicVibe) return false;
-          if (targetIsClassicVibe && listingIsAffinity) return false;
-
-          // Junior/mini er en egen fysisk variant.
-          if (listingIsJunior && !targetIsJunior) return false;
-          if (targetIsJunior && !listingIsJunior) return false;
-
-          // HSS og FMT er egne Affinity-undervarianter.
-          if (listingIsHss && !targetIsHss) return false;
-          if (targetIsHss && !listingIsHss) return false;
-
-          if (listingIsFmt && !targetIsFmt) return false;
-          if (targetIsFmt && !listingIsFmt) return false;
-        }
-
         if (!isFenderMimStrat) {
           return true;
         }
@@ -4954,8 +4901,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
               }
             }
           }
-          const fallbackText = outputParts.join("
-").trim();
+          const fallbackText = outputParts.join("\n").trim();
           if (fallbackText) {
             try {
               parsedWeb = JSON.parse(fallbackText);
@@ -5715,7 +5661,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
        --------------------------------------------------------- */
 
     return res.status(200).json({
-      version: "v14.19",
+      version: "v14.22",
       name:
         parsed.name ||
         "Ukjent",
