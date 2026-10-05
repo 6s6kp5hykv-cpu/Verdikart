@@ -1,4 +1,6 @@
-// Kistefunn analysebackend v14.17
+// Kistefunn analysebackend v14.19
+// V14.19: produktmerke-gate skiller strukturerte merkeopplysninger fra fritekst/omtaler.
+// V14.18: felles Fender/Squier brand-gate. Når målobjektet er Fender og ikke Squier, forkastes alle Squier/Squier by Fender-treff før exactPool, sameModelPool, valuationPool og kuppberegning. Motsatt forkastes Fender-treff når målobjektet faktisk er Squier.
 // V14.17: endelig deterministisk Fender-filter basert på den faktiske eBay-søkestrengen, slik at Squier/andre varianter ikke kan påvirke verken exactPool, verdiberegning eller visning.
 // V14.3: eksakte markedsreferanser forankrer også low/high slik at AI-low ikke trekker verdien kunstig ned.
 // V14.4: normal lavpris holdes separat fra godkjente kupp, slik at et legitimt billigfunn vises som kupp uten å senke markedsintervallet.
@@ -3498,6 +3500,77 @@ Returner KUN gyldig JSON:
           /\bsignature\s+series\b/i
         ];
 
+      /*
+       * V14.18 – FELLES FENDER/SQUIER BRAND-GATE
+       * -----------------------------------------
+       * Fender og Squier deler produktnavn som Stratocaster og Telecaster,
+       * men skal aldri behandles som samme merke i markedsverdien.
+       *
+       * Denne gaten skal brukes på ALLE markeds-pooler, ikke bare
+       * normalFenderMimQuery. Den er bevisst basert på målidentiteten
+       * og selve annonsedataene, slik at en Squier-annonse ikke kan
+       * påvirke exact, same-model, valuation eller kuppberegning.
+       */
+      const targetBrandText = String(
+        [
+          built.brand,
+          built.manufacturer,
+          itemInfo?.brand,
+          itemInfo?.manufacturer,
+          parsed?.name
+        ]
+          .filter(Boolean)
+          .join(" ")
+      ).toLowerCase();
+
+      const targetIsSquierBrand =
+        /\bsquier(?:\s+by\s+fender)?(?:\s+series)?\b/i.test(targetBrandText);
+
+      const targetIsFenderBrand =
+        /\bfender\b/i.test(targetBrandText) &&
+        !targetIsSquierBrand;
+
+      function passesFenderSquierBrandGate(item) {
+        // V14.19: Produktmerke skal bestemmes fra strukturerte
+        // brand/manufacturer-felter og selve tittelen. Fritekst/aspekter
+        // kan inneholde omtaler som "not Squier" eller "Squier comparison"
+        // og skal derfor ikke alene gjøre en ekte Fender til Squier.
+        const structuredBrandText = String(
+          [item?.brand, item?.manufacturer]
+            .filter(Boolean)
+            .join(" ")
+        );
+
+        const titleText = String(item?.title || "");
+
+        const structuredIsSquier =
+          /\bsquier(?:\s+by\s+fender)?(?:\s+series)?\b/i.test(structuredBrandText);
+        const structuredIsFender =
+          /\bfender\b/i.test(structuredBrandText) &&
+          !structuredIsSquier;
+
+        // Tittelen brukes som produktidentitet når metadata mangler.
+        // Negative/omtaleformuleringer skal ikke telle som merke.
+        const positiveSquierTitle =
+          /\bsquier(?:\s+by\s+fender)?(?:\s+series)?\b/i.test(titleText) &&
+          !/\b(?:not|no|without|ikke|versus|vs\.?|comparison|compare|replacement|compatible|for)\s+squier\b/i.test(titleText);
+
+        const positiveFenderTitle =
+          /\bfender\b/i.test(titleText) &&
+          !/\b(?:not|no|without|ikke|versus|vs\.?|comparison|compare|replacement|compatible|for)\s+fender\b/i.test(titleText);
+
+        const listingIsSquier =
+          structuredIsSquier || (!structuredIsFender && positiveSquierTitle);
+        const listingIsFender =
+          structuredIsFender || (!structuredIsSquier && positiveFenderTitle);
+
+        if (targetIsFenderBrand && listingIsSquier) return false;
+        if (targetIsSquierBrand && listingIsFender) return false;
+
+        return true;
+      }
+
+
       if (normalFenderMimQuery) {
         for (let i = all.length - 1; i >= 0; i--) {
           const listingTitle = String(all[i]?.title || "");
@@ -3512,9 +3585,18 @@ Returner KUN gyldig JSON:
         }
       }
 
+      // V14.19: brand-gate gjelder uansett om MIM-gaten er aktiv.
+      // Dette er første felles sikkerhetsnett mot Fender <-> Squier-miks.
+      for (let i = all.length - 1; i >= 0; i--) {
+        if (!passesFenderSquierBrandGate(all[i])) {
+          all.splice(i, 1);
+        }
+      }
+
       const rawExactPool =
         all.filter(
           x =>
+            passesFenderSquierBrandGate(x) &&
             x.match_tier === "exact" &&
             // V12.5: Siste uavhengige tittelkontroll før prisgrunnlaget.
             // Denne kjører selv om en tidligere AI-score skulle ha feilklassifisert treffet.
@@ -3654,6 +3736,10 @@ Returner KUN gyldig JSON:
        * som den vises som eksakt sammenligning.
        */
       function isFinalExactReferenceSafe(item) {
+        if (!passesFenderSquierBrandGate(item)) {
+          return false;
+        }
+
         const title =
           String(
             `${item?.title || ""} ${item?._ebay_aspect_text || ""}`
@@ -3909,6 +3995,7 @@ Returner KUN gyldig JSON:
       const rawSameModelPool =
         all.filter(
           x =>
+            passesFenderSquierBrandGate(x) &&
             x.match_tier === "same_model" &&
             x.relevance_score >= 50 &&
             (
@@ -4361,6 +4448,14 @@ Returner KUN gyldig JSON:
 
         filtering: {
           strict: true,
+
+          fender_squier_brand_gate:
+            true,
+
+          fender_squier_gate_target_brand:
+            targetIsSquierBrand
+              ? "Squier"
+              : (targetIsFenderBrand ? "Fender" : "other"),
 
           minimum_relevance_score:
             45,
@@ -5538,7 +5633,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
        --------------------------------------------------------- */
 
     return res.status(200).json({
-      version: "v14.17",
+      version: "v14.19",
       name:
         parsed.name ||
         "Ukjent",
