@@ -3525,6 +3525,7 @@ Returner KUN gyldig JSON:
           .filter(Number.isFinite)
           .filter(x => x > 0);
 
+
       const prices =
         finalPool
           .map(
@@ -3563,7 +3564,6 @@ Returner KUN gyldig JSON:
         marketMedian =
           Math.round(sameModelMedian);
       }
-
 
       /*
        * V13.1 – KJØPSMULIGHETER / MULIGE KUPP
