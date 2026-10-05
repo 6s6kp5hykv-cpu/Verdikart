@@ -1,4 +1,5 @@
-// Kistefunn analysebackend v14.16
+// Kistefunn analysebackend v14.17
+// V14.17: endelig deterministisk Fender-filter basert på den faktiske eBay-søkestrengen, slik at Squier/andre varianter ikke kan påvirke verken exactPool, verdiberegning eller visning.
 // V14.3: eksakte markedsreferanser forankrer også low/high slik at AI-low ikke trekker verdien kunstig ned.
 // V14.4: normal lavpris holdes separat fra godkjente kupp, slik at et legitimt billigfunn vises som kupp uten å senke markedsintervallet.
 // V14.11: retter scope-feil i finalForbiddenFenderVariants som stoppet eBay/markedspipelinen med ReferenceError. V14.10 eBay-diagnostikk beholdes.
@@ -3839,13 +3840,33 @@ Returner KUN gyldig JSON:
        * Dette er kun en tittelbasert sluttgate og påvirker ikke et faktisk
        * Squier-mål, fordi targetIsSquier må være false.
        */
+      /*
+       * V14.17 – DETERMINISTISK SØKESTRENG-GATE
+       * --------------------------------------------
+       * Hvis Kistefunn faktisk søker etter Fender + Stratocaster +
+       * Mexico/MIM + år, er dette et sikkert signal om målobjektet.
+       * Vi skal ikke la en uklar AI-identitet deaktivere variantfilteret.
+       * Dette er spesielt viktig for Squier Series, som ellers kan bli
+       * klassifisert som "Fender Stratocaster" av eBay/AI.
+       */
+      const deterministicNormalFenderStratTarget =
+        /\bfender\b/i.test(builtQueryText) &&
+        /\bstratocaster\b/i.test(builtQueryText) &&
+        /\b(?:mexico|mim|made\s+in\s+mexico)\b/i.test(builtQueryText) &&
+        /\b(?:19|20)\d{2}\b/.test(builtQueryText) &&
+        !/\bsquier(?:\s+series)?\b/i.test(builtQueryText) &&
+        !/\b(?:fsr|special|anniversary|player|vintera)\b/i.test(builtQueryText);
+
       const strictFenderStratComparableTarget =
-        !targetIsSquier &&
+        deterministicNormalFenderStratTarget ||
         (
-          targetIsFender &&
-          /\bstratocaster\b/i.test(structuredTargetText)
-        ||
-          deterministicFenderMimTarget
+          !targetIsSquier &&
+          (
+            targetIsFender &&
+            /\bstratocaster\b/i.test(structuredTargetText)
+            ||
+            deterministicFenderMimTarget
+          )
         );
 
       const finalExactPool =
@@ -4397,7 +4418,7 @@ Returner KUN gyldig JSON:
         },
 
         listings:
-          (hardFenderMimTarget
+          (strictFenderStratComparableTarget
             ? all.filter(item => {
                 const title = String(item?.title || "");
                 return !finalForbiddenFenderVariants.some(rx =>
@@ -5517,7 +5538,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
        --------------------------------------------------------- */
 
     return res.status(200).json({
-      version: "v14.16",
+      version: "v14.17",
       name:
         parsed.name ||
         "Ukjent",
