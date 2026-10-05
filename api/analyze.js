@@ -1,6 +1,7 @@
-// Kistefunn analysebackend v14.4
+// Kistefunn analysebackend v14.5
 // V14.3: eksakte markedsreferanser forankrer også low/high slik at AI-low ikke trekker verdien kunstig ned.
 // V14.4: normal lavpris holdes separat fra godkjente kupp, slik at et legitimt billigfunn vises som kupp uten å senke markedsintervallet.
+// V14.5: endelig frontend/verdigrunnlags-gate sikrer at rå eBay-treff som Squier/Player/Special osv. ikke kan dukke opp som eksakte referanser.
 // V12.7: brukeroppgitt spesifikk modellvariant brukes som sterkt signal når bildet støtter merke/serie.
 // V12.7: nummererte sykkelvarianter (f.eks. Trekking 4 vs Trekking 6) hardfiltreres i markedet.
 // Strengere identifikasjon + hardere markedsfilter + multi-source markedsmotor
@@ -3469,8 +3470,92 @@ Returner KUN gyldig JSON:
       const balancedRawExactPool =
         balanceByQuery(strictExactPool, 6);
 
+      /*
+       * V14.5 – FINAL EXACT-REFERENCE SANITIZER
+       * ----------------------------------------
+       * Vi har allerede en hard Fender-gate tidligere i eBay-pipelinen.
+       * Denne siste kontrollen ligger likevel etter exactPool-byggingen.
+       * Grunnen er at eBay kan levere rådata gjennom flere veier, og
+       * frontend skal aldri kunne få et treff merket "exact" som en
+       * inkompatibel variant.
+       *
+       * Viktig: denne listen brukes både til visning OG verdiberegning.
+       * Dermed kan en Squier/Player/Special ikke påvirke medianen samtidig
+       * som den vises som eksakt sammenligning.
+       */
+      function isFinalExactReferenceSafe(item) {
+        const queryContext =
+          String(
+            [
+              built?.queries?.join(" | ") || "",
+              built?.user_model_hint || "",
+              built?.model || "",
+              built?.brand || "",
+              built?.country || ""
+            ].join(" ")
+          ).toLowerCase();
+
+        const title =
+          String(
+            `${item?.title || ""} ${item?._ebay_aspect_text || ""}`
+          ).toLowerCase();
+
+        const isFenderMimStrat =
+          /\\bfender\\b/.test(queryContext) &&
+          /\\bstratocaster\\b/.test(queryContext) &&
+          /\\b(?:mexico|mim|made in mexico)\\b/.test(queryContext);
+
+        if (!isFenderMimStrat) {
+          return true;
+        }
+
+        /*
+         * Dersom brukeren faktisk søker etter en av disse variantene,
+         * skal den selvsagt ikke filtreres bort.
+         */
+        const explicitlyRequestedVariant =
+          /\\bsquier(?:\\s+series)?\\b/.test(queryContext) ||
+          /\\bfsr\\b/.test(queryContext) ||
+          /\\b62\\s*(?:['’]s?|special)\\b/.test(queryContext) ||
+          /\\bspecial(?:\\s+edition)?\\b/.test(queryContext) ||
+          /\\banniversary\\b/.test(queryContext) ||
+          /\\bplayer(?:\\s+(?:ii|2))?\\b/.test(queryContext) ||
+          /\\bvintera\\b/.test(queryContext) ||
+          /\\bclassic\\s+(?:series|vibe)\\b/.test(queryContext) ||
+          /\\bamerican\\s+(?:standard|professional|performer|ultra|original|vintage)\\b/.test(queryContext);
+
+        if (explicitlyRequestedVariant) {
+          return true;
+        }
+
+        const forbiddenVariant =
+          /\\bsquier(?:\\s+series)?\\b/.test(title) ||
+          /\\bfsr\\b/.test(title) ||
+          /\\bfender\\s+special\\s+run\\b/.test(title) ||
+          /\\bspecial\\s+run\\b/.test(title) ||
+          /\\b62\\s*(?:['’]s?|special)\\b/.test(title) ||
+          /\\b50th\\s+anniversary\\b/.test(title) ||
+          /\\banniversary\\b/.test(title) ||
+          /\\bspecial(?:\\s+edition)?\\b/.test(title) ||
+          /\\blimited\\s+edition\\b/.test(title) ||
+          /\\bvintage\\s+reissue\\b/.test(title) ||
+          /\\breissue\\b/.test(title) ||
+          /\\bplayer(?:\\s+(?:ii|2))?\\b/.test(title) ||
+          /\\bvintera\\b/.test(title) ||
+          /\\bclassic\\s+(?:series|vibe)\\b/.test(title) ||
+          /\\bamerican\\s+(?:standard|professional|performer|ultra|original|vintage)\\b/.test(title) ||
+          /\\bprofessional\\s+ii\\b/.test(title) ||
+          /\\bsignature\\s+series\\b/.test(title);
+
+        return !forbiddenVariant;
+      }
+
+      const sanitizedExactPool =
+        removeOutliers(balancedRawExactPool)
+          .filter(isFinalExactReferenceSafe);
+
       const exactPool =
-        removeOutliers(balancedRawExactPool);
+        sanitizedExactPool;
 
       /*
        * Same-model treff:
@@ -5232,10 +5317,10 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       },
 
       market_engine_version:
-        "v14.4-normal-low-plus-bargain-separation",
+        "v14.5-final-exact-reference-sanitizer",
 
       market_filter_version:
-        "v14.4-hard-model-reference-gate-normal-low-plus-bargain-separation",
+        "v14.5-hard-model-reference-gate-final-exact-reference-sanitizer",
 
       buy_opportunities:
         buy_opportunities,
