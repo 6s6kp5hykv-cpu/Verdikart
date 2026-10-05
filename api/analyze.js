@@ -1,6 +1,7 @@
-// Kistefunn analysebackend v14.22
+// Kistefunn analysebackend v14.23
 // V14.20: Squier/Squire behandles som samme variant i alle Fender/Squier-gater.
 // V14.21: Eksakte gitarreferanser avviser eksplisitte bundle/pakke/kit/produktpakke-treff når målobjektet ikke selv er en pakke. Dette stopper f.eks. Squier Affinity Stratocaster + Mustang Micro Pack.
+// V14.23: Vanlig Fender MIM Stratocaster avviser også 60s/classic 60s og signature/Jeff Beck-varianter.
 // V14.19: produktmerke-gate skiller strukturerte merkeopplysninger fra fritekst/omtaler.
 // V14.18: felles Fender/Squier brand-gate. Når målobjektet er Fender og ikke Squier, forkastes alle Squier/Squier by Fender-treff før exactPool, sameModelPool, valuationPool og kuppberegning. Motsatt forkastes Fender-treff når målobjektet faktisk er Squier.
 // V14.17: endelig deterministisk Fender-filter basert på den faktiske eBay-søkestrengen, slik at Squier/andre varianter ikke kan påvirke verken exactPool, verdiberegning eller visning.
@@ -2400,6 +2401,7 @@ Returner KUN gyldig JSON:
 
       const incompatibleSeries = [
         "classic 60s",
+        "60s",
         "classic series",
         "vintera",
         "player ii",
@@ -2410,7 +2412,9 @@ Returner KUN gyldig JSON:
         "elite",
         "deluxe",
         "anniversary",
-        "reissue"
+        "reissue",
+        "signature model",
+        "jeff beck"
       ];
 
       for (
@@ -2784,6 +2788,7 @@ Returner KUN gyldig JSON:
           /\bplayer(?:\s+ii|\s+2)?\b/,
           /\bvintera\b/,
           /\bclassic\s+series\b/,
+          /\b(?:60s|classic\s+60s)\b/,
           /\bclassic\s+player\b/,
           /\broad\s+worn\b/,
           /\broad\s+worn\b/,
@@ -2791,7 +2796,8 @@ Returner KUN gyldig JSON:
           /\bprofessional\s+ii\b/,
           /\bdeluxe\b/,
           /\belite\b/,
-          /\bsignature\s+series\b/
+          /\bsignature(?:\s+series|\s+model)?\b/,
+          /\bjeff\s+beck\b/
         ];
 
         if (incompatibleFenderVariantPatterns.some(rx => rx.test(scoringText.toLowerCase()))) {
@@ -2862,7 +2868,7 @@ Returner KUN gyldig JSON:
           /\bspecial\s+edition\b/,
           /\blimited\s+edition\b/,
           /\bredline\b/,
-          /\bsignature\s+series\b/,
+          /\bsignature(?:\s+series|\s+model)?\b/,
           /\bdeluxe\s+stratocaster\b/,
           /\bclassic\s+vibe\b/,
           /\baffinity\s+strat\b/,
@@ -2980,9 +2986,11 @@ Returner KUN gyldig JSON:
           /\bplayer(?:\s+ii|\s+2)?\b/i,
           /\bvintera\b/i,
           /\bclassic\s+series\b/i,
+          /\b(?:60s|classic\s+60s)\b/i,
           /\bamerican\s+(?:standard|professional|performer|ultra|original|vintage)\b/i,
           /\bprofessional\s+ii\b/i,
-          /\bsignature\s+series\b/i
+          /\bsignature(?:\s+series|\s+model)?\b/i,
+          /\bjeff\s+beck\b/i
         ];
         if (hardForbidden.some(rx => rx.test(String(title || "")))) {
           return null;
@@ -3055,7 +3063,7 @@ Returner KUN gyldig JSON:
       // Special/62/anniversary må være eksplisitt en del av selve søket for
       // at slike varianter skal tillates.
       const queryRequestsSpecial =
-        /\b(?:62\s*(?:['’]s?|special)|special|anniversary|fsr|squ(?:ier|ire))\b/i.test(queryContext);
+        /\b(?:62\s*(?:['’]s?|special)|special|anniversary|fsr|squ(?:ier|ire)|60s|classic\s+60s|signature(?:\s+series|\s+model)?|jeff\s+beck)\b/i.test(queryContext);
 
       if (!isFenderStratMim || queryRequestsSpecial) {
         return false;
@@ -3083,7 +3091,7 @@ Returner KUN gyldig JSON:
         /\bprofessional\s+ii\b/,
         /\bdeluxe\b/,
         /\belite\b/,
-        /\bsignature\s+series\b/,
+        /\bsignature(?:\s+series|\s+model)?\b/,
         /\bmi[j]\b/
       ];
 
@@ -3498,9 +3506,11 @@ Returner KUN gyldig JSON:
           /\bplayer(?:\s+ii|\s+2)?\b/i,
           /\bvintera\b/i,
           /\bclassic\s+series\b/i,
+          /\b(?:60s|classic\s+60s)\b/i,
           /\bamerican\s+(?:standard|professional|performer|ultra|original|vintage)\b/i,
           /\bprofessional\s+ii\b/i,
-          /\bsignature\s+series\b/i
+          /\bsignature(?:\s+series|\s+model)?\b/i,
+          /\bjeff\s+beck\b/i
         ];
 
       /*
@@ -3605,7 +3615,7 @@ Returner KUN gyldig JSON:
             // Denne kjører selv om en tidligere AI-score skulle ha feilklassifisert treffet.
             !(
               hardFenderMimTarget &&
-              /\b(?:squ(?:ier|ire)(?:\s+series)?|fsr|62\s*(?:['’]s?|special)|50th\s+anniversary|anniversary|special(?:\s+edition)?|limited\s+edition|vintage\s+reissue|reissue|player(?:\s+ii|\s+2)?|vintera|classic\s+series|american\s+(?:standard|professional|performer|ultra|original|vintage)|professional\s+ii|signature\s+series)\b/i.test(String(x.title || ""))
+              /\b(?:squ(?:ier|ire)(?:\s+series)?|fsr|62\s*(?:['’]s?|special)|50th\s+anniversary|anniversary|special(?:\s+edition)?|limited\s+edition|vintage\s+reissue|reissue|player(?:\s+ii|\s+2)?|vintera|classic\s+series|american\s+(?:standard|professional|performer|ultra|original|vintage)|professional\s+ii|signature(?:\s+series|\s+model)?|jeff\s+beck|60s|classic\s+60s)\b/i.test(String(x.title || ""))
             ) &&
             x.relevance_score >= 45 &&
             // V11.8 HARD TITLE-YEAR GATE: kjent år krever dokumentert
@@ -3848,6 +3858,13 @@ Returner KUN gyldig JSON:
         const targetIsClassic =
           /\bclassic\s+(?:series|vibe)\b/.test(targetIdentity);
 
+        const targetIs60s =
+          /\b(?:60s|classic\s+60s)\b/.test(targetIdentity);
+
+        const targetIsSignature =
+          /\bsignature(?:\s+series|\s+model)?\b/.test(targetIdentity) ||
+          /\bjeff\s+beck\b/.test(targetIdentity);
+
         const targetIsAmerican =
           /\bamerican\s+(?:standard|professional|performer|ultra|original|vintage)\b/.test(targetIdentity) ||
           /\bprofessional\s+ii\b/.test(targetIdentity);
@@ -3920,6 +3937,21 @@ Returner KUN gyldig JSON:
         ) return false;
 
         if (
+          /\b(?:60s|classic\s+60s)\b/.test(title) &&
+          !targetIs60s
+        ) return false;
+
+        if (
+          /\bsignature(?:\s+series|\s+model)?\b/.test(title) &&
+          !targetIsSignature
+        ) return false;
+
+        if (
+          /\bjeff\s+beck\b/.test(title) &&
+          !targetIsSignature
+        ) return false;
+
+        if (
           /\bamerican\s+(?:standard|professional|performer|ultra|original|vintage)\b/.test(title) ||
           /\bprofessional\s+ii\b/.test(title)
         ) {
@@ -3969,7 +4001,7 @@ Returner KUN gyldig JSON:
         /\b(?:mexico|mim|made\s+in\s+mexico)\b/i.test(builtQueryText) &&
         /\b(?:19|20)\d{2}\b/.test(builtQueryText) &&
         !/\bsqu(?:ier|ire)(?:\s+series)?\b/i.test(builtQueryText) &&
-        !/\b(?:fsr|special|anniversary|player|vintera)\b/i.test(builtQueryText);
+        !/\b(?:fsr|special|anniversary|player|vintera|60s|classic\s+60s|signature(?:\s+series|\s+model)?|jeff\s+beck)\b/i.test(builtQueryText);
 
       const strictFenderStratComparableTarget =
         deterministicNormalFenderStratTarget ||
@@ -5661,7 +5693,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
        --------------------------------------------------------- */
 
     return res.status(200).json({
-      version: "v14.22",
+      version: "v14.23",
       name:
         parsed.name ||
         "Ukjent",
