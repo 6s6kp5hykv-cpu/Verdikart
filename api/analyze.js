@@ -1,5 +1,6 @@
-// Kistefunn analysebackend v14.20
+// Kistefunn analysebackend v14.21
 // V14.20: Squier/Squire behandles som samme variant i alle Fender/Squier-gater.
+// V14.21: Eksakte gitarreferanser avviser eksplisitte bundle/pakke/kit/produktpakke-treff når målobjektet ikke selv er en pakke. Dette stopper f.eks. Squier Affinity Stratocaster + Mustang Micro Pack.
 // V14.19: produktmerke-gate skiller strukturerte merkeopplysninger fra fritekst/omtaler.
 // V14.18: felles Fender/Squier brand-gate. Når målobjektet er Fender og ikke Squier, forkastes alle Squier/Squier by Fender-treff før exactPool, sameModelPool, valuationPool og kuppberegning. Motsatt forkastes Fender-treff når målobjektet faktisk er Squier.
 // V14.17: endelig deterministisk Fender-filter basert på den faktiske eBay-søkestrengen, slik at Squier/andre varianter ikke kan påvirke verken exactPool, verdiberegning eller visning.
@@ -3782,6 +3783,31 @@ Returner KUN gyldig JSON:
           /\bfender\b/.test(targetIdentity) &&
           /\bstratocaster\b/.test(targetIdentity) &&
           /\b(?:mexico|mim|made in mexico)\b/.test(targetIdentity);
+
+        /*
+         * V14.21 – EKSAKT GITAR: BUNDLE/PAKKE-GATE
+         * -------------------------------------------
+         * Et treff kan ha riktig merke + serie + modell, men fortsatt være
+         * en annen varetype, f.eks. "Squier Affinity Stratocaster Mustang
+         * Micro Pack". Dette skal ikke være en eksakt sammenligning med
+         * selve gitaren.
+         *
+         * Vi bruker bare tydelige pakkeord. "set" alene brukes IKKE fordi
+         * det kan forekomme i legitime gitarbeskrivelser (f.eks. pickup set).
+         * Dersom målobjektet selv er en pakke/bundle, aktiveres ikke gaten.
+         */
+        const targetIsBundleOrPackage =
+          /\b(?:bundle|pack(?:age)?|starter\s+(?:set|pack)|beginner\s+(?:set|pack)|guitar\s+(?:set|package|bundle)|instrument\s+(?:set|package|bundle)|mustang\s+micro)\b/.test(targetIdentity);
+
+        const listingIsBundleOrPackage =
+          /\b(?:bundle|pack(?:age)?|starter\s+(?:set|pack)|beginner\s+(?:set|pack)|guitar\s+(?:set|package|bundle)|instrument\s+(?:set|package|bundle)|mustang\s+micro)\b/.test(title);
+
+        if (
+          !targetIsBundleOrPackage &&
+          listingIsBundleOrPackage
+        ) {
+          return false;
+        }
 
         if (!isFenderMimStrat) {
           return true;
