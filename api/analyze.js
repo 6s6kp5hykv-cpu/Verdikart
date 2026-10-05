@@ -1,7 +1,7 @@
-// Kistefunn analysebackend v15.0
-// V15.0: modulær struktur basert på v14.18 – funksjonalitet beholdes, variantmotor flyttet til lib/variants.js.
+// Kistefunn analysebackend v15.1
 import { createFenderVariantContext } from "../lib/variants.js";
 import { balanceByQuery } from "../lib/matching.js";
+// V15.1: modulær struktur basert 1:1 på v14.18. Søkelogikk beholdt.
 // V14.18: felles Fender/Squier brand-gate. Når målobjektet er Fender og ikke Squier, forkastes alle Squier/Squier by Fender-treff før exactPool, sameModelPool, valuationPool og kuppberegning. Motsatt forkastes Fender-treff når målobjektet faktisk er Squier.
 // V14.17: endelig deterministisk Fender-filter basert på den faktiske eBay-søkestrengen, slik at Squier/andre varianter ikke kan påvirke verken exactPool, verdiberegning eller visning.
 // V14.3: eksakte markedsreferanser forankrer også low/high slik at AI-low ikke trekker verdien kunstig ned.
@@ -3458,31 +3458,26 @@ Returner KUN gyldig JSON:
             .join(" ")
         ).toLowerCase();
 
-      /*
-       * V15.0 – MODULÆR VARIANTMOTOR
-       * ------------------------------
-       * Fender/Squier-identitet og variantfilter ligger nå i lib/variants.js.
-       * Dette er samme logikk som v14.18, flyttet ut av hovedfilen for å
-       * gjøre den testbar og hindre at nye endringer i analyze.js påvirker
-       * variantfilteret utilsiktet.
-       */
-      const variantContext = createFenderVariantContext({
-        built,
-        itemInfo,
-        parsed,
-        deterministicFenderMimTarget
-      });
-
       const {
         targetIsSquier,
         targetIsFender,
         normalFenderMimQuery,
         hardFenderMimTarget,
         finalForbiddenFenderVariants,
+        targetBrandText,
         targetIsSquierBrand,
         targetIsFenderBrand,
         passesFenderSquierBrandGate
-      } = variantContext;
+      } = createFenderVariantContext({
+        built,
+        itemInfo,
+        parsed,
+        structuredTargetText,
+        structuredTargetYear,
+        structuredTargetCountry,
+        deterministicFenderMimTarget
+      });
+
 
       if (normalFenderMimQuery) {
         for (let i = all.length - 1; i >= 0; i--) {
@@ -3600,7 +3595,9 @@ Returner KUN gyldig JSON:
        * et annet søk gir få. Uten balansering kan ett søk dermed dominere
        * medianen. Vi tar derfor maks 6 sterke eksakte treff per søk.
        */
-      // V15.0: balansering flyttet til lib/matching.js
+      // V15.1: balanceByQuery ligger i lib/matching.js.
+
+
       const balancedRawExactPool =
         balanceByQuery(strictExactPool, 6);
 
