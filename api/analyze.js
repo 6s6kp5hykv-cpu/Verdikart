@@ -1,4 +1,4 @@
-// Kistefunn analysebackend v14.15
+// Kistefunn analysebackend v14.16
 // V14.3: eksakte markedsreferanser forankrer også low/high slik at AI-low ikke trekker verdien kunstig ned.
 // V14.4: normal lavpris holdes separat fra godkjente kupp, slik at et legitimt billigfunn vises som kupp uten å senke markedsintervallet.
 // V14.11: retter scope-feil i finalForbiddenFenderVariants som stoppet eBay/markedspipelinen med ReferenceError. V14.10 eBay-diagnostikk beholdes.
@@ -3826,8 +3826,30 @@ Returner KUN gyldig JSON:
        * Stratocaster skal et Squier/Player/etc.-treff ikke kunne overleve
        * via en alternativ kodevei.
        */
+      /*
+       * V14.16 – ABSOLUTT VARIANTFILTER PÅ FRONTEND-DATAGRUNNLAGET
+       * -------------------------------------------------------------
+       * V14.15 filtrerte inkompatible varianter når hardFenderMimTarget
+       * var aktiv. Squier kunne likevel overleve dersom målidentiteten
+       * ikke aktiverte akkurat denne gaten, selv om søket tydelig gjaldt
+       * Fender Stratocaster.
+       *
+       * For en normal Fender Stratocaster skal Squier/FSR/Special/Player/
+       * Vintera/American osv. aldri sendes i exact_listings.
+       * Dette er kun en tittelbasert sluttgate og påvirker ikke et faktisk
+       * Squier-mål, fordi targetIsSquier må være false.
+       */
+      const strictFenderStratComparableTarget =
+        !targetIsSquier &&
+        (
+          targetIsFender &&
+          /\bstratocaster\b/i.test(structuredTargetText)
+        ||
+          deterministicFenderMimTarget
+        );
+
       const finalExactPool =
-        hardFenderMimTarget
+        strictFenderStratComparableTarget
           ? sanitizedExactPool.filter(item => {
               const title = String(item?.title || "");
               return !finalForbiddenFenderVariants.some(rx =>
@@ -3845,7 +3867,7 @@ Returner KUN gyldig JSON:
        * Dette er bevisst kun en tittelbasert sikkerhetsventil.
        */
       const finalExactPoolV1413 =
-        hardFenderMimTarget
+        strictFenderStratComparableTarget
           ? finalExactPool.filter(item => {
               const title = String(item?.title || "");
               return !finalForbiddenFenderVariants.some(rx =>
@@ -5495,7 +5517,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
        --------------------------------------------------------- */
 
     return res.status(200).json({
-      version: "v14.15",
+      version: "v14.16",
       name:
         parsed.name ||
         "Ukjent",
