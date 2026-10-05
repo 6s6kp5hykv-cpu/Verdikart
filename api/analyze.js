@@ -25,8 +25,9 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Kupp-listen må være tilgjengelig i hele handler-scope.
+    // Kupp- og prisundersøkelseslister må være tilgjengelige i hele handler-scope.
     let buy_opportunities = [];
+    let priceInvestigations = [];
     const { image, description } = req.body || {};
 
     if (!image || typeof image !== "string") {
@@ -3614,7 +3615,7 @@ Returner KUN gyldig JSON:
           ? Math.max(0, exactQ1 - 1.5 * exactIqr)
           : null;
 
-      const priceInvestigations = [];
+      priceInvestigations = [];
 
       buy_opportunities =
         Number.isFinite(bargainReferenceMedian) &&
