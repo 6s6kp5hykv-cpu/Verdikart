@@ -1,5 +1,6 @@
-// Kistefunn analysebackend v14.20
-// V14.20: eksplisitt Squier i annonsetittel overstyrer motstridende/feil strukturert Fender-metadata. Dette lukker siste lekkasje til sameModelPool/visning.
+// Kistefunn analysebackend v14.23
+// V14.21: frontend-listings bruker nå samme Fender/Squier-gate som prisgrunnlaget. Dette lukker lekkasjen der avviste Squier-treff fortsatt kunne vises via `all`.
+// V14.20: eksplisitt Squier i annonsetittel overstyrer motstridende/feil strukturert Fender-metadata.
 // V14.19: produktmerke-gate skiller strukturerte merkeopplysninger fra fritekst/omtaler.
 // V14.18: felles Fender/Squier brand-gate. Når målobjektet er Fender og ikke Squier, forkastes alle Squier/Squier by Fender-treff før exactPool, sameModelPool, valuationPool og kuppberegning. Motsatt forkastes Fender-treff når målobjektet faktisk er Squier.
 // V14.17: endelig deterministisk Fender-filter basert på den faktiske eBay-søkestrengen, slik at Squier/andre varianter ikke kan påvirke verken exactPool, verdiberegning eller visning.
@@ -3552,9 +3553,12 @@ Returner KUN gyldig JSON:
 
         // Tittelen brukes som produktidentitet når metadata mangler.
         // Negative/omtaleformuleringer skal ikke telle som merke.
+        // V14.23: For et Fender-mål er enhver eksplisitt Squier-omtale
+        // i produkttittelen en hard avvisning. Vi skal ikke forsøke å
+        // tolke "comparison", "vs", "compatible" osv. som et ekte
+        // Fender-produkt; slike treff er uegnede som eksakte prisreferanser.
         const positiveSquierTitle =
-          /\bsquier(?:\s+by\s+fender)?(?:\s+series)?\b/i.test(titleText) &&
-          !/\b(?:not|no|without|ikke|versus|vs\.?|comparison|compare|replacement|compatible|for)\s+squier\b/i.test(titleText);
+          /\bsquier(?:\s+by\s+fender)?(?:\s+series)?\b/i.test(titleText);
 
         const positiveFenderTitle =
           /\bfender\b/i.test(titleText) &&
@@ -4081,7 +4085,12 @@ Returner KUN gyldig JSON:
         all
           .filter(
             x =>
-              x.match_tier === "near"
+              x.match_tier === "near" &&
+              passesFenderSquierBrandGate(x) &&
+              (!strictFenderStratComparableTarget ||
+                !finalForbiddenFenderVariants.some(rx =>
+                  rx.test(String(x?.title || ""))
+                ))
           )
           .slice(0, 8);
 
@@ -4519,15 +4528,12 @@ Returner KUN gyldig JSON:
         },
 
         listings:
-          (strictFenderStratComparableTarget
-            ? all.filter(item => {
-                const title = String(item?.title || "");
-                return !finalForbiddenFenderVariants.some(rx =>
-                  rx.test(title)
-                );
-              })
-            : all
-          )
+          // V14.22: FRONTEND-DISPLAY-GATE – BRUK KUN GODKJENTE REFERANSER
+          // `all` er råmarkedet og skal aldri brukes direkte til listen
+          // som frontend presenterer som markedsreferanser. `exactPool`
+          // har allerede passert Fender/Squier-, variant-, år- og
+          // relevansfiltrene. Ingen alternativ kodevei fra `all`.
+          exactPool
             .slice(0, 12)
             .map(
               item => ({
