@@ -4160,6 +4160,125 @@ Returner KUN gyldig JSON:
        - Frontend beholder de gamle feltene for bakoverkompatibilitet.
        --------------------------------------------------------- */
 
+    /*
+     * V13.7 – EKSAKT REFERANSE WEB-FALLBACK
+     * --------------------------------------
+     * Hvis eBay ikke finner nok eksakte treff på en kjent modellreferanse,
+     * bruker vi OpenAI Responses API + web_search for å finne aktuelle
+     * markedsreferanser på andre nettsteder.
+     *
+     * Søket er låst til samme modellreferanse. Andre modeller skal ikke
+     * brukes som prisgrunnlag.
+     */
+    async function searchExactReferenceWeb(referenceCode, brand, modelName) {
+      const code = String(referenceCode || "").trim();
+
+      if (!code || code.length < 4 || !process.env.OPENAI_API_KEY) {
+        return { enabled: false, status: "not_available", reason: "Ingen spesifikk modellreferanse eller API-nøkkel.", exact_match_count: 0, distinct_count: 0, value_nok: null, low_nok: null, high_nok: null, references: [] };
+      }
+
+      try {
+        const searchPrompt = `
+Finn aktuelle markedspriser på nettet for NØYAKTIG denne produktreferansen:
+Merke: ${String(brand || "")}
+Modell: ${String(modelName || "")}
+Eksakt referanse: ${code}
+
+BARE samme referanse skal brukes. Eksempel: 5308G-001 skal IKKE blandes med
+5304, 5204, 5905 eller andre Grand Complications-modeller.
+
+Finn opptil 8 seriøse kilder som faktisk oppgir en pris for den eksakte referansen.
+Prioriter etablerte forhandlere, seriøse markedsplasser og produsent. Ikke bruk
+auksjonsestimater, generelle artikler, forum eller sider uten faktisk pris.
+
+Returner KUN gyldig JSON:
+{
+  "references": [
+    {
+      "reference": "${code}",
+      "title": "...",
+      "url": "https://...",
+      "price": 0,
+      "currency": "USD",
+      "price_nok": 0,
+      "source_type": "dealer|marketplace|manufacturer",
+      "exact_reference_evidence": "..."
+    }
+  ]
+}
+
+Hvis du er usikker på om referansen er identisk, skal kilden ikke tas med.
+`;
+
+        const r = await fetch("https://api.openai.com/v1/responses", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
+          },
+          body: JSON.stringify({
+            model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
+            tools: [{ type: "web_search" }],
+            tool_choice: "required",
+            input: searchPrompt
+          })
+        });
+
+        if (!r.ok) {
+          return { enabled: false, status: "web_search_error", reason: `Web-søk feilet (${r.status}).`, exact_match_count: 0, distinct_count: 0, value_nok: null, low_nok: null, high_nok: null, references: [] };
+        }
+
+        const data = await r.json();
+        const outputText = String(data?.output_text || "").trim();
+        let parsedWeb = null;
+        try { parsedWeb = JSON.parse(outputText); } catch (_) {
+          const match = outputText.match(/\{[\s\S]*\}/);
+          if (match) { try { parsedWeb = JSON.parse(match[0]); } catch (_) {} }
+        }
+
+        const references = Array.isArray(parsedWeb?.references)
+          ? parsedWeb.references.map(item => ({
+              reference: String(item?.reference || "").trim(),
+              title: String(item?.title || "").trim(),
+              url: String(item?.url || "").trim(),
+              price: Number(item?.price),
+              currency: String(item?.currency || "").trim().toUpperCase(),
+              price_nok: Number(item?.price_nok),
+              source_type: String(item?.source_type || "").trim(),
+              exact_reference_evidence: String(item?.exact_reference_evidence || "").trim()
+            })).filter(item => {
+              const normalizedTarget = normalizeModelCode(code);
+              const normalizedText = normalizeModelCode(`${item.reference} ${item.title} ${item.exact_reference_evidence}`);
+              return normalizedTarget && normalizedText.includes(normalizedTarget) && item.url.startsWith("http") && Number.isFinite(item.price_nok) && item.price_nok > 0 && item.price_nok < 1000000000;
+            }).slice(0, 8)
+          : [];
+
+        const values = references.map(x => x.price_nok).filter(Number.isFinite).sort((a, b) => a - b);
+        if (!values.length) {
+          return { enabled: false, status: "no_exact_web_prices", reason: "Ingen verifiserbare priser på eksakt modellreferanse ble funnet.", exact_match_count: 0, distinct_count: 0, value_nok: null, low_nok: null, high_nok: null, references: [] };
+        }
+
+        return {
+          enabled: true,
+          status: "ok",
+          reason: "Eksakte referansepriser funnet via web-søk.",
+          exact_match_count: values.length,
+          distinct_count: new Set(values.map(v => Math.round(v))).size,
+          value_nok: Math.round(median(values)),
+          low_nok: Math.round(values[0]),
+          high_nok: Math.round(values[values.length - 1]),
+          references
+        };
+      } catch (error) {
+        return { enabled: false, status: "web_search_exception", reason: error?.message || "Ukjent web-søkfeil.", exact_match_count: 0, distinct_count: 0, value_nok: null, low_nok: null, high_nok: null, references: [] };
+      }
+    }
+
+    const webReferenceSearch =
+      targetModelCode && Number(ebay?.exact_match_count || 0) < 2
+        ? await searchExactReferenceWeb(targetModelCode, itemInfo.brand, itemInfo.model || parsed.name)
+        : { enabled: false, status: "not_needed", reason: "eBay har tilstrekkelig eksakt grunnlag.", exact_match_count: 0, distinct_count: 0, value_nok: null, low_nok: null, high_nok: null, references: [] };
+
     const marketSources = {
       ai: {
         enabled: Number.isFinite(aiEstimated),
@@ -4188,6 +4307,19 @@ Returner KUN gyldig JSON:
         exact_match_count: Number(ebay?.exact_match_count || 0),
         same_model_match_count: Number(ebay?.same_model_match_count || 0),
         distinct_count: Number(ebay?.distinct_valuation_count || 0)
+      },
+
+      web_reference: {
+        enabled: Boolean(webReferenceSearch?.enabled),
+        value_nok: Number.isFinite(Number(webReferenceSearch?.value_nok)) ? Math.round(Number(webReferenceSearch.value_nok)) : null,
+        low_nok: Number.isFinite(Number(webReferenceSearch?.low_nok)) ? Math.round(Number(webReferenceSearch.low_nok)) : null,
+        high_nok: Number.isFinite(Number(webReferenceSearch?.high_nok)) ? Math.round(Number(webReferenceSearch.high_nok)) : null,
+        exact_match_count: Number(webReferenceSearch?.exact_match_count || 0),
+        same_model_match_count: 0,
+        distinct_count: Number(webReferenceSearch?.distinct_count || 0),
+        status: webReferenceSearch?.status || "not_available",
+        reason: webReferenceSearch?.reason || "",
+        references: Array.isArray(webReferenceSearch?.references) ? webReferenceSearch.references.slice(0, 8) : []
       },
 
       finn: {
@@ -4290,6 +4422,17 @@ Returner KUN gyldig JSON:
       return weight;
     }
 
+    function calculateWebReferenceQuality(source) {
+      if (!source?.enabled || !Number.isFinite(source.value_nok)) return 0;
+      const exact = Math.max(0, Number(source.exact_match_count || 0));
+      const distinct = Math.max(0, Number(source.distinct_count || 0));
+      if (exact >= 4 && distinct >= 3) return 0.78;
+      if (exact >= 3 && distinct >= 2) return 0.68;
+      if (exact >= 2 && distinct >= 2) return 0.55;
+      if (exact === 1) return 0.25;
+      return 0;
+    }
+
     /*
      * V11.0 bruker source weights i stedet for at kombinasjonslogikken
      * er bundet direkte til eBay. Når FINN senere aktiveres, kan samme
@@ -4325,6 +4468,18 @@ Returner KUN gyldig JSON:
           low: sources.ebay.low_nok,
           high: sources.ebay.high_nok,
           quality_weight: ebayQuality
+        });
+      }
+
+      const webReferenceQuality = calculateWebReferenceQuality(sources.web_reference);
+
+      if (sources.web_reference?.enabled && Number.isFinite(sources.web_reference.value_nok) && webReferenceQuality > 0) {
+        candidates.push({
+          source: "web_reference",
+          value: sources.web_reference.value_nok,
+          low: sources.web_reference.low_nok,
+          high: sources.web_reference.high_nok,
+          quality_weight: webReferenceQuality
         });
       }
 
@@ -4445,6 +4600,9 @@ Returner KUN gyldig JSON:
           if (x.source === "finn") {
             return sum + (sources.finn.exact_match_count || 0);
           }
+          if (x.source === "web_reference") {
+            return sum + (sources.web_reference.exact_match_count || 0);
+          }
           return sum;
         },
         0
@@ -4478,7 +4636,11 @@ Returner KUN gyldig JSON:
       ];
 
       const names = marketCandidates.map(x =>
-        x.source === "ebay" ? "eBay" : "FINN"
+        x.source === "ebay"
+          ? "eBay"
+          : x.source === "finn"
+            ? "FINN"
+            : "web-referanser"
       );
 
       return {
@@ -4665,10 +4827,10 @@ Returner KUN gyldig JSON:
       market_sources: marketSources,
 
       market_engine_version:
-        "v13.4-market-first-pricing-buyfix",
+        "v13.7-exact-reference-web-fallback",
 
       market_filter_version:
-        "v13.4-hard-title-year-variant-bicycle-gate-fender-gate-clean-display",
+        "v13.7-hard-model-reference-gate-exact-reference-web-fallback",
 
       buy_opportunities:
         buy_opportunities,
