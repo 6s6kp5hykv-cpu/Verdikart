@@ -1,4 +1,5 @@
-// Kistefunn analysebackend v14.19
+// Kistefunn analysebackend v14.20
+// V14.20: eksplisitt Squier i annonsetittel overstyrer motstridende/feil strukturert Fender-metadata. Dette lukker siste lekkasje til sameModelPool/visning.
 // V14.19: produktmerke-gate skiller strukturerte merkeopplysninger fra fritekst/omtaler.
 // V14.18: felles Fender/Squier brand-gate. Når målobjektet er Fender og ikke Squier, forkastes alle Squier/Squier by Fender-treff før exactPool, sameModelPool, valuationPool og kuppberegning. Motsatt forkastes Fender-treff når målobjektet faktisk er Squier.
 // V14.17: endelig deterministisk Fender-filter basert på den faktiske eBay-søkestrengen, slik at Squier/andre varianter ikke kan påvirke verken exactPool, verdiberegning eller visning.
@@ -3559,10 +3560,15 @@ Returner KUN gyldig JSON:
           /\bfender\b/i.test(titleText) &&
           !/\b(?:not|no|without|ikke|versus|vs\.?|comparison|compare|replacement|compatible|for)\s+fender\b/i.test(titleText);
 
+        // V14.20: En eksplisitt positiv Squier-betegnelse i selve
+        // produkttittelen skal alltid være nok til å avvise treffet for
+        // et Fender-mål, selv om eBay-metadata feilaktig sier Fender.
+        // Tilsvarende skal en eksplisitt Fender-tittel kunne avvise et
+        // Squier-mål når metadata mangler/er feil.
         const listingIsSquier =
-          structuredIsSquier || (!structuredIsFender && positiveSquierTitle);
+          structuredIsSquier || positiveSquierTitle;
         const listingIsFender =
-          structuredIsFender || (!structuredIsSquier && positiveFenderTitle);
+          structuredIsFender || positiveFenderTitle;
 
         if (targetIsFenderBrand && listingIsSquier) return false;
         if (targetIsSquierBrand && listingIsFender) return false;
