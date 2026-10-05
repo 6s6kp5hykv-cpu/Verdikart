@@ -4171,6 +4171,15 @@ Returner KUN gyldig JSON:
      * brukes som prisgrunnlag.
      */
     async function searchExactReferenceWeb(referenceCode, brand, modelName) {
+      // V13.7.2 – WEB-SCOPE-FIX
+      // normalizeModelCode brukes også av web-fallbacken. Den lå tidligere
+      // i et annet lokalt scope og var derfor ikke tilgjengelig her.
+      function normalizeModelCode(value) {
+        return String(value || "")
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, "");
+      }
+
       const code = String(referenceCode || "").trim();
 
       if (!code || code.length < 4 || !process.env.OPENAI_API_KEY) {
