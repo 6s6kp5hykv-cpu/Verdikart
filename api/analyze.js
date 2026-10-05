@@ -3398,8 +3398,14 @@ Returner KUN gyldig JSON:
         /\b(?:mexico|mim|made\s+in\s+mexico)\b/i.test(builtQueryText) &&
         /\b(?:19|20)\d{2}\b/.test(builtQueryText);
 
-      const hardFenderMimTarget =
-        Boolean(normalFenderMimQuery || deterministicFenderMimTarget);
+      /*
+       * V14.14 – FIX INITIALIZATION ORDER
+       * ----------------------------------
+       * V14.13 brukte normalFenderMimQuery før const-variabelen var
+       * initialisert. Det ga ReferenceError / Temporal Dead Zone og
+       * stoppet hele eBay-søket. Vi beregner derfor hardFenderMimTarget
+       * først etter at normalFenderMimQuery er opprettet nedenfor.
+       */
 
       // V12.5: Ikke stol på søketeksten alene. En Fender MIM Stratocaster
       // med kjent år skal ha samme harde variantgate selv om AI/eBay-
@@ -3469,6 +3475,9 @@ Returner KUN gyldig JSON:
         /\b(?:mexico|mim|made\s+in\s+mexico)\b/i.test(
           `${structuredTargetText} ${structuredTargetCountry}`
         );
+
+      const hardFenderMimTarget =
+        Boolean(normalFenderMimQuery || deterministicFenderMimTarget);
 
       const finalForbiddenFenderVariants = [
           /\bsquier(?:\s+series)?\b/i,
@@ -3828,7 +3837,7 @@ Returner KUN gyldig JSON:
           : sanitizedExactPool;
 
       /*
-       * V14.13 – ABSOLUTT SLUTTGATE FOR FENDER MIM
+       * V14.14 – ABSOLUTT SLUTTGATE FOR FENDER MIM
        * ----------------------------------------------
        * Selv om en tidligere gate av en eller annen grunn ikke aktiveres,
        * skal en inkompatibel Fender-variant aldri kunne sendes til frontend
@@ -5478,7 +5487,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
        --------------------------------------------------------- */
 
     return res.status(200).json({
-      version: "v14.13",
+      version: "v14.14",
       name:
         parsed.name ||
         "Ukjent",
