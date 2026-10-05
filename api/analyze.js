@@ -3564,6 +3564,7 @@ Returner KUN gyldig JSON:
           Math.round(sameModelMedian);
       }
 
+
       /*
        * V13.1 – KJØPSMULIGHETER / MULIGE KUPP
        * ---------------------------------------
@@ -3613,7 +3614,6 @@ Returner KUN gyldig JSON:
               .sort((a, b) => b.discount_percent - a.discount_percent)
               .slice(0, 8)
           : [];
-
 
       const successfulQueries =
         [
