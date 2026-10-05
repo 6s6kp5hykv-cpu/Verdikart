@@ -1,5 +1,6 @@
-// Kistefunn analysebackend v14.3
+// Kistefunn analysebackend v14.4
 // V14.3: eksakte markedsreferanser forankrer også low/high slik at AI-low ikke trekker verdien kunstig ned.
+// V14.4: normal lavpris holdes separat fra godkjente kupp, slik at et legitimt billigfunn vises som kupp uten å senke markedsintervallet.
 // V12.7: brukeroppgitt spesifikk modellvariant brukes som sterkt signal når bildet støtter merke/serie.
 // V12.7: nummererte sykkelvarianter (f.eks. Trekking 4 vs Trekking 6) hardfiltreres i markedet.
 // Strengere identifikasjon + hardere markedsfilter + multi-source markedsmotor
@@ -5069,7 +5070,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       market.source_weights.find(x => x.source === "ebay")?.percent || 0;
 
     const valuationMethod =
-      `V14.2 markedsmotor: ${market.basis}`;
+      `V14.4 markedsmotor: ${market.basis}`;
 
     // V12.0: Vis den faktiske rensede eBay-søkestrengen.
     // Dermed vises ikke serienummerfragmenter som f.eks. MN5,
@@ -5085,7 +5086,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
        --------------------------------------------------------- */
 
     return res.status(200).json({
-      version: "v14.2",
+      version: "v14.4",
       name:
         parsed.name ||
         "Ukjent",
@@ -5231,10 +5232,10 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       },
 
       market_engine_version:
-        "v14.1-exact-market-anchor",
+        "v14.4-normal-low-plus-bargain-separation",
 
       market_filter_version:
-        "v14.1-hard-model-reference-gate-exact-market-anchor",
+        "v14.4-hard-model-reference-gate-normal-low-plus-bargain-separation",
 
       buy_opportunities:
         buy_opportunities,
@@ -5246,7 +5247,30 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
         priceInvestigations.slice(0, 8),
 
       price_investigations_count:
-        priceInvestigations.length
+        priceInvestigations.length,
+
+      /*
+       * V14.4:
+       * low_value_nok er normal lav markedspris.
+       * Et godkjent billigfunn/kupp skal ikke senke denne verdien.
+       * Frontend kan bruke disse feltene til å vise skillet tydelig.
+       */
+      normal_low_value_nok:
+        Number.isFinite(finalLow)
+          ? finalLow
+          : null,
+
+      bargain_low_value_nok:
+        buy_opportunities.length
+          ? Math.min(
+              ...buy_opportunities
+                .map(x => Number(x.price_nok))
+                .filter(Number.isFinite)
+            )
+          : null,
+
+      bargain_reference_count:
+        buy_opportunities.length
     });
 
   } catch (e) {
