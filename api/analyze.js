@@ -10,6 +10,7 @@
 // - Markedsgrunnlaget krever flere uavhengige treff før eBay får høy vekt.
 // - Beholder eksisterende JSON-struktur slik at frontend normalt ikke trenger endring.
 // - Ny markedsmotor er klargjort for FINN + eBay + AI.
+// - Prisintervallet valideres slik at lav <= estimat <= høy.
 // - FINN aktiveres først når legitim API-tilgang er tilgjengelig.
 
 export default async function handler(req, res) {
@@ -3840,6 +3841,38 @@ Returner KUN gyldig JSON:
         ? market.high_nok
         : aiHigh;
 
+    /*
+     * V11.10: prisintervallet skal alltid omslutte estimatet.
+     *
+     * Et resultat som f.eks.:
+     * estimat 4 689 kr
+     * lav 1 295 kr
+     * høy 2 544 kr
+     * er matematisk inkonsistent og skal aldri vises i Kistefunn.
+     *
+     * Vi beholder det beregnede intervallet, men utvider det ved behov
+     * slik at estimated alltid ligger mellom low og high.
+     */
+    if (Number.isFinite(finalEstimated)) {
+      if (
+        !Number.isFinite(finalLow) ||
+        finalLow > finalEstimated
+      ) {
+        finalLow = finalEstimated;
+      }
+
+      if (
+        !Number.isFinite(finalHigh) ||
+        finalHigh < finalEstimated
+      ) {
+        finalHigh = finalEstimated;
+      }
+
+      finalLow = Math.round(finalLow);
+      finalHigh = Math.round(finalHigh);
+      finalEstimated = Math.round(finalEstimated);
+    }
+
     const ebayWeight =
       market.source_weights.find(x => x.source === "ebay")?.percent || 0;
 
@@ -3978,13 +4011,13 @@ Returner KUN gyldig JSON:
       market_sources: marketSources,
 
       market_engine_version:
-        "v11.8-market-first-pricing",
+        "v11.10-market-first-pricing",
 
       market_filter_version:
-        "v11.8-hard-title-year-variant-validation",
+        "v11.10-hard-title-year-variant-validation",
 
       market_variant_gate:
-        "v11.8-fender-standard-mexico-exactness"
+        "v11.10-fender-standard-mexico-exactness"
     });
 
   } catch (e) {
