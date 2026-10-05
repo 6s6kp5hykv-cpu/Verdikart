@@ -1,7 +1,7 @@
-// Kistefunn analysebackend v14.8
+// Kistefunn analysebackend v14.9
 // V14.3: eksakte markedsreferanser forankrer også low/high slik at AI-low ikke trekker verdien kunstig ned.
 // V14.4: normal lavpris holdes separat fra godkjente kupp, slik at et legitimt billigfunn vises som kupp uten å senke markedsintervallet.
-// V14.8: variantidentitet bruker kun strukturerte identitetsfelt; fri AI-beskrivelse kan ikke åpne Squier/andre varianter. sikrer at rå eBay-treff som Squier/Player/Special osv. ikke kan dukke opp som eksakte referanser.
+// V14.9: endelig Fender MIM-gate bruker strukturerte målobjektfelter og en siste direkte tittelkontroll rett før exactPool. sikrer at rå eBay-treff som Squier/Player/Special osv. ikke kan dukke opp som eksakte referanser.
 // V12.7: brukeroppgitt spesifikk modellvariant brukes som sterkt signal når bildet støtter merke/serie.
 // V12.7: nummererte sykkelvarianter (f.eks. Trekking 4 vs Trekking 6) hardfiltreres i markedet.
 // Strengere identifikasjon + hardere markedsfilter + multi-source markedsmotor
@@ -3310,10 +3310,45 @@ Returner KUN gyldig JSON:
       // Hvis AI-en satte category feil eller feltene var tomme, kunne Squier
       // derfor slippe gjennom selv om søket tydelig var Fender Stratocaster
       // Mexico. Query-teksten er nå tilstrekkelig til å aktivere hardgaten.
+      /*
+       * V14.9:
+       * Den tidligere gaten var avhengig av built.queries. Det er feil
+       * lag å bruke som identitetsgrunnlag fordi discovery-/søketeksten
+       * kan være annerledes enn de strukturerte målobjektfeltene.
+       *
+       * Bruk de strukturerte feltene som allerede ble brukt til å bygge
+       * markedssøket: brand + model + year + country.
+       */
+      const structuredTargetText =
+        String(
+          [
+            built.brand,
+            built.model,
+            built.type,
+            built.manufacturer
+          ]
+            .filter(Boolean)
+            .join(" ")
+        ).toLowerCase();
+
+      const structuredTargetYear =
+        Number(built.year || built.detected_year || 0);
+
+      const structuredTargetCountry =
+        String(built.country || "").toLowerCase();
+
+      const targetIsSquier =
+        /\bsquier(?:\s+series)?\b/i.test(structuredTargetText);
+
       const normalFenderMimQuery =
-        /\bfender\b/i.test(builtQueryText) &&
-        /\bstratocaster\b/i.test(builtQueryText) &&
-        /\b(?:mexico|mim|made in mexico)\b/i.test(builtQueryText);
+        /^fender$/i.test(String(built.brand || "").trim()) &&
+        /\bstratocaster\b/i.test(structuredTargetText) &&
+        !targetIsSquier &&
+        structuredTargetYear >= 1900 &&
+        structuredTargetYear <= 2100 &&
+        /\b(?:mexico|mim|made in mexico)\b/i.test(
+          `${structuredTargetText} ${structuredTargetCountry}`
+        );
 
       if (normalFenderMimQuery) {
         const finalForbiddenFenderVariants = [
@@ -3336,7 +3371,12 @@ Returner KUN gyldig JSON:
 
         for (let i = all.length - 1; i >= 0; i--) {
           const listingTitle = String(all[i]?.title || "");
-          if (finalForbiddenFenderVariants.some(rx => rx.test(listingTitle))) {
+
+          if (
+            finalForbiddenFenderVariants.some(rx =>
+              rx.test(listingTitle)
+            )
+          ) {
             all.splice(i, 1);
           }
         }
@@ -3649,8 +3689,26 @@ Returner KUN gyldig JSON:
         removeOutliers(balancedRawExactPool)
           .filter(isFinalExactReferenceSafe);
 
+      /*
+       * V14.9 – FINAL EXACT TITLE GATE
+       * -------------------------------
+       * Dette er siste kontroll før exactPool sendes videre til både
+       * verdiberegning og frontend. For en identifisert normal Fender MIM
+       * Stratocaster skal et Squier/Player/etc.-treff ikke kunne overleve
+       * via en alternativ kodevei.
+       */
+      const finalExactPool =
+        normalFenderMimQuery
+          ? sanitizedExactPool.filter(item => {
+              const title = String(item?.title || "");
+              return !finalForbiddenFenderVariants.some(rx =>
+                rx.test(title)
+              );
+            })
+          : sanitizedExactPool;
+
       const exactPool =
-        sanitizedExactPool;
+        finalExactPool;
 
       /*
        * Same-model treff:
@@ -5412,10 +5470,10 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       },
 
       market_engine_version:
-        "v14.8-structured-target-identity-exact-reference-gate",
+        "v14.9-structured-target-identity-final-title-gate",
 
       market_filter_version:
-        "v14.8-hard-model-reference-gate-structured-target-identity-exact-reference-gate",
+        "v14.9-hard-model-reference-gate-structured-target-identity-final-title-gate",
 
       buy_opportunities:
         buy_opportunities,
