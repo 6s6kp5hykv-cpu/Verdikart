@@ -3462,10 +3462,44 @@ Returner KUN gyldig JSON:
           valuationPool
         );
 
+      const valuationFilterApplied =
+        filteredPool.length >= 2;
+
       const finalPool =
-        filteredPool.length >= 2
+        valuationFilterApplied
           ? filteredPool
           : valuationPool;
+
+      /*
+       * V13.0: SKILL MELLOM SAMMENLIGNBAR OG VERDIBERETTIGET
+       * ------------------------------------------------------
+       * En annonse kan være en ekte, god modellmatch og derfor vises som
+       * "eksakt markedsreferanse", samtidig som et senere prisfilter
+       * vurderer den som et statistisk avvik. Tidligere kunne UI-et vise
+       * en slik annonse som eksakt uten å forklare at den ikke påvirket
+       * verdien.
+       *
+       * Vi skiller derfor eksplisitt mellom:
+       * 1) exactPool = godkjente sammenlignbare annonser
+       * 2) finalPool = annonser som faktisk påvirker verdien
+       * 3) valuationExcluded = godkjente sammenligninger som ble filtrert
+       *    bort fra selve verdiberegningen.
+       */
+      const finalPoolKeys = new Set(
+        finalPool.map(
+          x =>
+            `${String(x.title || "").toLowerCase().trim()}|${Math.round(Number(x.nok) || 0)}|${String(x.url || "")}`
+        )
+      );
+
+      const valuationExcluded =
+        valuationFilterApplied
+          ? valuationPool.filter(x => {
+              const key =
+                `${String(x.title || "").toLowerCase().trim()}|${Math.round(Number(x.nok) || 0)}|${String(x.url || "")}`;
+              return !finalPoolKeys.has(key);
+            })
+          : [];
 
       const nearMatches =
         all
@@ -3638,6 +3672,12 @@ Returner KUN gyldig JSON:
         exact_price_filter_removed:
           Math.max(0, balancedRawExactPool.length - exactPool.length),
 
+        valuation_filter_applied:
+          valuationFilterApplied,
+
+        valuation_excluded_count:
+          valuationExcluded.length,
+
         same_model_match_count:
           sameModelPool.length,
 
@@ -3789,10 +3829,46 @@ Returner KUN gyldig JSON:
                   "exact",
                 year_match:
                   item.year_match,
+                valuation_included:
+                  finalPoolKeys.has(
+                    `${String(item.title || "").toLowerCase().trim()}|${Math.round(Number(item.nok) || 0)}|${String(item.url || "")}`
+                  ),
+                valuation_exclusion_reason:
+                  valuationExcluded.some(x => x === item)
+                    ? "prisavvik filtrert fra verdiberegningen"
+                    : null,
                 exact_year_verified:
                   !built.year ||
                   (item.year_match === "exact" &&
                     extractYears(String(item.title || "").toLowerCase()).includes(Number(built.year)))
+              })
+            ),
+
+        valuation_excluded_listings:
+          valuationExcluded
+            .slice(0, 12)
+            .map(
+              item => ({
+                title:
+                  item.title,
+                price:
+                  item.price,
+                price_nok:
+                  item.nok,
+                url:
+                  item.url,
+                query:
+                  item.query,
+                marketplace:
+                  item.marketplace,
+                relevance_score:
+                  item.relevance_score,
+                match_tier:
+                  item.match_tier,
+                year_match:
+                  item.year_match,
+                reason:
+                  "prisavvik filtrert fra verdiberegningen"
               })
             ),
 
