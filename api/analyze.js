@@ -1,7 +1,7 @@
-// Kistefunn analysebackend v14.7
+// Kistefunn analysebackend v14.8
 // V14.3: eksakte markedsreferanser forankrer også low/high slik at AI-low ikke trekker verdien kunstig ned.
 // V14.4: normal lavpris holdes separat fra godkjente kupp, slik at et legitimt billigfunn vises som kupp uten å senke markedsintervallet.
-// V14.7: variant-unntak styres nå kun av målobjektets identifikasjon, aldri av søkestrenger. sikrer at rå eBay-treff som Squier/Player/Special osv. ikke kan dukke opp som eksakte referanser.
+// V14.8: variantidentitet bruker kun strukturerte identitetsfelt; fri AI-beskrivelse kan ikke åpne Squier/andre varianter. sikrer at rå eBay-treff som Squier/Player/Special osv. ikke kan dukke opp som eksakte referanser.
 // V12.7: brukeroppgitt spesifikk modellvariant brukes som sterkt signal når bildet støtter merke/serie.
 // V12.7: nummererte sykkelvarianter (f.eks. Trekking 4 vs Trekking 6) hardfiltreres i markedet.
 // Strengere identifikasjon + hardere markedsfilter + multi-source markedsmotor
@@ -3496,20 +3496,24 @@ Returner KUN gyldig JSON:
          * som negative søkeord eller hjelpeord, og det skal aldri gjøre at
          * et slikt treff blir godkjent som "exact".
          */
+        /*
+         * V14.8:
+         * Beskrivelsen skal IKKE brukes til å avgjøre hvilken variant
+         * målobjektet er. AI-beskrivelsen kan omtale alternative modeller
+         * eller søketreff og kunne derfor feilaktig gjøre "Squier" til en
+         * tillatt variant.
+         *
+         * Variantidentiteten bygges kun fra strukturerte identitetsfelt.
+         */
         const targetIdentity =
           String(
             [
               itemInfo?.brand,
               itemInfo?.model,
-              itemInfo?.model_number,
-              itemInfo?.reference,
-              itemInfo?.name,
-              parsed?.brand,
-              parsed?.model,
-              parsed?.model_number,
-              parsed?.reference,
-              parsed?.name,
-              parsed?.description
+              itemInfo?.manufacturer,
+              itemInfo?.type,
+              itemInfo?.year_or_period,
+              parsed?.name
             ]
               .filter(Boolean)
               .join(" ")
@@ -5246,7 +5250,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       market.source_weights.find(x => x.source === "ebay")?.percent || 0;
 
     const valuationMethod =
-      `V14.4 markedsmotor: ${market.basis}`;
+      `V14.8 markedsmotor: ${market.basis}`;
 
     // V12.0: Vis den faktiske rensede eBay-søkestrengen.
     // Dermed vises ikke serienummerfragmenter som f.eks. MN5,
@@ -5262,7 +5266,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
        --------------------------------------------------------- */
 
     return res.status(200).json({
-      version: "v14.4",
+      version: "v14.8",
       name:
         parsed.name ||
         "Ukjent",
@@ -5408,10 +5412,10 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       },
 
       market_engine_version:
-        "v14.7-target-identity-exact-reference-gate",
+        "v14.8-structured-target-identity-exact-reference-gate",
 
       market_filter_version:
-        "v14.7-hard-model-reference-gate-target-identity-exact-reference-gate",
+        "v14.8-hard-model-reference-gate-structured-target-identity-exact-reference-gate",
 
       buy_opportunities:
         buy_opportunities,
