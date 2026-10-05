@@ -4171,52 +4171,60 @@ Returner KUN gyldig JSON:
      * brukes som prisgrunnlag.
      */
     async function searchExactReferenceWeb(referenceCode, brand, modelName) {
-      // V13.7.2 – WEB-SCOPE-FIX
-      // normalizeModelCode brukes også av web-fallbacken. Den lå tidligere
-      // i et annet lokalt scope og var derfor ikke tilgjengelig her.
+      /*
+       * V13.9 – ROBUST WEB-REFERANSE-SØK
+       * --------------------------------
+       * Web-søket bruker nå Structured Outputs slik at resultatet faktisk
+       * kommer tilbake som maskinlesbar JSON. Tidligere stolte vi på at
+       * output_text alltid var ren JSON, noe som kan feile når web-søk
+       * legger til tekst/citasjoner rundt svaret.
+       *
+       * Referansen er fortsatt hardlåst: 5308G-001 kan aldri bruke 5304,
+       * 5204, 5905 eller andre modeller som eksakt prisgrunnlag.
+       */
+      const code = String(referenceCode || "").trim();
+      const brandText = String(brand || "").trim();
+      const modelText = String(modelName || "").trim();
+
       function normalizeModelCode(value) {
         return String(value || "")
           .toLowerCase()
           .replace(/[^a-z0-9]/g, "");
       }
 
-      const code = String(referenceCode || "").trim();
-
       if (!code || code.length < 4 || !process.env.OPENAI_API_KEY) {
-        return { enabled: false, status: "not_available", reason: "Ingen spesifikk modellreferanse eller API-nøkkel.", exact_match_count: 0, distinct_count: 0, value_nok: null, low_nok: null, high_nok: null, references: [] };
+        return {
+          enabled: false,
+          status: "not_available",
+          reason: "Ingen spesifikk modellreferanse eller API-nøkkel.",
+          exact_match_count: 0,
+          distinct_count: 0,
+          value_nok: null,
+          low_nok: null,
+          high_nok: null,
+          references: []
+        };
       }
 
       try {
+        const normalizedTarget = normalizeModelCode(code);
+
         const searchPrompt = `
-Finn aktuelle markedspriser på nettet for NØYAKTIG denne produktreferansen:
-Merke: ${String(brand || "")}
-Modell: ${String(modelName || "")}
+Søk på nettet etter AKTUELLE PRISER for NØYAKTIG produktreferanse "${code}".
+
+Merke: ${brandText}
+Modell: ${modelText}
 Eksakt referanse: ${code}
 
-BARE samme referanse skal brukes. Eksempel: 5308G-001 skal IKKE blandes med
-5304, 5204, 5905 eller andre Grand Complications-modeller.
+KRITISK MATCH-REGEL:
+- En kilde teller bare hvis siden/listingen selv viser den eksakte referansen "${code}".
+- ${code} må være identisk med referansen, med bindestrek, mellomrom og store/små bokstaver ignorert.
+- Ikke bruk 5304, 5204, 5905 eller andre Patek Philippe Grand Complications som erstatning.
+- Ikke bruk generelle artikler, auksjonsestimater, prisguider, forum eller sider uten en faktisk oppgitt pris.
+- Prioriter seriøse forhandlere, markedsplasser og produsent.
+- Se etter sider der både "${code}" og en konkret pris faktisk finnes.
 
-Finn opptil 8 seriøse kilder som faktisk oppgir en pris for den eksakte referansen.
-Prioriter etablerte forhandlere, seriøse markedsplasser og produsent. Ikke bruk
-auksjonsestimater, generelle artikler, forum eller sider uten faktisk pris.
-
-Returner KUN gyldig JSON:
-{
-  "references": [
-    {
-      "reference": "${code}",
-      "title": "...",
-      "url": "https://...",
-      "price": 0,
-      "currency": "USD",
-      "price_nok": 0,
-      "source_type": "dealer|marketplace|manufacturer",
-      "exact_reference_evidence": "..."
-    }
-  ]
-}
-
-Hvis du er usikker på om referansen er identisk, skal kilden ikke tas med.
+Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eksakt pris, returner en tom references-liste.
 `;
 
         const r = await fetch("https://api.openai.com/v1/responses", {
@@ -4229,42 +4237,185 @@ Hvis du er usikker på om referansen er identisk, skal kilden ikke tas med.
             model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
             tools: [{ type: "web_search" }],
             tool_choice: "required",
-            input: searchPrompt
+            input: searchPrompt,
+            text: {
+              format: {
+                type: "json_schema",
+                name: "exact_reference_market_prices",
+                description: "Eksakte markedspriser for én konkret produktreferanse.",
+                strict: true,
+                schema: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    references: {
+                      type: "array",
+                      maxItems: 8,
+                      items: {
+                        type: "object",
+                        additionalProperties: false,
+                        properties: {
+                          reference: { type: "string" },
+                          title: { type: "string" },
+                          url: { type: "string" },
+                          price: { type: "number" },
+                          currency: { type: "string" },
+                          source_type: { type: "string" },
+                          exact_reference_evidence: { type: "string" }
+                        },
+                        required: [
+                          "reference",
+                          "title",
+                          "url",
+                          "price",
+                          "currency",
+                          "source_type",
+                          "exact_reference_evidence"
+                        ]
+                      }
+                    }
+                  },
+                  required: ["references"]
+                }
+              }
+            }
           })
         });
 
         if (!r.ok) {
-          return { enabled: false, status: "web_search_error", reason: `Web-søk feilet (${r.status}).`, exact_match_count: 0, distinct_count: 0, value_nok: null, low_nok: null, high_nok: null, references: [] };
+          const errorText = await r.text().catch(() => "");
+          return {
+            enabled: false,
+            status: "web_search_error",
+            reason: `Web-søk feilet (${r.status})${errorText ? `: ${errorText.slice(0, 180)}` : "."}`,
+            exact_match_count: 0,
+            distinct_count: 0,
+            value_nok: null,
+            low_nok: null,
+            high_nok: null,
+            references: []
+          };
         }
 
         const data = await r.json();
         const outputText = String(data?.output_text || "").trim();
+
         let parsedWeb = null;
-        try { parsedWeb = JSON.parse(outputText); } catch (_) {
-          const match = outputText.match(/\{[\s\S]*\}/);
-          if (match) { try { parsedWeb = JSON.parse(match[0]); } catch (_) {} }
+        if (outputText) {
+          try {
+            parsedWeb = JSON.parse(outputText);
+          } catch (_) {
+            const match = outputText.match(/\{[\s\S]*\}/);
+            if (match) {
+              try { parsedWeb = JSON.parse(match[0]); } catch (_) {}
+            }
+          }
+        }
+
+        // Fallback for environments where output_text is not populated by the SDK/API response.
+        if (!parsedWeb && Array.isArray(data?.output)) {
+          const outputParts = [];
+          for (const item of data.output) {
+            if (Array.isArray(item?.content)) {
+              for (const part of item.content) {
+                if (part?.type === "output_text" && typeof part.text === "string") {
+                  outputParts.push(part.text);
+                }
+              }
+            }
+          }
+          const fallbackText = outputParts.join("\n").trim();
+          if (fallbackText) {
+            try {
+              parsedWeb = JSON.parse(fallbackText);
+            } catch (_) {
+              const match = fallbackText.match(/\{[\s\S]*\}/);
+              if (match) {
+                try { parsedWeb = JSON.parse(match[0]); } catch (_) {}
+              }
+            }
+          }
         }
 
         const references = Array.isArray(parsedWeb?.references)
-          ? parsedWeb.references.map(item => ({
-              reference: String(item?.reference || "").trim(),
-              title: String(item?.title || "").trim(),
-              url: String(item?.url || "").trim(),
-              price: Number(item?.price),
-              currency: String(item?.currency || "").trim().toUpperCase(),
-              price_nok: Number(item?.price_nok),
-              source_type: String(item?.source_type || "").trim(),
-              exact_reference_evidence: String(item?.exact_reference_evidence || "").trim()
-            })).filter(item => {
-              const normalizedTarget = normalizeModelCode(code);
-              const normalizedText = normalizeModelCode(`${item.reference} ${item.title} ${item.exact_reference_evidence}`);
-              return normalizedTarget && normalizedText.includes(normalizedTarget) && item.url.startsWith("http") && Number.isFinite(item.price_nok) && item.price_nok > 0 && item.price_nok < 1000000000;
-            }).slice(0, 8)
+          ? parsedWeb.references
+              .map(item => ({
+                reference: String(item?.reference || "").trim(),
+                title: String(item?.title || "").trim(),
+                url: String(item?.url || "").trim(),
+                price: Number(item?.price),
+                currency: String(item?.currency || "").trim().toUpperCase(),
+                price_nok: null,
+                source_type: String(item?.source_type || "").trim(),
+                exact_reference_evidence: String(item?.exact_reference_evidence || "").trim()
+              }))
+              .filter(item => {
+                const normalizedText = normalizeModelCode(
+                  `${item.reference} ${item.title} ${item.exact_reference_evidence}`
+                );
+                return (
+                  normalizedTarget &&
+                  normalizedText.includes(normalizedTarget) &&
+                  item.url.startsWith("http") &&
+                  Number.isFinite(item.price) &&
+                  item.price > 0 &&
+                  item.price < 1000000000 &&
+                  item.currency.length === 3
+                );
+              })
           : [];
 
-        const values = references.map(x => x.price_nok).filter(Number.isFinite).sort((a, b) => a - b);
+        // Convert source prices to NOK on the server instead of asking the web-search model to calculate currency conversion.
+        const converted = [];
+        for (const item of references) {
+          let priceNok = null;
+          if (item.currency === "NOK") {
+            priceNok = item.price;
+          } else {
+            try {
+              const rate = await getExchangeRate(item.currency, "NOK");
+              if (Number.isFinite(rate) && rate > 0) {
+                priceNok = item.price * rate;
+              }
+            } catch (_) {}
+          }
+
+          if (Number.isFinite(priceNok) && priceNok > 0 && priceNok < 1000000000) {
+            converted.push({
+              ...item,
+              price_nok: Math.round(priceNok)
+            });
+          }
+        }
+
+        // Deduplicate by URL + rounded NOK price.
+        const unique = [];
+        const seen = new Set();
+        for (const item of converted) {
+          const key = `${item.url}|${Math.round(item.price_nok)}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            unique.push(item);
+          }
+        }
+
+        const values = unique
+          .map(x => x.price_nok)
+          .filter(Number.isFinite)
+          .sort((a, b) => a - b);
+
         if (!values.length) {
-          return { enabled: false, status: "no_exact_web_prices", reason: "Ingen verifiserbare priser på eksakt modellreferanse ble funnet.", exact_match_count: 0, distinct_count: 0, value_nok: null, low_nok: null, high_nok: null, references: [] };
+          return {
+            enabled: false,
+            status: "no_exact_web_prices",
+            reason: "Ingen verifiserbare priser på eksakt modellreferanse ble funnet.",
+            exact_match_count: 0,
+            distinct_count: 0,
+            value_nok: null,
+            low_nok: null,
+            high_nok: null,
+            references: []
+          };
         }
 
         return {
@@ -4276,10 +4427,20 @@ Hvis du er usikker på om referansen er identisk, skal kilden ikke tas med.
           value_nok: Math.round(median(values)),
           low_nok: Math.round(values[0]),
           high_nok: Math.round(values[values.length - 1]),
-          references
+          references: unique.slice(0, 8)
         };
       } catch (error) {
-        return { enabled: false, status: "web_search_exception", reason: error?.message || "Ukjent web-søkfeil.", exact_match_count: 0, distinct_count: 0, value_nok: null, low_nok: null, high_nok: null, references: [] };
+        return {
+          enabled: false,
+          status: "web_search_exception",
+          reason: error?.message || "Ukjent web-søkfeil.",
+          exact_match_count: 0,
+          distinct_count: 0,
+          value_nok: null,
+          low_nok: null,
+          high_nok: null,
+          references: []
+        };
       }
     }
 
@@ -4882,10 +5043,10 @@ Hvis du er usikker på om referansen er identisk, skal kilden ikke tas med.
       },
 
       market_engine_version:
-        "v13.8-exact-reference-web-fallback",
+        "v13.9-exact-reference-web-fallback-structured",
 
       market_filter_version:
-        "v13.8-hard-model-reference-gate-exact-reference-web-fallback",
+        "v13.9-hard-model-reference-gate-exact-reference-web-fallback-structured",
 
       buy_opportunities:
         buy_opportunities,
