@@ -1,16 +1,12 @@
 // Kistefunn analysebackend v12.9
+// V12.7: brukeroppgitt spesifikk modellvariant brukes som sterkt signal når bildet støtter merke/serie.
+// V12.7: nummererte sykkelvarianter (f.eks. Trekking 4 vs Trekking 6) hardfiltreres i markedet.
 // Strengere identifikasjon + hardere markedsfilter + multi-source markedsmotor
 // - V11.9: feil i søkemotorens variabelrekkefølge rettet + versjonsmerking samlet.
 // - V11.8: farge og gripebrett/materiale er sekundære signaler og skal ikke låse markedssøket.
 // - V12.0: visningssøket bruker den faktiske rensede eBay-søkestrengen, slik at serienummerfragmenter som MN5 ikke vises.
 // - V11.7: videreføring av streng Fender-variantkontroll og mer robust markedsgrunnlag.
 // - V11.6: hard Fender-variantgate som ekskluderer 62/Special/American/Player/Vintera/Squier osv.
-// - V12.7: MERKING FØRST + sentral variantprofil før prisgrunnlag.
-// - V12.9: prisavvik fjernes også fra viste eksakte markedsreferanser.
-// - V12.9: Prisavvik fjernes også fra viste eksakte markedsreferanser.
-// - V12.8: fanger også feilstavingen "Squire Series" og fjerner den før prisgrunnlag/visning.
-// - V12.7: synlig modell-/serie-/landmerking får høyeste identitetsvekt.
-// - V12.7: normal Fender MIM Stratocaster får én samlet hard variantgate.
 //
 // Viktige endringer fra v7:
 // - Når konkret år er kjent, kan KUN annonser med samme år brukes i verdiberegningen.
@@ -45,7 +41,7 @@ export default async function handler(req, res) {
     const contextText = userDescription
       ? `Brukeren har også skrevet følgende informasjon om gjenstanden:
 "${userDescription}"
-Bruk dette som ekstra identifikasjonssignal. Hvis brukeren oppgir en konkret modell, skal du kontrollere om bildet støtter den. Ikke avvis modellen bare fordi modellnavnet ikke kan leses i bildet, men ikke bruk den ukritisk dersom bildet viser et annet merke eller en tydelig annen modell.`
+Bruk dette som et sterkt identifikasjonssignal. Hvis brukeren oppgir en konkret modell eller variant, skal dette brukes aktivt i identifikasjonen og markedssøket når bildet støtter samme merke og produktserie. Dette er spesielt viktig når flere modeller ser nesten identiske ut, som Haibike Trekking 4 og Trekking 6. Ikke avvis en brukerspesifikk modell bare fordi modellnummeret ikke kan leses i bildet. Hvis bildet viser et annet merke, en annen serie eller en tydelig annen variant, skal du markere konflikten i stedet for å gjette.`
       : "Brukeren har ikke gitt noen ekstra informasjon om gjenstanden.";
 
     /* ---------------------------------------------------------
@@ -86,20 +82,12 @@ Før du bestemmer identiteten skal du aktivt lese og vurdere:
 
 Hvis et merkenavn er synlig på selve gjenstanden, skal dette veie tyngre enn generell form/silhuett.
 
-MERKING ER FØRSTEPRIORITET:
-- Les all synlig merking bokstav for bokstav når den er lesbar.
-- Skill mellom merke/logo, modellnavn, serienummer, seriebetegnelse, produksjonskode og landmerking.
-- En tydelig fysisk modell-/seriebetegnelse skal veie tyngre enn generell form, farge eller komponentlikhet.
-- Ikke oppgrader til en dyrere variant fordi formen ligner.
-- Hvis en konkret variantmerking er utydelig, skriv at varianten er ukjent i stedet for å gjette.
-- Gjengi viktige synlige merkeord i identifying_features og model_evidence.
-
 ${contextText}
 
 FOR SYKLER:
 Kontroller spesielt:
 - merkenavn/logo på ramme
-- modellnavn/dekal
+- modellnavn/dekal og eventuelle modellnummer
 - motorprodusent
 - motorplassering
 - batteritype og plassering
@@ -107,6 +95,8 @@ Kontroller spesielt:
 - hjulstørrelse
 - synlige komponenter
 - eventuelt produksjonsår
+
+Hvis brukeren skriver en konkret variant som "Haibike Trekking 4", skal du ikke bare svare "Haibike Trekking" dersom bildet er kompatibelt med brukerens opplysning. Bruk "Trekking 4" som modellidentitet for markedssøket, og oppgi at modellnummeret kommer fra brukerens tekst dersom det ikke kan leses på bildet.
 
 FOR GITARER:
 Kontroller spesielt:
@@ -177,12 +167,11 @@ Returner KUN gyldig JSON:
     "year_or_period": "år/periode eller ukjent",
     "material": "materiale eller ukjent",
     "serial_number": "serienummer eller ukjent",
-    "visible_markings": ["ordrett synlig merking eller ukjent"],
-    "model_marking": "synlig modell-/seriebetegnelse eller ukjent",
-    "country_marking": "synlig produksjonslandmerking eller ukjent",
     "identifying_features": ["synlige kjennetegn"],
     "brand_evidence": "hva som støtter merkeidentifikasjonen",
     "model_evidence": "hva som støtter modellidentifikasjonen",
+    "user_model_evidence": "eventuell konkret modell oppgitt av brukeren og om bildet støtter den",
+    "identification_basis": "bilde, synlig merking, brukeropplysning eller kombinasjon",
     "modifications": "modifikasjoner eller ingen synlig",
     "condition_details": "detaljert tilstand",
     "value_factors": ["forhold som påvirker verdi"],
@@ -289,12 +278,11 @@ Returner KUN gyldig JSON:
       year_or_period: infoText(info.year_or_period),
       material: infoText(info.material),
       serial_number: infoText(info.serial_number),
-      visible_markings: infoList(info.visible_markings),
-      model_marking: infoText(info.model_marking),
-      country_marking: infoText(info.country_marking),
       identifying_features: infoList(info.identifying_features),
       brand_evidence: infoText(info.brand_evidence),
       model_evidence: infoText(info.model_evidence),
+      user_model_evidence: infoText(info.user_model_evidence, "Ingen konkret modellopplysning fra bruker."),
+      identification_basis: infoText(info.identification_basis, "Bildeanalyse."),
       modifications: infoText(
         info.modifications,
         "Ingen sikre modifikasjoner bekreftet."
@@ -410,56 +398,22 @@ Returner KUN gyldig JSON:
     }
 
     function removeOutliers(items) {
-      if (items.length < 4) return items;
+      if (items.length < 5) return items;
 
-      const valid = items.filter(x =>
-        Number.isFinite(Number(x.nok)) &&
-        Number(x.nok) > 0
-      );
+      const prices = items
+        .map(x => Number(x.nok))
+        .filter(Number.isFinite);
 
-      if (valid.length < 4) return items;
+      if (prices.length < 5) return items;
 
-      const prices = valid.map(x => Number(x.nok));
-      const med = median(prices);
-
-      if (!Number.isFinite(med) || med <= 0) return items;
-
-      // V12.9: prisavvik skal også fjernes fra VISNING.
-      // IQR alene kan slippe gjennom et ekstremt dyrt treff når
-      // utvalget er lite/skjevt. For et ellers identisk produkt er
-      // mer enn 2x medianen et sterkt signal om premiumvariant,
-      // feil vare, ekstrautstyr eller annen markedsfeil.
-      const ratioFiltered = valid.filter(item => {
-        const price = Number(item.nok);
-        return price <= med * 2 && price >= med * 0.5;
-      });
-
-      // Hvis filteret ville fjernet nesten hele datasettet, behold
-      // heller IQR-resultatet. Vi skal aldri gjøre et lite marked
-      // kunstig tomt på grunn av et aggressivt prisfilter.
-      const ratioResult =
-        ratioFiltered.length >= Math.max(3, Math.ceil(valid.length * 0.5))
-          ? ratioFiltered
-          : valid;
-
-      if (ratioResult.length < 4) {
-        return ratioResult;
-      }
-
-      const ratioPrices = ratioResult.map(x => Number(x.nok));
-      const q1 = percentile(ratioPrices, 0.25);
-      const q3 = percentile(ratioPrices, 0.75);
+      const q1 = percentile(prices, 0.25);
+      const q3 = percentile(prices, 0.75);
       const iqr = q3 - q1;
 
-      const iqrFiltered = ratioResult.filter(item => {
-        const price = Number(item.nok);
-        return price >= q1 - 1.5 * iqr &&
-          price <= q3 + 1.5 * iqr;
-      });
-
-      return iqrFiltered.length >= 3
-        ? iqrFiltered
-        : ratioResult;
+      return items.filter(item =>
+        Number(item.nok) >= q1 - 1.5 * iqr &&
+        Number(item.nok) <= q3 + 1.5 * iqr
+      );
     }
 
     /* ---------------------------------------------------------
@@ -498,7 +452,6 @@ Returner KUN gyldig JSON:
 
     let ebayTokenCache = null;
     let ebayTokenPromise = null;
-    let ebayLastError = null;
 
     async function getEbayToken() {
       if (ebayTokenCache) {
@@ -513,11 +466,6 @@ Returner KUN gyldig JSON:
       const clientSecret = process.env.EBAY_CLIENT_SECRET;
 
       if (!clientId || !clientSecret) {
-        ebayLastError = {
-          stage: "oauth",
-          code: "MISSING_CREDENTIALS",
-          message: "EBAY_CLIENT_ID eller EBAY_CLIENT_SECRET mangler i miljøvariablene"
-        };
         return null;
       }
 
@@ -542,28 +490,14 @@ Returner KUN gyldig JSON:
           }
         );
 
-        const d = await r.json().catch(() => ({}));
+        const d = await r.json();
 
         if (!r.ok) {
-          ebayLastError = {
-            stage: "oauth",
-            http_status: r.status,
-            code: d?.errors?.[0]?.errorId || d?.error || "EBAY_OAUTH_ERROR",
-            message: d?.errors?.[0]?.message || d?.error_description || "eBay OAuth feilet"
-          };
           return null;
         }
 
         ebayTokenCache =
           d.access_token || null;
-
-        if (!ebayTokenCache) {
-          ebayLastError = {
-            stage: "oauth",
-            code: "NO_ACCESS_TOKEN",
-            message: "eBay svarte uten access_token"
-          };
-        }
 
         return ebayTokenCache;
       })();
@@ -871,7 +805,7 @@ Returner KUN gyldig JSON:
           .trim();
       }
 
-      const model =
+      let model =
         removeSearchSerialTokens(
           removeSerialArtifacts(rawModel, serialNumber)
         );
@@ -910,6 +844,22 @@ Returner KUN gyldig JSON:
           userText
         );
 
+      /* V12.7: løft en spesifikk nummerert sykkelvariant fra brukerens tekst. */
+      let userSpecificModel = null;
+
+      if (category === "bicycle" && brand && model && userText) {
+        const baseModel = model.replace(/\s+/g, " ").trim();
+        if (baseModel.length >= 3) {
+          const escaped = baseModel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const rx = new RegExp("\\b" + escaped + "\\b\\s+([0-9]+(?:[.,][0-9]+)?(?:[A-Za-z]+)?)", "i");
+          const match = userText.match(rx);
+          if (match && match[1]) {
+            userSpecificModel = `${baseModel} ${match[1]}`.trim();
+            model = userSpecificModel;
+          }
+        }
+      }
+
       const marketAiQuery =
         category === "guitar"
           ? removeGuitarCosmeticSearchTerms(aiQuery)
@@ -939,7 +889,7 @@ Returner KUN gyldig JSON:
           userText
         );
 
-      const objectText = `${parsed.name || ""} ${parsed.description || ""} ${info.model || ""} ${info.type || ""} ${info.material || ""} ${info.model_marking || ""} ${(Array.isArray(info.visible_markings) ? info.visible_markings.join(" ") : info.visible_markings || "")} ${info.country_marking || ""}`.toLowerCase();
+      const objectText = `${parsed.name || ""} ${parsed.description || ""} ${info.model || ""} ${info.type || ""} ${info.material || ""}`.toLowerCase();
 
       const targetFingerboard =
         /\b(rosewood|palisander)\b/.test(objectText)
@@ -985,13 +935,17 @@ Returner KUN gyldig JSON:
           brand &&
           model &&
           userText &&
-          userText.toLowerCase().includes(
-            brand.toLowerCase()
-          ) &&
-          userText.toLowerCase().includes(
-            model.toLowerCase()
-          )
+          userText.toLowerCase().includes(brand.toLowerCase()) &&
+          userText.toLowerCase().includes(model.toLowerCase())
         );
+
+      if (userModelHint && userSpecificModel) {
+        parsed.item_info.model = model;
+        parsed.item_info.user_model_evidence =
+          `Brukeren oppga ${model}. Bildet støtter merke/serie, men modellnummeret er ikke nødvendigvis lesbart i bildet.`;
+        parsed.item_info.identification_basis =
+          "Bilde + brukeroppgitt spesifikk modellvariant.";
+      }
 
       if (
         category === "bicycle" &&
@@ -1233,121 +1187,18 @@ Returner KUN gyldig JSON:
         target_color: targetColor,
         target_special: targetSpecial,
         user_model_hint: userModelHint,
-        variant_uncertain: variantUncertain,
-        visible_markings: infoList(info.visible_markings),
-        model_marking: infoText(info.model_marking, "Ukjent"),
-        country_marking: infoText(info.country_marking, "Ukjent"),
-        user_description: parsed._user_description || "",
-        identity_profile: buildIdentityProfile({
-          brand, model, manufacturer, type, country, year: hardYear,
-          visible_markings: infoList(info.visible_markings),
-          model_marking: infoText(info.model_marking, "Ukjent"),
-          user_description: parsed._user_description || ""
-        })
+        user_model_text: userSpecificModel || null,
+        identification_basis:
+          userModelHint && userSpecificModel
+            ? "bilde + brukeroppgitt spesifikk modellvariant"
+            : "bildeanalyse",
+        variant_uncertain: variantUncertain
       };
     }
 
     /* ---------------------------------------------------------
        5. STRENG RELEVANSEFILTER
        --------------------------------------------------------- */
-
-    /* ---------------------------------------------------------
-       V12.7 – MERKING FØRST / SENTRAL VARIANTGATE
-       --------------------------------------------------------- */
-
-    function buildIdentityProfile(criteria) {
-      const text = [
-        criteria?.brand, criteria?.model, criteria?.manufacturer,
-        criteria?.type, criteria?.country, criteria?.year,
-        criteria?.model_marking,
-        ...(Array.isArray(criteria?.visible_markings) ? criteria.visible_markings : []),
-        criteria?.user_description
-      ].filter(Boolean).join(" ").toLowerCase();
-
-      const isFenderStrat = /\bfender\b/.test(text) && /\bstratocaster\b/.test(text);
-      const isMim = /\b(?:mexico|mim|made in mexico)\b/.test(text);
-      const has = rx => rx.test(text);
-      let fenderVariant = "other";
-
-      if (isFenderStrat && isMim) {
-        if (has(/\bsqu(?:ier|ire)(?:[ -]+series)?\b/)) fenderVariant = "squier_series";
-        else if (has(/\b62\s*(?:['’]s?|special|reissue)?\b/)) fenderVariant = "62_reissue";
-        else if (has(/\b50th\s+anniversary\b|\banniversary\b/)) fenderVariant = "anniversary";
-        else if (has(/\bspecial(?:\s+edition)?\b|\bfsr\b|\bspecial\s+run\b/)) fenderVariant = "special";
-        else if (has(/\bplayer(?:\s+(?:ii|2))?\b/)) fenderVariant = "player";
-        else if (has(/\bvintera\b/)) fenderVariant = "vintera";
-        else if (has(/\bclassic\s+(?:series|vibe)\b/)) fenderVariant = "classic";
-        else if (has(/\bamerican\s+(?:standard|professional|performer|ultra|original|vintage)\b/)) fenderVariant = "american";
-        else if (has(/\b(?:japan|japanese|mij|made in japan)\b/)) fenderVariant = "japan";
-        else fenderVariant = "standard_mim";
-      }
-
-      return {
-        category: criteria?.category || "generic",
-        brand: String(criteria?.brand || "").toLowerCase(),
-        model: String(criteria?.model || "").toLowerCase(),
-        year: criteria?.year || null,
-        country: criteria?.country || null,
-        is_fender_strat_mim: isFenderStrat && isMim,
-        fender_variant: fenderVariant,
-        marking_strength: (criteria?.visible_markings?.length || criteria?.model_marking) ? "strong" : "unknown"
-      };
-    }
-
-    function centralVariantGate(title, aspectText, criteria) {
-      const profile = buildIdentityProfile(criteria);
-      if (!profile.is_fender_strat_mim) return { allowed: true, reason: "ikke Fender MIM gate" };
-
-      const text = `${title || ""} ${aspectText || ""}`.toLowerCase();
-      const forbiddenNormal = [
-        [/\bsqu(?:ier|ire)(?:[ -]+series)?\b/, "Squier/Squier Series"],
-        [/\bfsr\b|\bspecial\s+run\b/, "FSR/Special Run"],
-        [/\b62\s*(?:['’]s?|special|reissue)?\b/, "62/62 Special/Reissue"],
-        [/\b50th\s+anniversary\b|\banniversary\b/, "Anniversary"],
-        [/\bspecial(?:\s+edition)?\b/, "Special Edition"],
-        [/\blimited\s+edition\b/, "Limited Edition"],
-        [/\bvintage\s+reissue\b|\breissue\b/, "Reissue"],
-        [/\bplayer(?:\s+(?:ii|2))?\b/, "Player"],
-        [/\bvintera\b/, "Vintera"],
-        [/\bclassic\s+(?:series|vibe)\b/, "Classic Series/Vibe"],
-        [/\bamerican\s+(?:standard|professional|performer|ultra|original|vintage)\b/, "American-serie"],
-        [/\bprofessional\s+ii\b/, "Professional II"],
-        [/\bsignature\s+series\b/, "Signature Series"],
-        [/\b(?:made in japan|japan|japanese|mij)\b/, "Japan/MIJ"]
-      ];
-
-      if (profile.fender_variant === "standard_mim") {
-        for (const [rx, reason] of forbiddenNormal) {
-          if (rx.test(text)) return { allowed: false, reason };
-        }
-        return { allowed: true, reason: "samme normale Fender MIM-variant" };
-      }
-
-      const variantPatterns = {
-        squier_series: /\bsqu(?:ier|ire)(?:[ -]+series)?\b/,
-        "62_reissue": /\b62\s*(?:['’]s?|special|reissue)?\b/,
-        anniversary: /\b50th\s+anniversary\b|\banniversary\b/,
-        special: /\bspecial(?:\s+edition)?\b|\bfsr\b|\bspecial\s+run\b/,
-        player: /\bplayer(?:\s+(?:ii|2))?\b/,
-        vintera: /\bvintera\b/,
-        classic: /\bclassic\s+(?:series|vibe)\b/,
-        american: /\bamerican\s+(?:standard|professional|performer|ultra|original|vintage)\b/,
-        japan: /\b(?:made in japan|japan|japanese|mij)\b/
-      };
-
-      for (const [variant, rx] of Object.entries(variantPatterns)) {
-        if (variant !== profile.fender_variant && rx.test(text)) {
-          return { allowed: false, reason: `annen Fender-variant: ${variant}` };
-        }
-      }
-
-      const ownRx = variantPatterns[profile.fender_variant];
-      if (ownRx && !ownRx.test(text)) {
-        return { allowed: false, reason: "målvariant ikke dokumentert i annonsen" };
-      }
-
-      return { allowed: true, reason: `samme variant: ${profile.fender_variant}` };
-    }
 
     function scoreListing(title, criteria) {
       const raw = String(title || "");
@@ -1565,6 +1416,16 @@ Returner KUN gyldig JSON:
          ------------------------------------------------------- */
 
       if (category === "bicycle") {
+        /*
+         * V12.9 – HARD BICYCLE LISTING GATE
+         * ----------------------------------
+         * A model query such as "Haibike Trekking 4" must never let a
+         * Trekking 6 (or another numbered Trekking sibling) become an
+         * exact comparable. We also reject bicycle components such as
+         * headset bearings, replacement parts and non-working bikes.
+         * These checks happen before normal relevance scoring so a high
+         * textual score can never override them.
+         */
         const bicyclePartTerms = [
           "akku schloss",
           "battery lock",
@@ -1590,6 +1451,27 @@ Returner KUN gyldig JSON:
           "bremsrotor",
           "brake lever",
           "bremshebel",
+          "headset",
+          "headset bearing",
+          "headset bearings",
+          "steuersatz",
+          "steuersatzlager",
+          "steuerlager",
+          "bearing",
+          "bearings",
+          "ersatzteil",
+          "replacement part",
+          "spare part",
+          "parts only",
+          "for parts",
+          "non working",
+          "non-working",
+          "not working",
+          "broken",
+          "damaged",
+          "repair project",
+          "needs repair",
+          "for repair",
           "charger",
           "ladegerät",
           "ladegerat",
@@ -1614,6 +1496,134 @@ Returner KUN gyldig JSON:
               ? "missing"
               : "not_required",
             reason: "sykkeldel/tilbehør"
+          };
+        }
+
+        /*
+         * V12.9 – HARD MODELL/VARIANT-GATE
+         * ----------------------------------
+         * V12.8 brukte `query` direkte her. `query` finnes ikke som lokal
+         * variabel i scoreListing(), og kunne derfor gi ReferenceError.
+         *
+         * I tillegg skal ikke alle tall i hele eBay-søket tolkes som
+         * modellnummer. Vi henter først variantnummer fra den faktiske
+         * modellidentiteten (brukeroppgitt modell + AI-modell), og bruker
+         * søkekonteksten bare som reserve. Årstall ignoreres.
+         *
+         * Resultat: Haibike Trekking 4 kan ikke få Trekking 6 som exact,
+         * same_model eller prisgrunnlag. Samme regel kan brukes på andre
+         * produkter med nummererte modeller.
+         */
+        const bicycleIdentityText =
+          `${criteria.user_model_text || ""} ${criteria.model || ""}`
+            .toLowerCase();
+
+        const bicycleQueryContext =
+          String(criteria.query_context || "").toLowerCase();
+
+        function extractModelVariantNumbers(text) {
+          return [
+            ...new Set(
+              (String(text || "").match(/\b\d+(?:[.,]\d+)?[a-z]*\b/g) || [])
+                .map(x => x.toLowerCase())
+                .filter(x => !/^19\d{2}$/.test(x))
+                .filter(x => !/^20\d{2}$/.test(x))
+            )
+          ];
+        }
+
+        let targetVariantNumbers =
+          extractModelVariantNumbers(bicycleIdentityText);
+
+        // Hvis AI-modellen er normalisert for mye, bruk søkekonteksten
+        // som reserve – men bare når identiteten ellers mangler nummer.
+        if (!targetVariantNumbers.length) {
+          targetVariantNumbers =
+            extractModelVariantNumbers(bicycleQueryContext);
+        }
+
+        if (targetVariantNumbers.length) {
+          const listingVariantNumbers =
+            extractModelVariantNumbers(t);
+
+          const missingTargetVariant =
+            targetVariantNumbers.some(
+              token => !listingVariantNumbers.includes(token)
+            );
+
+          if (missingTargetVariant) {
+            return {
+              score: -100,
+              accepted: false,
+              near_match: false,
+              year_match: year ? "missing" : "not_required",
+              reason: `annen modellvariant enn målet ${criteria.user_model_text || criteria.model || criteria.query_context}`
+            };
+          }
+        }
+
+        /*
+         * Ekstra eksplisitt sibling-gate for nummererte Trekking-modeller.
+         * Hvis målet er Trekking 4 og annonsen eksplisitt sier Trekking 6,
+         * skal den ut selv om andre deler av tittelen gir høy relevansscore.
+         */
+        const targetTrekkingMatch =
+          `${bicycleIdentityText} ${bicycleQueryContext}`
+            .match(/\btrekking\s+(\d+(?:[.,]\d+)?[a-z]*)\b/i);
+
+        if (targetTrekkingMatch) {
+          const targetTrekkingVariant = targetTrekkingMatch[1].toLowerCase();
+          const listingTrekkingMatches = [
+            ...t.matchAll(/\btrekking\s+(\d+(?:[.,]\d+)?[a-z]*)\b/gi)
+          ].map(m => m[1].toLowerCase());
+
+          if (
+            listingTrekkingMatches.length &&
+            listingTrekkingMatches.some(v => v !== targetTrekkingVariant)
+          ) {
+            return {
+              score: -100,
+              accepted: false,
+              near_match: false,
+              year_match: year ? "missing" : "not_required",
+              reason: `annen Haibike Trekking-variant enn ${targetTrekkingVariant}`
+            };
+          }
+
+          if (
+            listingTrekkingMatches.length &&
+            !listingTrekkingMatches.includes(targetTrekkingVariant)
+          ) {
+            return {
+              score: -100,
+              accepted: false,
+              near_match: false,
+              year_match: year ? "missing" : "not_required",
+              reason: `mangler riktig Haibike Trekking-variant ${targetTrekkingVariant}`
+            };
+          }
+        }
+
+        const bicycleBadConditionPatterns = [
+          /\bnon[- ]?working\b/i,
+          /\bnot\s+working\b/i,
+          /\bbroken\b/i,
+          /\bdamaged\b/i,
+          /\bneeds?\s+repair\b/i,
+          /\bfor\s+repair\b/i,
+          /\brepair\s+project\b/i,
+          /\bfor\s+parts\b/i,
+          /\bparts\s+only\b/i,
+          /\bincomplete\b/i
+        ];
+
+        if (bicycleBadConditionPatterns.some(rx => rx.test(t))) {
+          return {
+            score: -100,
+            accepted: false,
+            near_match: false,
+            year_match: year ? "missing" : "not_required",
+            reason: "defekt/skadet/til reparasjon"
           };
         }
 
@@ -2279,7 +2289,7 @@ Returner KUN gyldig JSON:
           /\bperformer\b/i,
           /\bdeluxe\b/i,
           /\belite\b/i,
-          /\bsqu(?:ier|ire)\b/i
+          /\bsquier\b/i
         ];
 
         if (wrongFenderVariantTerms.some(rx => rx.test(t))) {
@@ -2480,14 +2490,9 @@ Returner KUN gyldig JSON:
       });
 
       const d =
-        await r.json().catch(() => ({}));
+        await r.json();
 
       if (!r.ok) {
-        const reason =
-          d?.errors?.[0]?.message ||
-          d?.error_description ||
-          `eBay-søk feilet (HTTP ${r.status})`;
-
         return {
           enabled: false,
           query,
@@ -2495,9 +2500,9 @@ Returner KUN gyldig JSON:
           sample_size: 0,
           listings: [],
           rawItems: [],
-          http_status: r.status,
-          error_code: d?.errors?.[0]?.errorId || d?.error || `HTTP_${r.status}`,
-          reason
+          reason:
+            d?.errors?.[0]?.message ||
+            "eBay-søk feilet"
         };
       }
 
@@ -2620,14 +2625,6 @@ Returner KUN gyldig JSON:
       const scoringText =
         `${title} ${item._ebay_aspect_text || ""}`.trim();
 
-      const variantGate = centralVariantGate(
-        title,
-        item._ebay_aspect_text || "",
-        criteria
-      );
-
-      if (!variantGate.allowed) return null;
-
       /*
        * V11.4: HARD CONDITION FILTER
        * -----------------------------
@@ -2699,8 +2696,8 @@ Returner KUN gyldig JSON:
         criteria.target_special !== true
       ) {
         const incompatibleFenderVariantPatterns = [
-          /\bsqu(?:ier|ire)\b/,
-          /\bsqu(?:ier|ire)[ -]+series\b/,
+          /\bsquier\b/,
+          /\bsquier\s+series\b/,
           /\bfsr\b/,
           /\bfender\s+special\s+run\b/,
           /\bspecial\s+run\b/,
@@ -2779,7 +2776,7 @@ Returner KUN gyldig JSON:
         const lowerTitle = scoringText.toLowerCase();
 
         const incompatibleVariantPatterns = [
-          /\bsqu(?:ier|ire)\b/,
+          /\bsquier\b/,
           /\bplayer\s*(ii|2)\b/,
           /\bvintera\b/,
           /\bamerican\s+(professional|performer|ultra|standard|original)\b/,
@@ -2898,7 +2895,7 @@ Returner KUN gyldig JSON:
 
       if (hardTargetFromQuery) {
         const hardForbidden = [
-          /\bsqu(?:ier|ire)(?:[ -]+series)?\b/i,
+          /\bsquier(?:\s+series)?\b/i,
           /\bfsr\b/i,
           /\b62\s*(?:['’]s?|special)\b/i,
           /\b50th\s+anniversary\b/i,
@@ -2994,7 +2991,7 @@ Returner KUN gyldig JSON:
       const text = `${title || ""} ${aspectText || ""}`.toLowerCase();
 
       const forbidden = [
-        /\bsqu(?:ier|ire)(?:[ -]+series)?\b/,
+        /\bsquier(?:\s+series)?\b/,
         /\bfsr\b/,
         /\bfender\s+special\s+run\b/,
         /\bspecial\s+run\b/,
@@ -3103,33 +3100,17 @@ Returner KUN gyldig JSON:
                   job.query,
                   job.marketplace
                 );
-              } catch (e) {
+              } catch {
                 return {
                   enabled: false,
                   query: job.query,
                   marketplace: job.marketplace,
-                  rawItems: [],
-                  error_code: "EBAY_SEARCH_EXCEPTION",
-                  reason: e?.message || "Ukjent eBay-søkfeil"
+                  rawItems: []
                 };
               }
             }
           )
         );
-
-      const ebayFailures = results
-        .filter(result => !result?.enabled)
-        .map(result => ({
-          marketplace: result?.marketplace || null,
-          query: result?.query || null,
-          http_status: result?.http_status || null,
-          error_code: result?.error_code || null,
-          reason: result?.reason || "Ukjent eBay-feil"
-        }));
-
-      const successfulSearches = results.filter(
-        result => result?.enabled
-      );
 
       /*
        * eBay item_summary gir ikke alltid år/variant i selve søkeresultatet.
@@ -3330,7 +3311,7 @@ Returner KUN gyldig JSON:
 
       if (normalFenderMimQuery) {
         const finalForbiddenFenderVariants = [
-          /\bsqu(?:ier|ire)(?:[ -]+series)?\b/i,
+          /\bsquier(?:\s+series)?\b/i,
           /\bfsr\b/i,
           /\b62\s*(?:['’]s?|special)\b/i,
           /\b50th\s+anniversary\b/i,
@@ -3350,25 +3331,6 @@ Returner KUN gyldig JSON:
         for (let i = all.length - 1; i >= 0; i--) {
           const listingTitle = String(all[i]?.title || "");
           if (finalForbiddenFenderVariants.some(rx => rx.test(listingTitle))) {
-            all.splice(i, 1);
-          }
-        }
-      }
-
-      /*
-       * V12.8 – ABSOLUTT SQUIER/SQUIRE-SIKKERHETSNett
-       * ---------------------------------------------------
-       * Noen eBay-selgere skriver "Squire Series" i stedet for
-       * korrekt "Squier Series". Tidligere regex fanget bare Squier,
-       * derfor kunne en slik annonse fortsatt vises som eksakt treff.
-       * For vanlig Fender MIM Stratocaster skal begge stavemåtene
-       * fjernes helt før exact/same-model/near bygges.
-       */
-      if (normalFenderMimQuery) {
-        const finalSquierLike = /\bsqu(?:ier|ire)(?:[ -]+series)?\b/i;
-        for (let i = all.length - 1; i >= 0; i--) {
-          const listingText = `${all[i]?.title || ""} ${all[i]?._ebay_aspect_text || ""}`;
-          if (finalSquierLike.test(listingText)) {
             all.splice(i, 1);
           }
         }
@@ -3454,14 +3416,6 @@ Returner KUN gyldig JSON:
 
       const exactPool =
         removeOutliers(balancedRawExactPool);
-
-      // V12.9: exactPool er nå også visningsgrunnlaget. Et åpenbart
-      // prisavvik skal derfor ikke bare holdes ute av medianen; det skal
-      // heller ikke presenteres som en "eksakt markedsreferanse".
-      const exactPriceOutliersRemoved = Math.max(
-        0,
-        balancedRawExactPool.length - exactPool.length
-      );
 
       /*
        * Same-model treff:
@@ -3660,19 +3614,6 @@ Returner KUN gyldig JSON:
           searchQueries,
         successful_queries:
           successfulQueries,
-
-        ebay_failures:
-          ebayFailures,
-
-        token_error:
-          ebayLastError,
-
-        search_success_count:
-          successfulSearches.length,
-
-        search_failure_count:
-          ebayFailures.length,
-
         near_match_queries:
           nearMatchQueries,
 
@@ -3695,7 +3636,7 @@ Returner KUN gyldig JSON:
           balancedRawExactPool.length,
 
         exact_price_filter_removed:
-          exactPriceOutliersRemoved,
+          Math.max(0, balancedRawExactPool.length - exactPool.length),
 
         same_model_match_count:
           sameModelPool.length,
@@ -3769,6 +3710,12 @@ Returner KUN gyldig JSON:
               built.user_model_hint
             ),
 
+          user_model_text:
+            built.user_model_text || null,
+
+          identification_basis:
+            built.identification_basis || "bildeanalyse",
+
           detected_year:
             built.detected_year,
 
@@ -3789,19 +3736,7 @@ Returner KUN gyldig JSON:
           valuation_minimum_relevance_score:
             built.year
               ? 60
-              : 50,
-
-          identity_profile:
-            built.identity_profile || null,
-
-          // V12.9: prisavvik fjernes før både verdiberegning og
-          // visning under "Eksakte markedsreferanser".
-          price_outlier_filter: {
-            enabled: true,
-            ratio_upper: 2,
-            ratio_lower: 0.5,
-            removed_from_exact_pool: exactPriceOutliersRemoved
-          }
+              : 50
         },
 
         listings:
@@ -3900,24 +3835,31 @@ Returner KUN gyldig JSON:
     try {
       ebay =
         await searchEbay(parsed);
-    } catch (e) {
+    } catch {
       ebay = {
         enabled: false,
         reason:
-          e?.message ||
-          ebayLastError?.message ||
           "eBay-søk kunne ikke gjennomføres",
         queries: [],
-        successful_queries: [],
-        ebay_failures: [
-          {
-            stage: "searchEbay",
-            error_code: "EBAY_SEARCH_EXCEPTION",
-            reason: e?.message || "Ukjent eBay-feil"
-          }
-        ],
-        token_error: ebayLastError
+        successful_queries: []
       };
+    }
+
+    // V12.7: vis og bruk den spesifikke modellen brukeren oppga når
+    // bildet støtter samme merke/serie.
+    if (ebay?.filtering?.user_model_hint && ebay?.filtering?.user_model_text) {
+      const confirmedUserModel = String(ebay.filtering.user_model_text).trim();
+      if (confirmedUserModel) {
+        itemInfo.model = confirmedUserModel;
+        itemInfo.user_model_evidence =
+          `Brukeren oppga ${confirmedUserModel}. Bildet støtter merke/serie; modellvarianten er hentet fra brukerens opplysning.`;
+        itemInfo.identification_basis =
+          ebay.filtering.identification_basis || "Bilde + brukeroppgitt spesifikk modellvariant.";
+        if (String(itemInfo.brand || "").toLowerCase() === "haibike" && String(itemInfo.type || "").toLowerCase().includes("sykkel")) {
+          parsed.name = `${itemInfo.brand} ${confirmedUserModel} elsykkel`;
+        }
+        parsed.confidence = "høy";
+      }
     }
 
     /* ---------------------------------------------------------
@@ -3961,12 +3903,7 @@ Returner KUN gyldig JSON:
           : null,
         exact_match_count: Number(ebay?.exact_match_count || 0),
         same_model_match_count: Number(ebay?.same_model_match_count || 0),
-        distinct_count: Number(ebay?.distinct_valuation_count || 0),
-        reason: ebay?.reason || null,
-        ebay_failures: Array.isArray(ebay?.ebay_failures)
-          ? ebay.ebay_failures.slice(0, 12)
-          : [],
-        token_error: ebay?.token_error || null
+        distinct_count: Number(ebay?.distinct_valuation_count || 0)
       },
 
       finn: {
@@ -4392,13 +4329,6 @@ Returner KUN gyldig JSON:
       serial_number:
         itemInfo.serial_number,
 
-      visible_markings:
-        itemInfo.visible_markings,
-      model_marking:
-        itemInfo.model_marking,
-      country_marking:
-        itemInfo.country_marking,
-
       identifying_features:
         itemInfo.identifying_features,
 
@@ -4407,6 +4337,12 @@ Returner KUN gyldig JSON:
 
       model_evidence:
         itemInfo.model_evidence,
+
+      user_model_evidence:
+        itemInfo.user_model_evidence,
+
+      identification_basis:
+        itemInfo.identification_basis,
 
       modifications:
         itemInfo.modifications,
@@ -4444,20 +4380,11 @@ Returner KUN gyldig JSON:
 
       market_sources: marketSources,
 
-      valuation_filter: {
-        identity_order: ["synlig merking", "merke", "modell", "variant", "år", "produksjonsland", "markedsreferanser", "pris"],
-        identity_profile: ebay?.filtering?.identity_profile || null,
-        exact_match_count: Number(ebay?.exact_match_count || 0),
-        near_match_count: Number(ebay?.near_match_count || 0),
-        year_required: Boolean(ebay?.filtering?.exact_year_required_for_valuation),
-        near_matches_affect_value: false
-      },
-
       market_engine_version:
-        "v12.9-marking-first-price-filter-market-first-pricing",
+        "v12.8-market-first-pricing",
 
       market_filter_version:
-        "v12.9-marking-first-central-variant-gate-hard-year-price-outlier-clean-display"
+        "v12.8-hard-title-year-variant-bicycle-gate-fender-gate-clean-display"
     });
 
   } catch (e) {
