@@ -4274,9 +4274,32 @@ Hvis du er usikker på om referansen er identisk, skal kilden ikke tas med.
       }
     }
 
+    // V13.7.1 – WEB-REFERANSE-FIKS
+    // targetModelCode ble tidligere deklarert inne i markedsblokken og
+    // var derfor ikke tilgjengelig her når web-fallbacken skulle kjøre.
+    // Vi beregner referansekoden på nytt i riktig scope.
+    const webTargetModelCandidates = [
+      itemInfo?.model,
+      itemInfo?.model_number,
+      itemInfo?.reference,
+      parsed?.model,
+      parsed?.name
+    ]
+      .map(v => String(v || "").trim())
+      .filter(Boolean);
+
+    const webTargetModelCode =
+      webTargetModelCandidates
+        .map(normalizeModelCode)
+        .find(code =>
+          code.length >= 4 &&
+          /[a-z]/i.test(code) &&
+          /\d/.test(code)
+        ) || "";
+
     const webReferenceSearch =
-      targetModelCode && Number(ebay?.exact_match_count || 0) < 2
-        ? await searchExactReferenceWeb(targetModelCode, itemInfo.brand, itemInfo.model || parsed.name)
+      webTargetModelCode && Number(ebay?.exact_match_count || 0) < 2
+        ? await searchExactReferenceWeb(webTargetModelCode, itemInfo.brand, itemInfo.model || parsed.name)
         : { enabled: false, status: "not_needed", reason: "eBay har tilstrekkelig eksakt grunnlag.", exact_match_count: 0, distinct_count: 0, value_nok: null, low_nok: null, high_nok: null, references: [] };
 
     const marketSources = {
