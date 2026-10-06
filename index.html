@@ -1,3 +1,4 @@
+<!-- Kistefunn v14.28 – Admin/diagnostikk -->
 <!doctype html>
 <html lang="no">
 <head>
@@ -169,6 +170,21 @@ hr{border:0;border-top:1px solid var(--line);margin:18px 0}
   .market-title{font-size:27px}
 }
 
+
+.admin-panel{margin-top:14px;background:#f4f8ff;border:1px solid #d7e2f2;border-radius:16px;padding:14px}
+.admin-badge{display:inline-flex;align-items:center;padding:5px 9px;border-radius:999px;background:#e7eefb;color:#17345f;font-size:12px;font-weight:800}
+.admin-status{font-size:13px;color:var(--muted);margin-top:7px;line-height:1.4}
+.admin-diagnostics{margin-top:12px}
+.admin-event{padding:11px 0;border-top:1px solid #dce5f1}
+.admin-event:first-child{border-top:0}
+.admin-event-head{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+.admin-event-time{font-size:12px;color:var(--muted)}
+.admin-event-level{font-size:11px;font-weight:800;padding:4px 7px;border-radius:999px;background:#eef2f7}
+.admin-event.error .admin-event-level{background:#fee2e2;color:#991b1b}
+.admin-event-title{font-weight:800;margin-top:5px;line-height:1.35}
+.admin-event-meta{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.4}
+.admin-error-code{display:inline-block;margin-top:5px;padding:3px 6px;border-radius:7px;background:#fff;border:1px solid #dce5f1;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px}
+
 </style>
 </head>
 <body>
@@ -189,6 +205,13 @@ hr{border:0;border-top:1px solid var(--line);margin:18px 0}
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px"><button class="primary" onclick="login()">🔑 Logg inn</button><button class="secondary" onclick="signup()">✉️ Opprett konto</button></div>
 <div id="authMessage" class="auth-message hidden"></div></div>
 <div class="card hidden" id="loggedInCard"><h2>👤 Min side</h2><p class="muted">Du er logget inn som:</p><div id="accountEmail" class="account-email"></div>
+<div id="adminPanel" class="admin-panel hidden">
+  <div class="admin-badge">🛡️ ADMIN</div>
+  <h3 style="margin:9px 0 4px">Diagnostikk</h3>
+  <div id="adminStatus" class="admin-status">Kontrollerer admin-tilgang …</div>
+  <button id="adminRefreshButton" class="secondary hidden" style="margin-top:10px;width:100%" type="button" onclick="loadAdminDiagnostics()">🔄 Oppdater diagnostikk</button>
+  <div id="adminDiagnostics" class="admin-diagnostics"></div>
+</div>
 <div class="auth-message">☁️ Samlingen og kjøpsønskene dine lagres på kontoen din.</div>
 <button class="secondary" style="margin-top:14px;width:100%" onclick="logout()">🚪 Logg ut</button>
 <button class="danger" style="margin-top:10px;width:100%" onclick="deleteAccount()">🗑️ Slett konto og alle data</button><div class="profile-grid">
@@ -305,7 +328,55 @@ function esc(value){return String(value||'').replace(/[&<>"']/g,m=>({'&':'&amp;'
 function show(id){document.querySelectorAll('.nav button').forEach(b=>{b.classList.remove('primary');b.classList.add('secondary')});const buttons=[...document.querySelectorAll('.nav button')],names=['marketplace','scan','collection','wanted','account'],idx=names.indexOf(id);if(idx>=0&&buttons[idx]){buttons[idx].classList.remove('secondary');buttons[idx].classList.add('primary')}names.forEach(x=>document.getElementById(x)?.classList.toggle('hidden',x!==id));if(id==='collection'){updatePrivateSections();if(currentUser)renderItems()}if(id==='wanted'){updatePrivateSections();if(currentUser)renderWants()}if(id==='marketplace'){if(currentUser)searchMarketplace();else renderMarketplaceLogin()}}
 function setAuthMessage(message){const box=document.getElementById('authMessage');if(!box)return;box.textContent=message||'';box.classList.toggle('hidden',!message)}
 function updateProfileCounts(){const fc=document.getElementById('favoriteCount'),dc=document.getElementById('findCount');if(fc)fc.textContent=favorites.length+' lagret';if(dc)dc.textContent=finds.length+(finds.length===1?' funn':' funn')}
-function updateAuthUI(){const out=document.getElementById('loggedOutCard'),inCard=document.getElementById('loggedInCard'),email=document.getElementById('accountEmail');if(currentUser){out.classList.add('hidden');inCard.classList.remove('hidden');email.textContent=currentUser.email||''}else{out.classList.remove('hidden');inCard.classList.add('hidden');email.textContent=''}updatePrivateSections();updateProfileCounts()}
+async function loadAdminDiagnostics(){
+  const panel=document.getElementById('adminPanel');
+  const status=document.getElementById('adminStatus');
+  const button=document.getElementById('adminRefreshButton');
+  const container=document.getElementById('adminDiagnostics');
+  if(!panel||!currentUser)return;
+  panel.classList.remove('hidden');
+  status.textContent='Kontrollerer admin-tilgang …';
+  button?.classList.add('hidden');
+  container.innerHTML='';
+  try{
+    const {data,error}=await supabaseClient.auth.getSession();
+    if(error)throw error;
+    const token=data?.session?.access_token;
+    if(!token)throw new Error('Ingen aktiv innlogging.');
+    const response=await fetch('/api/admin-diagnostics',{headers:{Authorization:'Bearer '+token}});
+    const raw=await response.text();
+    let result={};
+    try{result=raw?JSON.parse(raw):{}}catch(_){result={}};
+    if(response.status===403){
+      panel.classList.add('hidden');
+      return;
+    }
+    if(!response.ok)throw new Error(result.error||raw||('HTTP '+response.status));
+    status.textContent='Admin-tilgang bekreftet · viser siste '+((result.events||[]).length)+' hendelser.';
+    button?.classList.remove('hidden');
+    const events=Array.isArray(result.events)?result.events:[];
+    if(!events.length){
+      container.innerHTML='<div class="muted" style="margin-top:10px">Ingen diagnostikkhendelser funnet.</div>';
+      return;
+    }
+    container.innerHTML=events.map(e=>{
+      const meta=e.metadata&&typeof e.metadata==='object'?e.metadata:{};
+      const errorCode=meta.error_code||e.error_code||'';
+      const errorType=meta.error_type||e.error_type||'';
+      const requestId=e.request_id||meta.request_id||'';
+      const duration=e.duration_ms!=null?String(e.duration_ms)+' ms':'';
+      const details=[e.backend_version||'',e.model||'',duration,requestId?'request '+requestId:''].filter(Boolean).join(' · ');
+      const code=errorCode?'<div class="admin-error-code">'+esc(errorCode)+(errorType?' · '+esc(errorType):'')+'</div>':'';
+      return '<div class="admin-event '+(e.level==='error'?'error':'')+'"><div class="admin-event-head"><div class="admin-event-time">'+esc(new Date(e.created_at).toLocaleString('no-NO'))+'</div><div class="admin-event-level">'+esc(e.level||'info')+'</div></div><div class="admin-event-title">'+esc(e.stage||'Hendelse')+(e.code?' · '+esc(e.code):'')+'</div><div class="admin-event-meta">'+esc(e.message||'')+(details?'<br>'+esc(details):'')+'</div>'+code+'</div>';
+    }).join('');
+  }catch(err){
+    status.textContent='Kunne ikke hente diagnostikk.';
+    container.innerHTML='<div class="note">'+esc(err.message||'Ukjent feil')+'</div>';
+    button?.classList.remove('hidden');
+  }
+}
+
+function updateAuthUI(){const out=document.getElementById('loggedOutCard'),inCard=document.getElementById('loggedInCard'),email=document.getElementById('accountEmail'),adminPanel=document.getElementById('adminPanel');if(currentUser){out.classList.add('hidden');inCard.classList.remove('hidden');email.textContent=currentUser.email||'';adminPanel?.classList.remove('hidden');loadAdminDiagnostics()}else{out.classList.remove('hidden');inCard.classList.add('hidden');email.textContent='';adminPanel?.classList.add('hidden')}updatePrivateSections();updateProfileCounts()}
 function updatePrivateSections(){const cl=document.getElementById('collectionLoginCard'),cc=document.getElementById('collectionContent'),wl=document.getElementById('wantedLoginCard'),wc=document.getElementById('wantedContent');if(currentUser){cl.classList.add('hidden');cc.classList.remove('hidden');wl.classList.add('hidden');wc.classList.remove('hidden')}else{cl.classList.remove('hidden');cc.classList.add('hidden');wl.classList.remove('hidden');wc.classList.add('hidden')}}
 async function signup(){const email=document.getElementById('authEmail').value.trim(),password=document.getElementById('authPassword').value;if(!email||!password)return setAuthMessage('Skriv inn e-post og passord.');if(password.length<6)return setAuthMessage('Passordet må være minst 6 tegn.');setAuthMessage('Oppretter konto …');try{const {data,error}=await supabaseClient.auth.signUp({email,password,options:{emailRedirectTo:window.location.origin}});if(error)throw error;setAuthMessage(data.session?'Kontoen er opprettet og du er logget inn.':'Kontoen er opprettet. Sjekk e-posten din og bekreft e-postadressen før du logger inn.')}catch(err){console.error(err);setAuthMessage(err.message||'Kunne ikke opprette konto.')}}
 async function login(){const email=document.getElementById('authEmail').value.trim(),password=document.getElementById('authPassword').value;if(!email||!password)return setAuthMessage('Skriv inn e-post og passord.');setAuthMessage('Logger inn …');try{const {error}=await supabaseClient.auth.signInWithPassword({email,password});if(error)throw error;setAuthMessage('Du er logget inn.')}catch(err){console.error(err);setAuthMessage(err.message||'Kunne ikke logge inn.')}}
