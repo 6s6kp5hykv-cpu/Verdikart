@@ -1,5 +1,5 @@
-// Kistefunn analysebackend v14.26
-// V14.26: Første sikre modularisering. OpenAI-identifikasjon er flyttet til api/lib/openai.js. All øvrig v14.25-logikk er beholdt.
+// Kistefunn analysebackend v14.27
+// V14.27: Beholder v14.26 SAFE v2-logikken. OpenAI-feil returnerer nå error_code, error_type og request_id for diagnostikk.
 // V14.24: Beholder lengre modelltekst i strict market criteria slik at flerords-varianter ikke kuttes etter 4 ord.
 // V14.23 STRICT GENERIC MODEL/VARIANT GATE: distinctive model/variant anchors must be present in generic-category listings.
 // V14.23 STRICT ACCESSORY GATE: keyrings, miniatures, charms, replacement pieces and packaging-only items are rejected.
@@ -82,8 +82,15 @@ export default async function handler(req, res) {
       parsed = aiResult.parsed;
       timings.openai_identification_ms = aiResult.duration_ms;
     } catch (error) {
-      return res.status(500).json({
-        error: error?.message || "OpenAI-feil"
+      const status = Number.isInteger(error?.status) ? error.status : 500;
+      return res.status(status).json({
+        error: error?.message || "OpenAI-feil",
+        error_code: error?.error_code || null,
+        error_type: error?.error_type || null,
+        error_param: error?.error_param || null,
+        request_id: error?.request_id || null,
+        status,
+        version: "v14.27"
       });
     }
 
@@ -5913,7 +5920,12 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
     return res.status(500).json({
       error:
         e?.message ||
-        "Ukjent feil"
+        "Ukjent feil",
+      error_code: e?.error_code || null,
+      error_type: e?.error_type || null,
+      request_id: e?.request_id || null,
+      status: 500,
+      version: "v14.27"
     });
   }
 }
