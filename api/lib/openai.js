@@ -1,5 +1,6 @@
-// Kistefunn OpenAI-identifikasjon v14.26
-// Eksakt OpenAI-del hentet fra v14.25. Ingen endring i prompt eller request-struktur.
+// Kistefunn OpenAI-identifikasjon v14.26 SAFE v2
+// OpenAI-delen er flyttet fra v14.25 uten endring av prompt eller request-struktur.
+// SAFE v2: korrigerer en feil i første modulversjon der input_text-strengen ble ødelagt ved flytting.
 
 export async function identifyWithOpenAI({ image, userDescription }) {
   const contextText = userDescription
@@ -23,7 +24,7 @@ Bruk dette som et sterkt identifikasjonssignal. Hvis brukeren oppgir en konkret 
         content: [
           {
             type: "input_text",
-            text: `              text: `
+            text: `
 Du er ekspert på visuell identifisering og verdivurdering av fysiske gjenstander.
 
 IDENTIFIKASJON SKAL VÆRE BEVISDREVET.
@@ -141,8 +142,6 @@ Returner KUN gyldig JSON:
   },
   "ebay_search_query": "kort presist produkt-søk"
 }
-`
-            },
 `
           },
           {
