@@ -1,4 +1,5 @@
-// Kistefunn analysebackend v14.27
+// Kistefunn analysebackend v14.29
+// V14.29: Kun diagnostikk av OpenAI latency/token-bruk. Ingen endring av markeds-, filter- eller identifikasjonslogikk.
 // V14.27: Beholder v14.26 SAFE v2-logikken. OpenAI-feil returnerer nå error_code, error_type og request_id for diagnostikk.
 // V14.24: Beholder lengre modelltekst i strict market criteria slik at flerords-varianter ikke kuttes etter 4 ord.
 // V14.23 STRICT GENERIC MODEL/VARIANT GATE: distinctive model/variant anchors must be present in generic-category listings.
@@ -81,6 +82,7 @@ export default async function handler(req, res) {
       });
       parsed = aiResult.parsed;
       timings.openai_identification_ms = aiResult.duration_ms;
+      timings.openai_diagnostics = aiResult.openai_diagnostics || null;
     } catch (error) {
       const status = Number.isInteger(error?.status) ? error.status : 500;
       return res.status(status).json({
@@ -5728,7 +5730,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
        --------------------------------------------------------- */
 
     return res.status(200).json({
-      version: "v14.25",
+      version: "v14.29",
       timings,
       name:
         parsed.name ||
@@ -5925,7 +5927,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       error_type: e?.error_type || null,
       request_id: e?.request_id || null,
       status: 500,
-      version: "v14.27"
+      version: "v14.29"
     });
   }
 }
