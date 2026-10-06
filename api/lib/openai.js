@@ -1,5 +1,5 @@
-// Kistefunn OpenAI-identifikasjon v14.29
-// V14.29: Kun diagnostikk av OpenAI latency/token-bruk. Ingen endring av prompt, modell, request eller identifikasjonslogikk.
+// Kistefunn OpenAI-identifikasjon v14.30
+// V14.30: Testversjon basert direkte på v14.29. Ingen endring av prompt, modell, request eller identifikasjonslogikk.
 // OpenAI-delen er flyttet fra v14.25 uten endring av prompt eller request-struktur.
 // V14.27: Beholder SAFE v2-logikken, men eksponerer OpenAI error.code, error.type, status og request-id til backend-diagnostikken.
 
