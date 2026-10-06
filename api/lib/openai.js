@@ -1,4 +1,5 @@
-// Kistefunn OpenAI-identifikasjon v14.27
+// Kistefunn OpenAI-identifikasjon v14.29
+// V14.29: Kun diagnostikk av OpenAI latency/token-bruk. Ingen endring av prompt, modell, request eller identifikasjonslogikk.
 // OpenAI-delen er flyttet fra v14.25 uten endring av prompt eller request-struktur.
 // V14.27: Beholder SAFE v2-logikken, men eksponerer OpenAI error.code, error.type, status og request-id til backend-diagnostikken.
 
@@ -222,8 +223,28 @@ Returner KUN gyldig JSON:
     };
   }
 
+  const usage = data?.usage || {};
+  const inputTokens = Number.isFinite(Number(usage.input_tokens)) ? Number(usage.input_tokens) : null;
+  const outputTokens = Number.isFinite(Number(usage.output_tokens)) ? Number(usage.output_tokens) : null;
+  const totalTokens = Number.isFinite(Number(usage.total_tokens)) ? Number(usage.total_tokens) : null;
+  const cachedInputTokens = Number.isFinite(Number(usage.input_tokens_details?.cached_tokens))
+    ? Number(usage.input_tokens_details.cached_tokens)
+    : null;
+  const reasoningTokens = Number.isFinite(Number(usage.output_tokens_details?.reasoning_tokens))
+    ? Number(usage.output_tokens_details.reasoning_tokens)
+    : null;
+
   return {
     parsed,
-    duration_ms: Math.round(performance.now() - identificationStartedAt)
+    duration_ms: Math.round(performance.now() - identificationStartedAt),
+    openai_diagnostics: {
+      model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      total_tokens: totalTokens,
+      cached_input_tokens: cachedInputTokens,
+      reasoning_tokens: reasoningTokens,
+      request_id: requestId
+    }
   };
 }
