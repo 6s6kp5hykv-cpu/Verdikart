@@ -1,4 +1,7 @@
-// Kistefunn analysebackend v14.23
+// Kistefunn analysebackend v14.24
+// V14.24: Beholder lengre modelltekst i strict market criteria slik at flerords-varianter ikke kuttes etter 4 ord.
+// V14.23 STRICT GENERIC MODEL/VARIANT GATE: distinctive model/variant anchors must be present in generic-category listings.
+// V14.23 STRICT ACCESSORY GATE: keyrings, miniatures, charms, replacement pieces and packaging-only items are rejected.
 // V14.20: Squier/Squire behandles som samme variant i alle Fender/Squier-gater.
 // V14.21: Eksakte gitarreferanser avviser eksplisitte bundle/pakke/kit/produktpakke-treff når målobjektet ikke selv er en pakke. Dette stopper f.eks. Squier Affinity Stratocaster + Mustang Micro Pack.
 // V14.23: Vanlig Fender MIM Stratocaster avviser også 60s/classic 60s og signature/Jeff Beck-varianter.
@@ -785,7 +788,7 @@ Returner KUN gyldig JSON:
         compact(info.brand, 1);
 
       const rawModel =
-        compact(info.model, 4);
+        compact(info.model, 12);
 
       const serialNumber =
         infoText(info.serial_number, "");
@@ -1337,7 +1340,37 @@ Returner KUN gyldig JSON:
         "fork only",
         "gabel only",
         "saddle only",
-        "sattel only"
+        "sattel only",
+        "keyring",
+        "key ring",
+        "keychain",
+        "key chain",
+        "key holder",
+        "key charm",
+        "miniature",
+        "mini figure",
+        "mini figurine",
+        "figurine",
+        "collectible figure",
+        "shoe charm",
+        "charm",
+        "toy",
+        "doll",
+        "ornament",
+        "plush",
+        "shoelace",
+        "shoe lace",
+        "lace replacement",
+        "replacement item",
+        "replacement piece",
+        "replacement part",
+        "box only",
+        "empty box",
+        "packaging only",
+        "manual only",
+        "poster only",
+        "sticker only",
+        "decal only"
       ];
 
       if (
@@ -2041,6 +2074,118 @@ Returner KUN gyldig JSON:
         reasons.push("variant");
       }
 
+      /*
+       * V14.23 – GENERIC HARD MODEL/VARIANT GATE
+       * -----------------------------------------
+       * Prevents generic model scoring from allowing a different
+       * product variant into exact comparisons.
+       *
+       * Distinctive target model anchors must all be present in the
+       * listing title/type for generic categories. Existing specialized
+       * guitar, bicycle and console gates remain authoritative.
+       */
+      if (
+        category !== "guitar" &&
+        category !== "bicycle" &&
+        category !== "console"
+      ) {
+        const genericModelStopWords = new Set([
+          "standard",
+          "original",
+          "classic",
+          "vintage",
+          "modern",
+          "series",
+          "serie",
+          "model",
+          "modell",
+          "version",
+          "edition",
+          "item",
+          "product",
+          "low",
+          "high",
+          "mid",
+          "shoe",
+          "shoes",
+          "sneaker",
+          "sneakers",
+          "trainer",
+          "trainers",
+          "boot",
+          "boots",
+          "size",
+          "men",
+          "mens",
+          "women",
+          "womens",
+          "unisex",
+          "new",
+          "used",
+          "authentic",
+          "genuine",
+          "special",
+          "box"
+        ]);
+
+        const genericTypeWords = new Set(
+          type
+            .split(/\s+/)
+            .map(w => w.trim().toLowerCase())
+            .filter(w => w.length >= 3)
+        );
+
+        const targetModelWords = [
+          ...new Set(
+            model
+              .replace(/&/g, " ")
+              .replace(/[^\p{L}\p{N}'-]+/gu, " ")
+              .split(/\s+/)
+              .map(w => w.trim().toLowerCase())
+              .filter(w => w.length >= 4)
+              .filter(w => !genericModelStopWords.has(w))
+              .filter(w => !genericTypeWords.has(w))
+          )
+        ];
+
+        const listingTextForVariant =
+          `${t} ${type}`.toLowerCase();
+
+        if (!targetModelWords.length) {
+          return {
+            score: Math.max(0, score),
+            accepted: false,
+            near_match: true,
+            year_match: year ? "missing" : "not_required",
+            reason: "modellvariant ikke spesifisert nok",
+            variant_match: "insufficient_target_variant"
+          };
+        }
+
+        const missingDistinctiveTargetWords =
+          targetModelWords.filter(word => {
+            const escaped =
+              word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+            return !new RegExp(
+              `\\b${escaped}\\b`,
+              "i"
+            ).test(listingTextForVariant);
+          });
+
+        if (missingDistinctiveTargetWords.length) {
+          return {
+            score: -100,
+            accepted: false,
+            near_match: false,
+            year_match: year ? "missing" : "not_required",
+            reason:
+              `mangler spesifikk modell/variant: ${missingDistinctiveTargetWords.join(", ")}`,
+            variant_match: "rejected_missing_anchor"
+          };
+        }
+      }
+
       const typeWords =
         type
           .split(/\s+/)
@@ -2504,7 +2649,15 @@ Returner KUN gyldig JSON:
           yearMatch,
         reason:
           reasons.join(", ") ||
-          "lav relevans"
+          "lav relevans",
+        variant_match:
+          (
+            category === "guitar" ||
+            category === "bicycle" ||
+            category === "console"
+          )
+            ? "category_gate"
+            : "exact"
       };
     }
 
@@ -3018,6 +3171,9 @@ Returner KUN gyldig JSON:
         year_match:
           relevance.year_match ||
           "not_required",
+        variant_match:
+          relevance.variant_match ||
+          "exact",
         match_tier:
           matchTier,
         valuation_tier:
@@ -5693,7 +5849,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
        --------------------------------------------------------- */
 
     return res.status(200).json({
-      version: "v14.23",
+      version: "v14.24",
       name:
         parsed.name ||
         "Ukjent",
