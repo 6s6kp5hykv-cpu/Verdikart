@@ -1,4 +1,5 @@
-// Kistefunn analysebackend v14.24
+// Kistefunn analysebackend v14.25
+// V14.25: Intern tidsmåling for å finne flaskehalser i OpenAI, eBay, item-details, web-referanser og valutakonvertering. Endrer ikke søkelogikken.
 // V14.24: Beholder lengre modelltekst i strict market criteria slik at flerords-varianter ikke kuttes etter 4 ord.
 // V14.23 STRICT GENERIC MODEL/VARIANT GATE: distinctive model/variant anchors must be present in generic-category listings.
 // V14.23 STRICT ACCESSORY GATE: keyrings, miniatures, charms, replacement pieces and packaging-only items are rejected.
@@ -37,6 +38,20 @@ export default async function handler(req, res) {
   }
 
   try {
+    // V14.25: Intern tidsmåling. Kun måling – ingen endring av markeds-/filterlogikk.
+    const backendStartedAt = performance.now();
+    const timings = {
+      openai_identification_ms: null,
+      ebay_oauth_ms: null,
+      ebay_search_ms: null,
+      ebay_item_details_ms: null,
+      web_reference_openai_ms: null,
+      frankfurter_fx_ms: 0,
+      ebay_total_ms: null,
+      market_processing_ms: null,
+      total_backend_ms: null
+    };
+
     // Kupp- og prisundersøkelseslister må være tilgjengelige i hele handler-scope.
     let buy_opportunities = [];
     let priceInvestigations = [];
@@ -63,6 +78,7 @@ Bruk dette som et sterkt identifikasjonssignal. Hvis brukeren oppgir en konkret 
        1. IDENTIFISER MED OPENAI
        --------------------------------------------------------- */
 
+    const identificationStartedAt = performance.now();
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
@@ -253,6 +269,10 @@ Returner KUN gyldig JSON:
         ebay_search_query: ""
       };
     }
+
+    timings.openai_identification_ms = Math.round(
+      performance.now() - identificationStartedAt
+    );
 
     /* ---------------------------------------------------------
        2. NORMALISER INFORMASJON
@@ -505,6 +525,7 @@ Returner KUN gyldig JSON:
           `${clientId}:${clientSecret}`
         ).toString("base64");
 
+        const ebayOauthStartedAt = performance.now();
         const r = await fetch(
           "https://api.ebay.com/identity/v1/oauth2/token",
           {
@@ -522,6 +543,9 @@ Returner KUN gyldig JSON:
         );
 
         const d = await r.json();
+        timings.ebay_oauth_ms = Math.round(
+          performance.now() - ebayOauthStartedAt
+        );
 
         if (!r.ok) {
           ebayDiagnosticError = {
@@ -565,16 +589,22 @@ Returner KUN gyldig JSON:
       if (from === to) return 1;
 
       try {
+        const fxStartedAt = performance.now();
         const r = await fetch(
           `https://api.frankfurter.app/latest?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
         );
 
-        if (!r.ok) return null;
+        if (!r.ok) {
+          timings.frankfurter_fx_ms += Math.round(performance.now() - fxStartedAt);
+          return null;
+        }
 
         const d = await r.json();
+        timings.frankfurter_fx_ms += Math.round(performance.now() - fxStartedAt);
 
         return d?.rates?.[to] || null;
       } catch {
+        timings.frankfurter_fx_ms += Math.round(performance.now() - fxStartedAt);
         return null;
       }
     }
@@ -3328,6 +3358,7 @@ Returner KUN gyldig JSON:
         }
       }
 
+      const ebaySearchStartedAt = performance.now();
       const results =
         await Promise.all(
           searchJobs.map(
@@ -3365,6 +3396,9 @@ Returner KUN gyldig JSON:
             }
           )
         );
+      timings.ebay_search_ms = Math.round(
+        performance.now() - ebaySearchStartedAt
+      );
 
       /*
        * eBay item_summary gir ikke alltid år/variant i selve søkeresultatet.
@@ -3372,6 +3406,7 @@ Returner KUN gyldig JSON:
        * kandidatene per marked. Dette er spesielt viktig for eldre varer,
        * der "Year Manufactured" ofte ligger som et item aspect og ikke i tittelen.
        */
+      const ebayItemDetailsStartedAt = performance.now();
       const preparedNested =
         await Promise.all(
           results.map(
@@ -3472,6 +3507,9 @@ Returner KUN gyldig JSON:
             }
           )
         );
+      timings.ebay_item_details_ms = Math.round(
+        performance.now() - ebayItemDetailsStartedAt
+      );
 
       const all = [];
       const seen = new Set();
@@ -4866,9 +4904,17 @@ Returner KUN gyldig JSON:
     };
 
     try {
+      const ebayTotalStartedAt = performance.now();
       ebay =
         await searchEbay(parsed);
+      timings.ebay_total_ms = Math.round(
+        performance.now() - ebayTotalStartedAt
+      );
     } catch (error) {
+      if (!Number.isFinite(timings.ebay_total_ms)) {
+        // Be robust if the exception occurred before the normal completion path.
+        timings.ebay_total_ms = null;
+      }
       const message =
         error?.message ||
         ebayDiagnosticError?.message ||
@@ -5274,6 +5320,8 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
         .replace(/[^a-z0-9]/g, "");
     }
 
+    const marketProcessingStartedAt = performance.now();
+
     const webTargetModelCandidates = [
       itemInfo?.model,
       itemInfo?.model_number,
@@ -5293,10 +5341,14 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
           /\d/.test(code)
         ) || "";
 
+    const webReferenceStartedAt = performance.now();
     const webReferenceSearch =
       webTargetModelCode && Number(ebay?.exact_match_count || 0) < 2
         ? await searchExactReferenceWeb(webTargetModelCode, itemInfo.brand, itemInfo.model || parsed.name)
         : { enabled: false, status: "not_needed", reason: "eBay har tilstrekkelig eksakt grunnlag.", exact_match_count: 0, distinct_count: 0, value_nok: null, low_nok: null, high_nok: null, references: [] };
+    timings.web_reference_openai_ms = Math.round(
+      performance.now() - webReferenceStartedAt
+    );
 
     const marketSources = {
       ai: {
@@ -5844,12 +5896,20 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       parsed.ebay_search_query ||
       "";
 
+    timings.market_processing_ms = Math.round(
+      performance.now() - marketProcessingStartedAt
+    );
+    timings.total_backend_ms = Math.round(
+      performance.now() - backendStartedAt
+    );
+
     /* ---------------------------------------------------------
        8. RETURNER
        --------------------------------------------------------- */
 
     return res.status(200).json({
-      version: "v14.24",
+      version: "v14.25",
+      timings,
       name:
         parsed.name ||
         "Ukjent",
