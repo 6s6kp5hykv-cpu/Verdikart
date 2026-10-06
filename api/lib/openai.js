@@ -1,6 +1,6 @@
-// Kistefunn OpenAI-identifikasjon v14.26 SAFE v2
+// Kistefunn OpenAI-identifikasjon v14.27
 // OpenAI-delen er flyttet fra v14.25 uten endring av prompt eller request-struktur.
-// SAFE v2: korrigerer en feil i første modulversjon der input_text-strengen ble ødelagt ved flytting.
+// V14.27: Beholder SAFE v2-logikken, men eksponerer OpenAI error.code, error.type, status og request-id til backend-diagnostikken.
 
 export async function identifyWithOpenAI({ image, userDescription }) {
   const contextText = userDescription
@@ -154,11 +154,33 @@ Returner KUN gyldig JSON:
     })
   });
 
-  const data = await response.json();
+  const requestId =
+    response.headers.get("x-request-id") ||
+    response.headers.get("x-openai-request-id") ||
+    null;
+
+  let data = null;
+  let rawResponse = "";
+  try {
+    data = await response.json();
+  } catch {
+    try {
+      rawResponse = await response.text();
+    } catch {}
+  }
 
   if (!response.ok) {
-    const error = new Error(data?.error?.message || "OpenAI-feil");
+    const apiError = data?.error || {};
+    const error = new Error(
+      apiError.message ||
+      rawResponse ||
+      `OpenAI-feil (HTTP ${response.status})`
+    );
     error.status = response.status;
+    error.error_code = apiError.code || null;
+    error.error_type = apiError.type || null;
+    error.error_param = apiError.param || null;
+    error.request_id = requestId;
     throw error;
   }
 
