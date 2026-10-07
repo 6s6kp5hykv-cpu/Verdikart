@@ -1,5 +1,5 @@
-// Kistefunn analysebackend v14.31
-// V14.29: Kun diagnostikk av OpenAI latency/token-bruk. Ingen endring av markeds-, filter- eller identifikasjonslogikk.
+// Kistefunn analysebackend v14.32
+// V14.32: Diagnostikkforbedring: FX-tid skilles fra kumulativ FX-tid, valutakurser caches per valuta, og eBay item-details måler antall kall, total kalltid, tregeste kall og feil. Ingen endring av markeds-, filter- eller identifikasjonslogikk.
 // V14.27: Beholder v14.26 SAFE v2-logikken. OpenAI-feil returnerer nå error_code, error_type og request_id for diagnostikk.
 // V14.24: Beholder lengre modelltekst i strict market criteria slik at flerords-varianter ikke kuttes etter 4 ord.
 // V14.23 STRICT GENERIC MODEL/VARIANT GATE: distinctive model/variant anchors must be present in generic-category listings.
@@ -47,8 +47,14 @@ export default async function handler(req, res) {
       ebay_oauth_ms: null,
       ebay_search_ms: null,
       ebay_item_details_ms: null,
+      ebay_item_details_calls: 0,
+      ebay_item_details_total_call_ms: 0,
+      ebay_item_details_slowest_ms: 0,
+      ebay_item_details_failed: 0,
       web_reference_openai_ms: null,
       frankfurter_fx_ms: 0,
+      frankfurter_fx_calls: 0,
+      frankfurter_fx_wall_ms: null,
       ebay_total_ms: null,
       market_processing_ms: null,
       total_backend_ms: null
@@ -92,7 +98,7 @@ export default async function handler(req, res) {
         error_param: error?.error_param || null,
         request_id: error?.request_id || null,
         status,
-        version: "v14.31"
+        version: "v14.32"
       });
     }
 
@@ -407,27 +413,52 @@ export default async function handler(req, res) {
       }
     }
 
+    const exchangeRateCache = new Map();
+    let frankfurterFxFirstStartedAt = null;
+    let frankfurterFxLastFinishedAt = null;
+
     async function getExchangeRate(from, to = "NOK") {
       if (from === to) return 1;
 
+      const cacheKey = `${String(from).toUpperCase()}->${String(to).toUpperCase()}`;
+      if (exchangeRateCache.has(cacheKey)) {
+        return exchangeRateCache.get(cacheKey);
+      }
+
+      const fxStartedAt = performance.now();
+      timings.frankfurter_fx_calls += 1;
+      if (frankfurterFxFirstStartedAt === null) {
+        frankfurterFxFirstStartedAt = fxStartedAt;
+      }
+
       try {
-        const fxStartedAt = performance.now();
         const r = await fetch(
           `https://api.frankfurter.app/latest?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
         );
 
         if (!r.ok) {
-          timings.frankfurter_fx_ms += Math.round(performance.now() - fxStartedAt);
           return null;
         }
 
         const d = await r.json();
-        timings.frankfurter_fx_ms += Math.round(performance.now() - fxStartedAt);
+        const rate = d?.rates?.[to] || null;
+        if (Number.isFinite(Number(rate)) && Number(rate) > 0) {
+          exchangeRateCache.set(cacheKey, Number(rate));
+          return Number(rate);
+        }
 
-        return d?.rates?.[to] || null;
-      } catch {
-        timings.frankfurter_fx_ms += Math.round(performance.now() - fxStartedAt);
         return null;
+      } catch {
+        return null;
+      } finally {
+        const elapsed = Math.round(performance.now() - fxStartedAt);
+        timings.frankfurter_fx_ms += elapsed;
+        frankfurterFxLastFinishedAt = performance.now();
+        if (frankfurterFxFirstStartedAt !== null) {
+          timings.frankfurter_fx_wall_ms = Math.round(
+            frankfurterFxLastFinishedAt - frankfurterFxFirstStartedAt
+          );
+        }
       }
     }
 
@@ -2607,6 +2638,9 @@ export default async function handler(req, res) {
       const token = await getEbayToken();
       if (!token) return item;
 
+      const detailStartedAt = performance.now();
+      timings.ebay_item_details_calls += 1;
+
       try {
         const url =
           "https://api.ebay.com/buy/browse/v1/item/" +
@@ -2621,7 +2655,10 @@ export default async function handler(req, res) {
           }
         });
 
-        if (!r.ok) return item;
+        if (!r.ok) {
+          timings.ebay_item_details_failed += 1;
+          return item;
+        }
 
         const detail = await r.json();
 
@@ -2676,7 +2713,15 @@ export default async function handler(req, res) {
 
         return enriched;
       } catch {
+        timings.ebay_item_details_failed += 1;
         return item;
+      } finally {
+        const elapsed = Math.round(performance.now() - detailStartedAt);
+        timings.ebay_item_details_total_call_ms += elapsed;
+        timings.ebay_item_details_slowest_ms = Math.max(
+          timings.ebay_item_details_slowest_ms,
+          elapsed
+        );
       }
     }
 
@@ -5730,7 +5775,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
        --------------------------------------------------------- */
 
     return res.status(200).json({
-      version: "v14.31",
+      version: "v14.32",
       timings,
       name:
         parsed.name ||
@@ -5927,7 +5972,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       error_type: e?.error_type || null,
       request_id: e?.request_id || null,
       status: 500,
-      version: "v14.29"
+      version: "v14.32"
     });
   }
 }
