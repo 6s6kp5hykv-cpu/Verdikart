@@ -1,4 +1,5 @@
-// Kistefunn analysebackend v14.32
+// Kistefunn analysebackend v14.33
+// V14.33: Utvider diagnostikken med detaljerte FX-valutaer og eBay item-details per kall (item-ID, tid og feil), samt samlet diagnostic_detail. Ingen endring av markeds-, filter- eller identifikasjonslogikk.
 // V14.32: Diagnostikkforbedring: FX-tid skilles fra kumulativ FX-tid, valutakurser caches per valuta, og eBay item-details måler antall kall, total kalltid, tregeste kall og feil. Ingen endring av markeds-, filter- eller identifikasjonslogikk.
 // V14.27: Beholder v14.26 SAFE v2-logikken. OpenAI-feil returnerer nå error_code, error_type og request_id for diagnostikk.
 // V14.24: Beholder lengre modelltekst i strict market criteria slik at flerords-varianter ikke kuttes etter 4 ord.
@@ -55,6 +56,8 @@ export default async function handler(req, res) {
       frankfurter_fx_ms: 0,
       frankfurter_fx_calls: 0,
       frankfurter_fx_wall_ms: null,
+      frankfurter_fx_currencies: [],
+      ebay_item_details_trace: [],
       ebay_total_ms: null,
       market_processing_ms: null,
       total_backend_ms: null
@@ -98,7 +101,7 @@ export default async function handler(req, res) {
         error_param: error?.error_param || null,
         request_id: error?.request_id || null,
         status,
-        version: "v14.32"
+        version: "v14.33"
       });
     }
 
@@ -427,6 +430,10 @@ export default async function handler(req, res) {
 
       const fxStartedAt = performance.now();
       timings.frankfurter_fx_calls += 1;
+      const fxCurrency = String(from).toUpperCase();
+      if (!timings.frankfurter_fx_currencies.includes(fxCurrency)) {
+        timings.frankfurter_fx_currencies.push(fxCurrency);
+      }
       if (frankfurterFxFirstStartedAt === null) {
         frankfurterFxFirstStartedAt = fxStartedAt;
       }
@@ -2639,6 +2646,7 @@ export default async function handler(req, res) {
       if (!token) return item;
 
       const detailStartedAt = performance.now();
+      let detailTraceRecorded = false;
       timings.ebay_item_details_calls += 1;
 
       try {
@@ -2657,6 +2665,14 @@ export default async function handler(req, res) {
 
         if (!r.ok) {
           timings.ebay_item_details_failed += 1;
+          timings.ebay_item_details_trace.push({
+            item_id: itemId,
+            marketplace,
+            ok: false,
+            status: r.status,
+            ms: Math.round(performance.now() - detailStartedAt)
+          });
+          detailTraceRecorded = true;
           return item;
         }
 
@@ -2712,8 +2728,17 @@ export default async function handler(req, res) {
         };
 
         return enriched;
-      } catch {
+      } catch (error) {
         timings.ebay_item_details_failed += 1;
+        timings.ebay_item_details_trace.push({
+          item_id: itemId,
+          marketplace,
+          ok: false,
+          status: null,
+          error: String(error?.message || "item-details fetch failed").slice(0, 160),
+          ms: Math.round(performance.now() - detailStartedAt)
+        });
+        detailTraceRecorded = true;
         return item;
       } finally {
         const elapsed = Math.round(performance.now() - detailStartedAt);
@@ -2722,6 +2747,14 @@ export default async function handler(req, res) {
           timings.ebay_item_details_slowest_ms,
           elapsed
         );
+        if (!detailTraceRecorded) {
+          timings.ebay_item_details_trace.push({
+            item_id: itemId,
+            marketplace,
+            ok: true,
+            ms: elapsed
+          });
+        }
       }
     }
 
@@ -5770,13 +5803,36 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       performance.now() - backendStartedAt
     );
 
+    const ebayItemDetailsTrace = Array.isArray(timings.ebay_item_details_trace)
+      ? timings.ebay_item_details_trace.slice(0, 50)
+      : [];
+
+    const diagnosticDetail = {
+      fx: {
+        calls: Number(timings.frankfurter_fx_calls || 0),
+        cumulative_ms: Number(timings.frankfurter_fx_ms || 0),
+        wall_ms: Number(timings.frankfurter_fx_wall_ms || 0),
+        currencies: Array.isArray(timings.frankfurter_fx_currencies)
+          ? timings.frankfurter_fx_currencies
+          : []
+      },
+      ebay_item_details: {
+        calls: Number(timings.ebay_item_details_calls || 0),
+        total_call_ms: Number(timings.ebay_item_details_total_call_ms || 0),
+        slowest_ms: Number(timings.ebay_item_details_slowest_ms || 0),
+        failed: Number(timings.ebay_item_details_failed || 0),
+        trace: ebayItemDetailsTrace
+      }
+    };
+
     /* ---------------------------------------------------------
        8. RETURNER
        --------------------------------------------------------- */
 
     return res.status(200).json({
-      version: "v14.32",
+      version: "v14.33",
       timings,
+      diagnostic_detail: diagnosticDetail,
       name:
         parsed.name ||
         "Ukjent",
@@ -5972,7 +6028,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       error_type: e?.error_type || null,
       request_id: e?.request_id || null,
       status: 500,
-      version: "v14.32"
+      version: "v14.33"
     });
   }
 }
