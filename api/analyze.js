@@ -1,4 +1,5 @@
 // Kistefunn analysebackend v14.33
+// V14.34: Utvider diagnostic_detail med detaljert web-reference timing, OpenAI request-id/status/tokens og antall funn. Ingen endring av markeds-, filter- eller identifikasjonslogikk.
 // V14.33: Utvider diagnostikken med detaljerte FX-valutaer og eBay item-details per kall (item-ID, tid og feil), samt samlet diagnostic_detail. Ingen endring av markeds-, filter- eller identifikasjonslogikk.
 // V14.32: Diagnostikkforbedring: FX-tid skilles fra kumulativ FX-tid, valutakurser caches per valuta, og eBay item-details måler antall kall, total kalltid, tregeste kall og feil. Ingen endring av markeds-, filter- eller identifikasjonslogikk.
 // V14.27: Beholder v14.26 SAFE v2-logikken. OpenAI-feil returnerer nå error_code, error_type og request_id for diagnostikk.
@@ -53,6 +54,8 @@ export default async function handler(req, res) {
       ebay_item_details_slowest_ms: 0,
       ebay_item_details_failed: 0,
       web_reference_openai_ms: null,
+      web_reference_fetch_ms: null,
+      web_reference_fx_ms: 0,
       frankfurter_fx_ms: 0,
       frankfurter_fx_calls: 0,
       frankfurter_fx_wall_ms: null,
@@ -4918,6 +4921,7 @@ export default async function handler(req, res) {
       }
 
       try {
+        const webReferenceStartedAt = performance.now();
         const normalizedTarget = normalizeModelCode(code);
 
         const searchPrompt = `
@@ -4993,6 +4997,13 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
           })
         });
 
+        const webFetchMs = Math.round(performance.now() - webReferenceStartedAt);
+        const webRequestId =
+          r.headers.get("x-request-id") ||
+          r.headers.get("x-openai-request-id") ||
+          null;
+        timings.web_reference_fetch_ms = webFetchMs;
+
         if (!r.ok) {
           const errorText = await r.text().catch(() => "");
           return {
@@ -5004,12 +5015,33 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
             value_nok: null,
             low_nok: null,
             high_nok: null,
-            references: []
+            references: [],
+            diagnostic: {
+              fetch_ms: webFetchMs,
+              request_id: webRequestId,
+              http_status: r.status,
+              usage: null,
+              output_item_count: 0,
+              reference_count: 0
+            }
           };
         }
 
         const data = await r.json();
         const outputText = String(data?.output_text || "").trim();
+        const webUsage = data?.usage || {};
+        const webDiagnostic = {
+          fetch_ms: webFetchMs,
+          request_id: webRequestId,
+          http_status: r.status,
+          usage: {
+            input_tokens: Number.isFinite(Number(webUsage.input_tokens)) ? Number(webUsage.input_tokens) : null,
+            output_tokens: Number.isFinite(Number(webUsage.output_tokens)) ? Number(webUsage.output_tokens) : null,
+            total_tokens: Number.isFinite(Number(webUsage.total_tokens)) ? Number(webUsage.total_tokens) : null
+          },
+          output_item_count: Array.isArray(data?.output) ? data.output.length : 0,
+          reference_count: 0
+        };
 
         let parsedWeb = null;
         if (outputText) {
@@ -5078,6 +5110,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
 
         // Convert source prices to NOK on the server instead of asking the web-search model to calculate currency conversion.
         const converted = [];
+        const webFxStartedAt = performance.now();
         for (const item of references) {
           let priceNok = null;
           if (item.currency === "NOK") {
@@ -5098,6 +5131,10 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
             });
           }
         }
+        timings.web_reference_fx_ms = Math.round(performance.now() - webFxStartedAt);
+        webDiagnostic.reference_count = references.length;
+        webDiagnostic.converted_reference_count = converted.length;
+        webDiagnostic.currencies = [...new Set(references.map(x => x.currency).filter(Boolean))];
 
         // Deduplicate by URL + rounded NOK price.
         const unique = [];
@@ -5173,7 +5210,8 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
             value_nok: null,
             low_nok: null,
             high_nok: null,
-            references: []
+            references: [],
+            diagnostic: webDiagnostic
           };
         }
 
@@ -5190,7 +5228,8 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
           high_nok: Math.round(valuationHigh),
           valuation_reference_count: valuationValues.length,
           outlier_count: outlierIndexes.size,
-          references: referencesWithValuation.slice(0, 8)
+          references: referencesWithValuation.slice(0, 8),
+          diagnostic: webDiagnostic
         };
       } catch (error) {
         return {
@@ -5202,7 +5241,16 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
           value_nok: null,
           low_nok: null,
           high_nok: null,
-          references: []
+          references: [],
+          diagnostic: {
+            fetch_ms: timings.web_reference_fetch_ms,
+            request_id: null,
+            http_status: null,
+            usage: null,
+            output_item_count: 0,
+            reference_count: 0,
+            error: error?.message || "Ukjent web-søkfeil."
+          }
         };
       }
     }
@@ -5249,6 +5297,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
     timings.web_reference_openai_ms = Math.round(
       performance.now() - webReferenceStartedAt
     );
+    timings.web_reference_fx_ms = Number(webReferenceSearch?.diagnostic?.fx_ms || timings.web_reference_fx_ms || 0);
 
     const marketSources = {
       ai: {
@@ -5816,6 +5865,12 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
           ? timings.frankfurter_fx_currencies
           : []
       },
+      web_reference: {
+        elapsed_ms: Number(timings.web_reference_openai_ms || 0),
+        fetch_ms: Number(timings.web_reference_fetch_ms || 0),
+        fx_ms: Number(timings.web_reference_fx_ms || 0),
+        diagnostic: webReferenceSearch?.diagnostic || null
+      },
       ebay_item_details: {
         calls: Number(timings.ebay_item_details_calls || 0),
         total_call_ms: Number(timings.ebay_item_details_total_call_ms || 0),
@@ -5830,7 +5885,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
        --------------------------------------------------------- */
 
     return res.status(200).json({
-      version: "v14.33",
+      version: "v14.34",
       timings,
       diagnostic_detail: diagnosticDetail,
       name:
