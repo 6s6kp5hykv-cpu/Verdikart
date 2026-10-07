@@ -1,4 +1,5 @@
-// Kistefunn analysebackend v14.33
+// Kistefunn analysebackend v14.35
+// V14.35: FX-optimalisering: global TTL-cache + samtidig request-deduplisering for valutakurser. Ingen endring av markeds-, filter- eller identifikasjonslogikk.
 // V14.34: Utvider diagnostic_detail med detaljert web-reference timing, OpenAI request-id/status/tokens og antall funn. Ingen endring av markeds-, filter- eller identifikasjonslogikk.
 // V14.33: Utvider diagnostikken med detaljerte FX-valutaer og eBay item-details per kall (item-ID, tid og feil), samt samlet diagnostic_detail. Ingen endring av markeds-, filter- eller identifikasjonslogikk.
 // V14.32: Diagnostikkforbedring: FX-tid skilles fra kumulativ FX-tid, valutakurser caches per valuta, og eBay item-details måler antall kall, total kalltid, tregeste kall og feil. Ingen endring av markeds-, filter- eller identifikasjonslogikk.
@@ -36,6 +37,12 @@
 // - FINN aktiveres først når legitim API-tilgang er tilgjengelig.
 
 import { identifyWithOpenAI } from "./lib/openai.js";
+
+// V14.35: Delbar FX-cache mellom invocations i samme serverless-instans.
+// Valutakurser endres ikke så raskt at de trenger nytt kall for hver analyse.
+const FX_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const globalExchangeRateCache = new Map();
+const globalExchangeRatePromises = new Map();
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -419,7 +426,6 @@ export default async function handler(req, res) {
       }
     }
 
-    const exchangeRateCache = new Map();
     let frankfurterFxFirstStartedAt = null;
     let frankfurterFxLastFinishedAt = null;
 
@@ -427,8 +433,16 @@ export default async function handler(req, res) {
       if (from === to) return 1;
 
       const cacheKey = `${String(from).toUpperCase()}->${String(to).toUpperCase()}`;
-      if (exchangeRateCache.has(cacheKey)) {
-        return exchangeRateCache.get(cacheKey);
+      const now = Date.now();
+      const cached = globalExchangeRateCache.get(cacheKey);
+
+      if (cached && now - cached.cached_at < FX_CACHE_TTL_MS) {
+        return cached.rate;
+      }
+
+      const existingPromise = globalExchangeRatePromises.get(cacheKey);
+      if (existingPromise) {
+        return existingPromise;
       }
 
       const fxStartedAt = performance.now();
@@ -441,35 +455,45 @@ export default async function handler(req, res) {
         frankfurterFxFirstStartedAt = fxStartedAt;
       }
 
-      try {
-        const r = await fetch(
-          `https://api.frankfurter.app/latest?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
-        );
-
-        if (!r.ok) {
-          return null;
-        }
-
-        const d = await r.json();
-        const rate = d?.rates?.[to] || null;
-        if (Number.isFinite(Number(rate)) && Number(rate) > 0) {
-          exchangeRateCache.set(cacheKey, Number(rate));
-          return Number(rate);
-        }
-
-        return null;
-      } catch {
-        return null;
-      } finally {
-        const elapsed = Math.round(performance.now() - fxStartedAt);
-        timings.frankfurter_fx_ms += elapsed;
-        frankfurterFxLastFinishedAt = performance.now();
-        if (frankfurterFxFirstStartedAt !== null) {
-          timings.frankfurter_fx_wall_ms = Math.round(
-            frankfurterFxLastFinishedAt - frankfurterFxFirstStartedAt
+      const requestPromise = (async () => {
+        try {
+          const r = await fetch(
+            `https://api.frankfurter.app/latest?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
           );
+
+          if (!r.ok) {
+            return null;
+          }
+
+          const d = await r.json();
+          const rate = d?.rates?.[to] || null;
+          if (Number.isFinite(Number(rate)) && Number(rate) > 0) {
+            const numericRate = Number(rate);
+            globalExchangeRateCache.set(cacheKey, {
+              rate: numericRate,
+              cached_at: Date.now()
+            });
+            return numericRate;
+          }
+
+          return null;
+        } catch {
+          return null;
+        } finally {
+          const elapsed = Math.round(performance.now() - fxStartedAt);
+          timings.frankfurter_fx_ms += elapsed;
+          frankfurterFxLastFinishedAt = performance.now();
+          if (frankfurterFxFirstStartedAt !== null) {
+            timings.frankfurter_fx_wall_ms = Math.round(
+              frankfurterFxLastFinishedAt - frankfurterFxFirstStartedAt
+            );
+          }
+          globalExchangeRatePromises.delete(cacheKey);
         }
-      }
+      })();
+
+      globalExchangeRatePromises.set(cacheKey, requestPromise);
+      return requestPromise;
     }
 
     function cleanText(value) {
@@ -5885,7 +5909,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
        --------------------------------------------------------- */
 
     return res.status(200).json({
-      version: "v14.34",
+      version: "v14.35",
       timings,
       diagnostic_detail: diagnosticDetail,
       name:
