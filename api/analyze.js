@@ -1,4 +1,4 @@
-// Kistefunn analysebackend v14.29
+// Kistefunn analysebackend v14.31
 // V14.29: Kun diagnostikk av OpenAI latency/token-bruk. Ingen endring av markeds-, filter- eller identifikasjonslogikk.
 // V14.27: Beholder v14.26 SAFE v2-logikken. OpenAI-feil returnerer nå error_code, error_type og request_id for diagnostikk.
 // V14.24: Beholder lengre modelltekst i strict market criteria slik at flerords-varianter ikke kuttes etter 4 ord.
@@ -92,7 +92,7 @@ export default async function handler(req, res) {
         error_param: error?.error_param || null,
         request_id: error?.request_id || null,
         status,
-        version: "v14.27"
+        version: "v14.31"
       });
     }
 
@@ -5730,7 +5730,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
        --------------------------------------------------------- */
 
     return res.status(200).json({
-      version: "v14.29",
+      version: "v14.31",
       timings,
       name:
         parsed.name ||
