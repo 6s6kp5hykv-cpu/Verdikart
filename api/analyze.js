@@ -1,5 +1,5 @@
-// Kistefunn analysebackend v15.3
-// V15.3: Deploy-kandidat. Target-driven variantmotor, eBay-dedupe, fail-closed AI JSON, årsevidens, kontrollerte timeouts, konservativ web-reference-gate og AI confidence ceiling.
+// Kistefunn analysebackend v15.4 TEST
+// V15.4 TEST: Web-reference quality gate. Sparse/conflicting external prices are corroboration only and cannot be presented as robust valuation or influence final market value.
 // V14.35: FX-optimalisering: global TTL-cache + samtidig request-deduplisering for valutakurser.
 // V14.34: Utvider diagnostic_detail med detaljert web-reference timing, OpenAI request-id/status/tokens og antall funn. Ingen endring av markeds-, filter- eller identifikasjonslogikk.
 // V14.33: Utvider diagnostikken med detaljerte FX-valutaer og eBay item-details per kall (item-ID, tid og feil), samt samlet diagnostic_detail. Ingen endring av markeds-, filter- eller identifikasjonslogikk.
@@ -5141,12 +5141,25 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
         const valuationLow = valuationValues[0];
         const valuationHigh = valuationValues[valuationValues.length - 1];
 
+        // V15.4 TEST: En ekstern web-verdi skal ikke kalles robust på bare
+        // 1–2 referanser. Minst 3 distinkte, stabile priser kreves.
+        // Dette er spesielt viktig når aktive butikk-/forhandlerpriser
+        // ligger langt over et sterkere eBay-marked.
+        const valuationDistinctCount = new Set(valuationValues.map(v => Math.round(v))).size;
+        const valuationStable =
+          valuationValues.length >= 3 &&
+          valuationDistinctCount >= 3 &&
+          Number.isFinite(valuationMedian) &&
+          valuationValues.every(v => Math.abs(v - valuationMedian) / valuationMedian <= 0.20);
+
         const referencesWithValuation = unique.map((item, index) => ({
           ...item,
-          valuation_included: !outlierIndexes.has(index),
-          valuation_exclusion_reason: outlierIndexes.has(index)
-            ? "Ekstremt prisavvik – beholdes som referanse, men brukes ikke til markedsverdien."
-            : "Eksakt referanse brukt i markedsverdien."
+          valuation_included: valuationStable && !outlierIndexes.has(index),
+          valuation_exclusion_reason: !valuationStable
+            ? "For få/stabile nok eksterne referanser – beholdes som markedsreferanse, men brukes ikke som robust verdigrunnlag."
+            : outlierIndexes.has(index)
+              ? "Ekstremt prisavvik – beholdes som referanse, men brukes ikke til markedsverdien."
+              : "Eksakt referanse brukt i markedsverdien."
         }));
 
         if (!values.length) {
@@ -5166,16 +5179,18 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
 
         return {
           enabled: true,
-          status: "ok",
-          reason: outlierIndexes.size
-            ? `Eksakte referansepriser funnet. ${outlierIndexes.size} ekstremt prisavvik er ikke brukt i markedsverdien.`
-            : "Eksakte referansepriser funnet via web-søk.",
+          status: valuationStable ? "ok" : "reference_only",
+          reason: !valuationStable
+            ? "Eksterne referanser funnet, men for få eller for ustabile til å brukes som robust markedsverdi."
+            : outlierIndexes.size
+              ? `Eksakte referansepriser funnet. ${outlierIndexes.size} ekstremt prisavvik er ikke brukt i markedsverdien.`
+              : "Eksakte referansepriser funnet via web-søk.",
           exact_match_count: values.length,
           distinct_count: new Set(values.map(v => Math.round(v))).size,
-          value_nok: Math.round(valuationMedian),
-          low_nok: Math.round(valuationLow),
-          high_nok: Math.round(valuationHigh),
-          valuation_reference_count: valuationValues.length,
+          value_nok: valuationStable ? Math.round(valuationMedian) : null,
+          low_nok: valuationStable ? Math.round(valuationLow) : null,
+          high_nok: valuationStable ? Math.round(valuationHigh) : null,
+          valuation_reference_count: valuationStable ? valuationValues.length : 0,
           outlier_count: outlierIndexes.size,
           references: referencesWithValuation.slice(0, 8),
           diagnostic: webDiagnostic
