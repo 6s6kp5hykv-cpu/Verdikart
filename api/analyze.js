@@ -1,4 +1,5 @@
-// Kistefunn analysebackend v15.5.7 TEST
+// Kistefunn analysebackend v15.5.17 DIAGNOSTIC
+// V15.5.17: Server-side OpenAI failure capture. Analysis/pricing/search logic unchanged.
 // V15.5.6 TEST: Korrigerer diagnostikkfeltet for årskrav. Eksakt verdigrunnlag krever dokumentert årstreff, men treffet kan komme fra title_exact, aspect_exact eller description_exact; den gamle diagnostikketiketten for et rent tittelårskrav var derfor misvisende.
 // V15.5.3 TEST: eBay listing quality gate for explicit lots/bundles/sealed/multi-item listings.
 // V15.5.2 TEST: Listing identity hardening.
@@ -42,6 +43,18 @@
 // - FINN aktiveres først når legitim API-tilgang er tilgjengelig.
 
 import { identifyWithOpenAI } from "./lib/openai.js";
+import diagnostics from "./_diagnostics.js";
+
+const { logDiagnostic } = diagnostics;
+
+async function writeBackendDiagnostic(options) {
+  try {
+    await Promise.race([
+      logDiagnostic(options),
+      new Promise(resolve => setTimeout(resolve, 3000))
+    ]);
+  } catch (_) {}
+}
 
 const EBAY_OAUTH_TIMEOUT_MS = 10_000;
 const EBAY_SEARCH_TIMEOUT_MS = 10_000;
@@ -134,14 +147,42 @@ export default async function handler(req, res) {
       timings.openai_diagnostics = aiResult.openai_diagnostics || null;
     } catch (error) {
       const status = Number.isInteger(error?.status) ? error.status : 500;
+      const errorCode = error?.error_code || null;
+      const errorType = error?.error_type || null;
+      const requestId = error?.request_id || null;
+      const errorMessage = error?.message || "OpenAI-feil";
+
+      await writeBackendDiagnostic({
+        level: "error",
+        stage: "openai_identification",
+        code: errorCode || "openai_request_failed",
+        message: errorMessage,
+        http_status: status,
+        backend_version: "v15.5.17-diag",
+        model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
+        request_id: requestId,
+        duration_ms: Math.round(performance.now() - identificationStartedAt),
+        metadata: {
+          source: "backend",
+          diagnostic_version: "v15.5.17",
+          error_code: errorCode,
+          error_type: errorType,
+          error_param: error?.error_param || null,
+          request_id: requestId,
+          status,
+          stage: "identifyWithOpenAI",
+          message: errorMessage
+        }
+      });
+
       return res.status(status).json({
-        error: error?.message || "OpenAI-feil",
-        error_code: error?.error_code || null,
-        error_type: error?.error_type || null,
+        error: errorMessage,
+        error_code: errorCode,
+        error_type: errorType,
         error_param: error?.error_param || null,
-        request_id: error?.request_id || null,
+        request_id: requestId,
         status,
-        version: "v15.5.7-test"
+        version: "v15.5.17-diag"
       });
     }
 
@@ -6177,15 +6218,34 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
     });
 
   } catch (e) {
+    await writeBackendDiagnostic({
+      level: "error",
+      stage: "analysis_handler",
+      code: e?.error_code || "analysis_unhandled_exception",
+      message: e?.message || "Ukjent feil",
+      http_status: 500,
+      backend_version: "v15.5.17-diag",
+      model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
+      request_id: e?.request_id || null,
+      metadata: {
+        source: "backend",
+        diagnostic_version: "v15.5.17",
+        error_code: e?.error_code || null,
+        error_type: e?.error_type || null,
+        error_param: e?.error_param || null,
+        request_id: e?.request_id || null,
+        stage: "top_level_handler_catch",
+        message: e?.message || "Ukjent feil"
+      }
+    });
+
     return res.status(500).json({
-      error:
-        e?.message ||
-        "Ukjent feil",
+      error: e?.message || "Ukjent feil",
       error_code: e?.error_code || null,
       error_type: e?.error_type || null,
       request_id: e?.request_id || null,
       status: 500,
-      version: "v15.5.7-test"
+      version: "v15.5.17-diag"
     });
   }
 }
