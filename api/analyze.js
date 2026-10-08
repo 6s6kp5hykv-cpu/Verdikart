@@ -1,5 +1,6 @@
-// Kistefunn analysebackend v14.35
-// V14.35: FX-optimalisering: global TTL-cache + samtidig request-deduplisering for valutakurser. Ingen endring av markeds-, filter- eller identifikasjonslogikk.
+// Kistefunn analysebackend v15.3
+// V15.3: Deploy-kandidat. Target-driven variantmotor, eBay-dedupe, fail-closed AI JSON, årsevidens, kontrollerte timeouts, konservativ web-reference-gate og AI confidence ceiling.
+// V14.35: FX-optimalisering: global TTL-cache + samtidig request-deduplisering for valutakurser.
 // V14.34: Utvider diagnostic_detail med detaljert web-reference timing, OpenAI request-id/status/tokens og antall funn. Ingen endring av markeds-, filter- eller identifikasjonslogikk.
 // V14.33: Utvider diagnostikken med detaljerte FX-valutaer og eBay item-details per kall (item-ID, tid og feil), samt samlet diagnostic_detail. Ingen endring av markeds-, filter- eller identifikasjonslogikk.
 // V14.32: Diagnostikkforbedring: FX-tid skilles fra kumulativ FX-tid, valutakurser caches per valuta, og eBay item-details måler antall kall, total kalltid, tregeste kall og feil. Ingen endring av markeds-, filter- eller identifikasjonslogikk.
@@ -37,6 +38,31 @@
 // - FINN aktiveres først når legitim API-tilgang er tilgjengelig.
 
 import { identifyWithOpenAI } from "./lib/openai.js";
+
+const EBAY_OAUTH_TIMEOUT_MS = 10_000;
+const EBAY_SEARCH_TIMEOUT_MS = 10_000;
+const EBAY_ITEM_DETAILS_TIMEOUT_MS = 10_000;
+const FRANKFURTER_TIMEOUT_MS = 8_000;
+const WEB_REFERENCE_TIMEOUT_MS = 20_000;
+
+async function fetchWithTimeout(url, options = {}, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      const timeoutError = new Error(`Eksternt kall timeout etter ${timeoutMs} ms`);
+      timeoutError.status = 504;
+      timeoutError.error_code = "external_timeout";
+      timeoutError.error_type = "timeout";
+      throw timeoutError;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 // V14.35: Delbar FX-cache mellom invocations i samme serverless-instans.
 // Valutakurser endres ikke så raskt at de trenger nytt kall for hver analyse.
@@ -111,7 +137,7 @@ export default async function handler(req, res) {
         error_param: error?.error_param || null,
         request_id: error?.request_id || null,
         status,
-        version: "v14.33"
+        version: "v15.3"
       });
     }
 
@@ -367,7 +393,7 @@ export default async function handler(req, res) {
         ).toString("base64");
 
         const ebayOauthStartedAt = performance.now();
-        const r = await fetch(
+        const r = await fetchWithTimeout(
           "https://api.ebay.com/identity/v1/oauth2/token",
           {
             method: "POST",
@@ -380,7 +406,8 @@ export default async function handler(req, res) {
             body:
               "grant_type=client_credentials" +
               "&scope=https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope"
-          }
+          },
+          EBAY_OAUTH_TIMEOUT_MS
         );
 
         const d = await r.json();
@@ -457,8 +484,10 @@ export default async function handler(req, res) {
 
       const requestPromise = (async () => {
         try {
-          const r = await fetch(
-            `https://api.frankfurter.app/latest?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
+          const r = await fetchWithTimeout(
+            `https://api.frankfurter.app/latest?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+            {},
+            FRANKFURTER_TIMEOUT_MS
           );
 
           if (!r.ok) {
@@ -2379,39 +2408,20 @@ export default async function handler(req, res) {
       */
       if (
         category === "guitar" &&
-        brand === "fender" &&
-        /\bstratocaster\b/i.test(model) &&
-        criteria.target_special !== true
+        /\bfender\b/i.test(String(brand || "")) &&
+        /\bstratocaster\b/i.test(String(model || "")) &&
+        !targetDrivenFenderVariantAllowed(
+          `${brand} ${model} ${criteria.manufacturer || ""} ${criteria.country || ""}`,
+          t
+        )
       ) {
-        const wrongFenderVariantTerms = [
-          /\b62\s*(?:['’]s?)?\b/i,
-          /\b62\s*special\b/i,
-          /\bspecial(?:\s+edition)?\b/i,
-          /\b50th\s+anniversary\b/i,
-          /\banniversary\b/i,
-          /\bvintage\s+reissue\b/i,
-          /\breissue\b/i,
-          /\bamerican\s+standard\b/i,
-          /\bamerican\s+professional(?:\s+ii)?\b/i,
-          /\bamerican\s+ultra\b/i,
-          /\bplayer(?:\s+ii)?\b/i,
-          /\bvintera\b/i,
-          /\bclassic(?:\s+series|\s+60s)?\b/i,
-          /\bperformer\b/i,
-          /\bdeluxe\b/i,
-          /\belite\b/i,
-          /\bsqu(?:ier|ire)\b/i
-        ];
-
-        if (wrongFenderVariantTerms.some(rx => rx.test(t))) {
-          return {
-            score: -100,
-            accepted: false,
-            near_match: false,
-            year_match: year ? "missing" : "not_required",
-            reason: "Fender feil variant – ekskludert"
-          };
-        }
+        return {
+          score: -100,
+          accepted: false,
+          near_match: false,
+          year_match: year ? "missing" : "not_required",
+          reason: "annen Fender-variant – ekskludert"
+        };
       }
 
       /* -------------------------------------------------------
@@ -2609,7 +2619,7 @@ export default async function handler(req, res) {
         `?q=${encodeURIComponent(query)}` +
         "&limit=50";
 
-      const r = await fetch(url, {
+      const r = await fetchWithTimeout(url, {
         method: "GET",
         headers: {
           "Authorization":
@@ -2619,7 +2629,7 @@ export default async function handler(req, res) {
           "X-EBAY-C-MARKETPLACE-ID":
             marketplace
         }
-      });
+      }, EBAY_SEARCH_TIMEOUT_MS);
 
       const d =
         await r.json();
@@ -2681,14 +2691,14 @@ export default async function handler(req, res) {
           "https://api.ebay.com/buy/browse/v1/item/" +
           encodeURIComponent(itemId);
 
-        const r = await fetch(url, {
+        const r = await fetchWithTimeout(url, {
           method: "GET",
           headers: {
             "Authorization": `Bearer ${token}`,
             "Accept": "application/json",
             "X-EBAY-C-MARKETPLACE-ID": marketplace
           }
-        });
+        }, EBAY_ITEM_DETAILS_TIMEOUT_MS);
 
         if (!r.ok) {
           timings.ebay_item_details_failed += 1;
@@ -2751,7 +2761,8 @@ export default async function handler(req, res) {
           ...item,
           _ebay_detail_loaded: true,
           _ebay_aspects: aspectMap,
-          _ebay_aspect_text: aspectText.join(" | ")
+          _ebay_aspect_text: aspectText.join(" | "),
+          _ebay_description: String(detail?.description || detail?.shortDescription || "")
         };
 
         return enriched;
@@ -2783,6 +2794,39 @@ export default async function handler(req, res) {
           });
         }
       }
+    }
+
+    function targetDrivenFenderVariantAllowed(targetText, listingText) {
+      const target = String(targetText || "").toLowerCase();
+      const listing = String(listingText || "").toLowerCase();
+      if (!/\bfender\b/.test(target) || !/\bstratocaster\b/.test(target)) return true;
+      const families = [
+        [/\bsqu(?:ier|ire)(?:\s+by\s+fender)?(?:\s+series)?\b/, /\bsqu(?:ier|ire)/],
+        [/\bfsr\b|\bfender\s+special\s+run\b|\bspecial\s+run\b/, /\bfsr\b|\bspecial\s+run\b/],
+        [/\b62\s*(?:['’]s?|special)\b/, /\b62\s*(?:['’]s?|special)\b/],
+        [/\b(?:50th\s+anniversary|anniversary)\b/, /\b(?:50th\s+anniversary|anniversary)\b/],
+        [/\bspecial(?:\s+edition)?\b/, /\bspecial(?:\s+edition)?\b/],
+        [/\blimited\s+edition\b/, /\blimited\s+edition\b/],
+        [/\bvintage\s+reissue\b|\breissue\b/, /\bvintage\s+reissue\b|\breissue\b/],
+        [/\bplayer\s*(?:ii|2)\b/, /\bplayer\s*(?:ii|2)\b/],
+        [/\bplayer\b(?!\s*(?:ii|2)\b)/, /\bplayer\b(?!\s*(?:ii|2)\b)/],
+        [/\bvintera\b/, /\bvintera\b/],
+        [/\bclassic\s+series\b/, /\bclassic\s+series\b/],
+        [/\b(?:60s|classic\s+60s)\b/, /\b(?:60s|classic\s+60s)\b/],
+        [/\bsignature(?:\s+series|\s+model)?\b|\bjeff\s+beck\b/, /\bsignature(?:\s+series|\s+model)?\b|\bjeff\s+beck\b/],
+        [/\bamerican\s+professional\s+ii\b|\bprofessional\s+ii\b/, /\bamerican\s+professional\s+ii\b|\bprofessional\s+ii\b/],
+        [/\bamerican\s+professional\b(?!\s+ii\b)/, /\bamerican\s+professional\b(?!\s+ii\b)/],
+        [/\bamerican\s+ultra\b|\bultra\b/, /\bamerican\s+ultra\b|\bultra\b/],
+        [/\bamerican\s+standard\b/, /\bamerican\s+standard\b/],
+        [/\bamerican\s+performer\b/, /\bamerican\s+performer\b/],
+        [/\bamerican\s+(?:original|vintage)\b/, /\bamerican\s+(?:original|vintage)\b/]
+      ];
+      for (const [listingRx, targetRx] of families) {
+        const listingHas = listingRx.test(listing);
+        const targetHas = targetRx.test(target);
+        if (listingHas !== targetHas) return false;
+      }
+      return true;
     }
 
     async function prepareListing(
@@ -2880,60 +2924,34 @@ export default async function handler(req, res) {
       if (
         criteria.category === "guitar" &&
         targetIsFenderStratMim &&
-        criteria.target_special !== true
+        !targetDrivenFenderVariantAllowed(
+          targetIdentityText,
+          scoringText
+        )
       ) {
-        const incompatibleFenderVariantPatterns = [
-          /\bsqu(?:ier|ire)\b/,
-          /\bsqu(?:ier|ire)\s+series\b/,
-          /\bfsr\b/,
-          /\bfender\s+special\s+run\b/,
-          /\bspecial\s+run\b/,
-          /\b62\s*(?:['’]s?|special)?\b/,
-          /\b50th\s+anniversary\b/,
-          /\banniversary\b/,
-          /\bspecial(?:\s+edition)?\b/,
-          /\blimited\s+edition\b/,
-          /\bvintage\s+reissue\b/,
-          /\breissue\b/,
-          /\bplayer(?:\s+ii|\s+2)?\b/,
-          /\bvintera\b/,
-          /\bclassic\s+series\b/,
-          /\b(?:60s|classic\s+60s)\b/,
-          /\bclassic\s+player\b/,
-          /\broad\s+worn\b/,
-          /\broad\s+worn\b/,
-          /\bamerican\s+(?:standard|professional|performer|ultra|original)\b/,
-          /\bprofessional\s+ii\b/,
-          /\bdeluxe\b/,
-          /\belite\b/,
-          /\bsignature(?:\s+series|\s+model)?\b/,
-          /\bjeff\s+beck\b/
-        ];
+        return null;
+      }
 
-        if (incompatibleFenderVariantPatterns.some(rx => rx.test(scoringText.toLowerCase()))) {
-          return null;
+      // V15.3: årsevidens: title -> eBay aspects -> description.
+      let exact_year_evidence = "unknown";
+      let year_evidence_blocked = false;
+      if (criteria.year) {
+        const targetYear = Number(criteria.year);
+        for (const source of [
+          { level: "title_exact", text: title },
+          { level: "aspect_exact", text: item._ebay_aspect_text || "" },
+          { level: "description_exact", text: item._ebay_description || "" }
+        ]) {
+          const years = extractYears(source.text);
+          if (years.includes(targetYear)) { exact_year_evidence = source.level; break; }
+          if (years.length) { year_evidence_blocked = true; break; }
         }
       }
 
-      // V11.8: HARD TITLE-YEAR GATE
-      // Når målobjektet har kjent år, er år i selve annonsetittelen
-      // det eneste som kan gjøre treffet eksakt. eBay-aspekter kan
-      // fortsatt brukes til støtteinformasjon, men de kan ikke løfte
-      // en tittel uten år inn i exact_listings.
-      const titleYears = extractYears(title.toLowerCase());
-      const titleHasTargetYear = criteria.year
-        ? titleYears.includes(Number(criteria.year))
-        : true;
-      const titleHasWrongYear = criteria.year
-        ? titleYears.some(y => y !== Number(criteria.year))
-        : false;
-
+      // V15.3: målår kan dokumenteres i title, eBay aspects eller description.
       if (criteria.year) {
-        if (titleHasWrongYear && !titleHasTargetYear) {
-          return null;
-        }
-
-        if (!titleHasTargetYear) {
+        if (year_evidence_blocked) return null;
+        if (exact_year_evidence === "unknown") {
           relevance.year_match = "missing";
           relevance.accepted = relevance.accepted || relevance.near_match;
           relevance.near_match = relevance.accepted;
@@ -3079,32 +3097,13 @@ export default async function handler(req, res) {
       const hardTargetFromQuery =
         /\bfender\b/.test(hardQueryText) &&
         /\bstratocaster\b/.test(hardQueryText) &&
-        /\b(?:mexico|mim|made in mexico)\b/.test(hardQueryText) &&
-        criteria?.target_special !== true;
+        /\b(?:mexico|mim|made in mexico)\b/.test(hardQueryText);
 
-      if (hardTargetFromQuery) {
-        const hardForbidden = [
-          /\bsqu(?:ier|ire)(?:\s+series)?\b/i,
-          /\bfsr\b/i,
-          /\b62\s*(?:['’]s?|special)\b/i,
-          /\b50th\s+anniversary\b/i,
-          /\banniversary\b/i,
-          /\bspecial(?:\s+edition)?\b/i,
-          /\blimited\s+edition\b/i,
-          /\bvintage\s+reissue\b/i,
-          /\breissue\b/i,
-          /\bplayer(?:\s+ii|\s+2)?\b/i,
-          /\bvintera\b/i,
-          /\bclassic\s+series\b/i,
-          /\b(?:60s|classic\s+60s)\b/i,
-          /\bamerican\s+(?:standard|professional|performer|ultra|original|vintage)\b/i,
-          /\bprofessional\s+ii\b/i,
-          /\bsignature(?:\s+series|\s+model)?\b/i,
-          /\bjeff\s+beck\b/i
-        ];
-        if (hardForbidden.some(rx => rx.test(String(title || "")))) {
-          return null;
-        }
+      if (hardTargetFromQuery && !targetDrivenFenderVariantAllowed(
+        `${criteria.brand || ""} ${criteria.model || ""} ${criteria.manufacturer || ""} ${criteria.country || ""}`,
+        String(title || "")
+      )) {
+        return null;
       }
 
       return {
@@ -3119,6 +3118,8 @@ export default async function handler(req, res) {
         item_id:
           item.itemId ||
           "",
+        seller: String(item?.seller?.username || item?.seller?.sellerAccount || "").trim(),
+        exact_year_evidence,
         query,
         marketplace: criteria.marketplace || "EBAY_UNKNOWN",
         relevance_score:
@@ -3152,13 +3153,7 @@ export default async function handler(req, res) {
       const identity =
         `${criteria?.brand || ""} ${criteria?.model || ""} ${criteria?.country || ""} ${criteria?.manufacturer || ""} ${criteria?.user_model_hint || ""}`
           .toLowerCase();
-
-      // V12.4: bruk også selve søkestrengen som sikkerhetsnett.
-      // AI-en kan i enkelte kjøringer fylle criteria.country/model ufullstendig,
-      // selv om buildStrictQueries allerede har laget et eksplisitt
-      // "Fender ... Stratocaster ... Mexico"-søk.
       const queryContext = String(criteria?.query_context || "").toLowerCase();
-
       const isFenderStratMim =
         (
           /\bfender\b/.test(identity) &&
@@ -3171,44 +3166,11 @@ export default async function handler(req, res) {
           /\b(?:mexico|mim|made in mexico)\b/.test(queryContext)
         );
 
-      // Hvis søket eksplisitt er laget for en vanlig Fender MIM Stratocaster,
-      // skal vi IKKE stole på et feilaktig target_special-flagg fra AI.
-      // Special/62/anniversary må være eksplisitt en del av selve søket for
-      // at slike varianter skal tillates.
-      const queryRequestsSpecial =
-        /\b(?:62\s*(?:['’]s?|special)|special|anniversary|fsr|squ(?:ier|ire)|60s|classic\s+60s|signature(?:\s+series|\s+model)?|jeff\s+beck)\b/i.test(queryContext);
-
-      if (!isFenderStratMim || queryRequestsSpecial) {
-        return false;
-      }
+      if (!isFenderStratMim) return false;
 
       const text = `${title || ""} ${aspectText || ""}`.toLowerCase();
-
-      const forbidden = [
-        /\bsqu(?:ier|ire)(?:\s+series)?\b/,
-        /\bfsr\b/,
-        /\bfender\s+special\s+run\b/,
-        /\bspecial\s+run\b/,
-        /\b62\s*(?:['’]s?|special)\b/,
-        /\b50th\s+anniversary\b/,
-        /\banniversary\b/,
-        /\bspecial(?:\s+edition)?\b/,
-        /\blimited\s+edition\b/,
-        /\bvintage\s+reissue\b/,
-        /\breissue\b/,
-        /\bplayer(?:\s+ii|\s+2)?\b/,
-        /\bvintera\b/,
-        /\bclassic\s+series\b/,
-        /\bclassic\s+vibe\b/,
-        /\bamerican\s+(?:standard|professional|performer|ultra|original|vintage)\b/,
-        /\bprofessional\s+ii\b/,
-        /\bdeluxe\b/,
-        /\belite\b/,
-        /\bsignature(?:\s+series|\s+model)?\b/,
-        /\bmi[j]\b/
-      ];
-
-      return forbidden.some(rx => rx.test(text));
+      const targetText = `${identity} ${queryContext}`;
+      return !targetDrivenFenderVariantAllowed(targetText, text);
     }
 
     async function searchEbay(parsed) {
@@ -3451,7 +3413,7 @@ export default async function handler(req, res) {
             String(
               item.item_id ||
               item.url ||
-              `${item.title}|${item.nok}`
+              `${String(item.title || "").trim()}|${Math.round(Number(item.nok) || 0)}|${String(item.seller || "").trim()}`
             )
               .trim()
               .toLowerCase();
@@ -3614,25 +3576,6 @@ export default async function handler(req, res) {
       const hardFenderMimTarget =
         Boolean(normalFenderMimQuery || deterministicFenderMimTarget);
 
-      const finalForbiddenFenderVariants = [
-          /\bsqu(?:ier|ire)(?:\s+series)?\b/i,
-          /\bfsr\b/i,
-          /\b62\s*(?:['’]s?|special)\b/i,
-          /\b50th\s+anniversary\b/i,
-          /\banniversary\b/i,
-          /\bspecial(?:\s+edition)?\b/i,
-          /\blimited\s+edition\b/i,
-          /\bvintage\s+reissue\b/i,
-          /\breissue\b/i,
-          /\bplayer(?:\s+ii|\s+2)?\b/i,
-          /\bvintera\b/i,
-          /\bclassic\s+series\b/i,
-          /\b(?:60s|classic\s+60s)\b/i,
-          /\bamerican\s+(?:standard|professional|performer|ultra|original|vintage)\b/i,
-          /\bprofessional\s+ii\b/i,
-          /\bsignature(?:\s+series|\s+model)?\b/i,
-          /\bjeff\s+beck\b/i
-        ];
 
       /*
        * V14.18 – FELLES FENDER/SQUIER BRAND-GATE
@@ -3708,12 +3651,8 @@ export default async function handler(req, res) {
       if (normalFenderMimQuery) {
         for (let i = all.length - 1; i >= 0; i--) {
           const listingTitle = String(all[i]?.title || "");
-
-          if (
-            finalForbiddenFenderVariants.some(rx =>
-              rx.test(listingTitle)
-            )
-          ) {
+          const listingAspects = String(all[i]?._ebay_aspect_text || "");
+          if (!targetDrivenFenderVariantAllowed(structuredTargetText, `${listingTitle} ${listingAspects}`)) {
             all.splice(i, 1);
           }
         }
@@ -3736,7 +3675,7 @@ export default async function handler(req, res) {
             // Denne kjører selv om en tidligere AI-score skulle ha feilklassifisert treffet.
             !(
               hardFenderMimTarget &&
-              /\b(?:squ(?:ier|ire)(?:\s+series)?|fsr|62\s*(?:['’]s?|special)|50th\s+anniversary|anniversary|special(?:\s+edition)?|limited\s+edition|vintage\s+reissue|reissue|player(?:\s+ii|\s+2)?|vintera|classic\s+series|american\s+(?:standard|professional|performer|ultra|original|vintage)|professional\s+ii|signature(?:\s+series|\s+model)?|jeff\s+beck|60s|classic\s+60s)\b/i.test(String(x.title || ""))
+              !targetDrivenFenderVariantAllowed(structuredTargetText, `${String(x.title || "")} ${String(x._ebay_aspect_text || "")}`)
             ) &&
             x.relevance_score >= 45 &&
             // V11.8 HARD TITLE-YEAR GATE: kjent år krever dokumentert
@@ -3799,11 +3738,10 @@ export default async function handler(req, res) {
 
       const strictExactPool =
         built.year
-          ? modelCodeExactPool.filter(x => {
-              const titleYears = extractYears(String(x.title || "").toLowerCase());
-              return x.year_match === "exact" &&
-                titleYears.includes(Number(built.year));
-            })
+          ? modelCodeExactPool.filter(x =>
+              x.year_match === "exact" &&
+              ["title_exact", "aspect_exact", "description_exact"].includes(String(x.exact_year_evidence || ""))
+            )
           : modelCodeExactPool;
 
       /*
@@ -4136,15 +4074,7 @@ export default async function handler(req, res) {
           )
         );
 
-      const finalExactPool =
-        strictFenderStratComparableTarget
-          ? sanitizedExactPool.filter(item => {
-              const title = String(item?.title || "");
-              return !finalForbiddenFenderVariants.some(rx =>
-                rx.test(title)
-              );
-            })
-          : sanitizedExactPool;
+      const finalExactPool = sanitizedExactPool;
 
       /*
        * V14.14 – ABSOLUTT SLUTTGATE FOR FENDER MIM
@@ -4154,15 +4084,7 @@ export default async function handler(req, res) {
        * når målet er en normal Fender Stratocaster MIM med kjent år.
        * Dette er bevisst kun en tittelbasert sikkerhetsventil.
        */
-      const finalExactPoolV1413 =
-        strictFenderStratComparableTarget
-          ? finalExactPool.filter(item => {
-              const title = String(item?.title || "");
-              return !finalForbiddenFenderVariants.some(rx =>
-                rx.test(title)
-              );
-            })
-          : finalExactPool;
+      const finalExactPoolV1413 = finalExactPool;
 
       const exactPool =
         finalExactPoolV1413;
@@ -4569,6 +4491,9 @@ export default async function handler(req, res) {
         exact_match_count:
           exactPool.length,
 
+        exact_prices_nok:
+          exactPool.map(x => Number(x.nok)).filter(Number.isFinite),
+
         raw_exact_match_count:
           rawExactPool.length,
 
@@ -4695,12 +4620,12 @@ export default async function handler(req, res) {
 
         listings:
           (strictFenderStratComparableTarget
-            ? all.filter(item => {
-                const title = String(item?.title || "");
-                return !finalForbiddenFenderVariants.some(rx =>
-                  rx.test(title)
-                );
-              })
+            ? all.filter(item =>
+                targetDrivenFenderVariantAllowed(
+                  structuredTargetText,
+                  `${String(item?.title || "")} ${String(item?._ebay_aspect_text || "")}`
+                )
+              )
             : all
           )
             .slice(0, 12)
@@ -4966,7 +4891,7 @@ KRITISK MATCH-REGEL:
 Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eksakt pris, returner en tom references-liste.
 `;
 
-        const r = await fetch("https://api.openai.com/v1/responses", {
+        const r = await fetchWithTimeout("https://api.openai.com/v1/responses", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -5019,7 +4944,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
               }
             }
           })
-        });
+        }, WEB_REFERENCE_TIMEOUT_MS);
 
         const webFetchMs = Math.round(performance.now() - webReferenceStartedAt);
         const webRequestId =
@@ -5313,11 +5238,22 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
           /\d/.test(code)
         ) || "";
 
+    const stableExactMarketForWebSkip = (() => {
+      const values = Array.isArray(ebay?.exact_prices_nok)
+        ? ebay.exact_prices_nok.filter(v => Number.isFinite(Number(v)) && Number(v) > 0).map(Number)
+        : [];
+      if (values.length < 3) return false;
+      const med = median(values);
+      if (!Number.isFinite(med) || med <= 0) return false;
+      return values.every(v => Math.abs(v - med) / med <= 0.20) &&
+        Number(ebay?.distinct_valuation_count || 0) >= 3;
+    })();
+
     const webReferenceStartedAt = performance.now();
     const webReferenceSearch =
-      webTargetModelCode && Number(ebay?.exact_match_count || 0) < 2
+      webTargetModelCode && !stableExactMarketForWebSkip
         ? await searchExactReferenceWeb(webTargetModelCode, itemInfo.brand, itemInfo.model || parsed.name)
-        : { enabled: false, status: "not_needed", reason: "eBay har tilstrekkelig eksakt grunnlag.", exact_match_count: 0, distinct_count: 0, value_nok: null, low_nok: null, high_nok: null, references: [] };
+        : { enabled: false, status: "not_needed", reason: stableExactMarketForWebSkip ? "eBay har minst 3 stabile eksakte referanser." : "Ingen spesifikk modellreferanse.", exact_match_count: 0, distinct_count: 0, value_nok: null, low_nok: null, high_nok: null, references: [] };
     timings.web_reference_openai_ms = Math.round(
       performance.now() - webReferenceStartedAt
     );
@@ -5765,6 +5701,12 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
 
     const market = combineMarketSources(marketSources);
 
+    const aiConfidence = String(parsed.confidence || "lav").toLowerCase();
+    const confidenceRank = { lav: 0, middels: 1, høy: 2 };
+    if (confidenceRank[market.confidence] > confidenceRank[aiConfidence]) {
+      market.confidence = aiConfidence;
+    }
+
     // V14.2: Når en enkelt markedsdatakilde har minst fire sterke, eksakte
     // referanser, får den robuste markedsverdien direkte gjennomslag. AI
     // skal da være kontroll, ikke trekke verdien bort fra markedet.
@@ -5909,7 +5851,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
        --------------------------------------------------------- */
 
     return res.status(200).json({
-      version: "v14.35",
+      version: "v15.3",
       timings,
       diagnostic_detail: diagnosticDetail,
       name:
@@ -6107,7 +6049,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       error_type: e?.error_type || null,
       request_id: e?.request_id || null,
       status: 500,
-      version: "v14.33"
+      version: "v15.3"
     });
   }
 }
