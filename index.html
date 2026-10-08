@@ -465,10 +465,10 @@ photoInput?.addEventListener('change',e=>{addSelectedFiles(e.target.files);e.tar
 function resetScan(){selectedFiles=[];selectedPreviewUrls.forEach(u=>URL.revokeObjectURL(u));selectedPreviewUrls=[];if(photoInput)photoInput.value='';if(cameraInput)cameraInput.value='';const p=document.getElementById('preview');p.src='';p.classList.add('hidden');document.getElementById('result').classList.add('hidden');document.getElementById('loading').classList.add('hidden');itemDescription.value='';current=null;analyzeButton.disabled=true;renderSelectedImages();window.scrollTo({top:0,behavior:'smooth'})}
 async function fileToDataURL(file){return new Promise((resolve,reject)=>{const url=URL.createObjectURL(file),img=new Image();img.onload=()=>{try{const max=1600;let w=img.naturalWidth,h=img.naturalHeight;if(w>max||h>max){if(w>h){h=Math.round(h*max/w);w=max}else{w=Math.round(w*max/h);h=max}}const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);const data=c.toDataURL('image/jpeg',.85);URL.revokeObjectURL(url);resolve(data)}catch(e){URL.revokeObjectURL(url);reject(e)}};img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('Kunne ikke lese bildet.'))};img.src=url})}
 async function createAnalysisImage(files){const images=await Promise.all(files.map(fileToDataURL));if(images.length===1)return{analysisImage:images[0],originalImages:images};const loaded=await Promise.all(images.map(src=>new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>resolve(img);img.onerror=()=>reject(new Error('Kunne ikke lese et av bildene.'));img.src=src})));const width=900,gap=20,widths=loaded.map(i=>Math.min(width,i.naturalWidth)),heights=loaded.map((i,n)=>Math.round(i.naturalHeight*widths[n]/i.naturalWidth));const c=document.createElement('canvas');c.width=width;c.height=heights.reduce((a,b)=>a+b,0)+gap*(loaded.length-1);const ctx=c.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);let y=0;loaded.forEach((img,i)=>{const x=Math.round((c.width-widths[i])/2);ctx.drawImage(img,x,y,widths[i],heights[i]);y+=heights[i]+gap});return{analysisImage:c.toDataURL('image/jpeg',.85),originalImages:images}}
-/* Kistefunn v15.5.15: frontend transportdiagnostikk + hard fetch-timeout og fasekontroll. Behold analyse/prislogikk uendret. */
+/* Kistefunn v15.5.16: full-scan watchdog + diagnostic-write timeout + phase control. Behold analyse/prislogikk uendret. */
 async function logAnalysisTiming(durationMs,status,backendVersion,extraMetadata={}){
   try{
-    const FRONTEND_DIAGNOSTICS_VERSION='v15.5.15';
+    const FRONTEND_DIAGNOSTICS_VERSION='v15.5.16';
     const diagError=extraMetadata?.diagnostic_error||{};
     const diagBackendVersion=diagError.backend_version||backendVersion||'unknown';
     const diagHttpStatus=diagError.http_status??null;
@@ -481,7 +481,7 @@ async function logAnalysisTiming(durationMs,status,backendVersion,extraMetadata=
     const transportCaptured=extraMetadata?.transport_captured===true;
     const scalarDiagnostic={
       frontend_diagnostics_version:FRONTEND_DIAGNOSTICS_VERSION,
-      diagnostic_capture:'frontend_transport_v15.5.15',
+      diagnostic_capture:'frontend_transport_v15.5.16',
       transport_captured:transportCaptured,
       transport_phase:transportPhase,
       response_received:extraMetadata?.response_received??null,
@@ -501,9 +501,12 @@ async function logAnalysisTiming(durationMs,status,backendVersion,extraMetadata=
       error_message:diagMessage,
       diagnostic_error_message:diagError.message||null
     };
+    const diagAbortController=new AbortController();
+    const diagTimeoutId=setTimeout(()=>{try{diagAbortController.abort('KISTEFUNN_DIAGNOSTIC_WRITE_TIMEOUT')}catch(_){ }},5000);
     await fetch('/api/diagnostics',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
+      signal:diagAbortController.signal,
       body:JSON.stringify({
         level:status==='success'?'info':'error',
         stage:'analysis_total',
@@ -520,23 +523,29 @@ async function logAnalysisTiming(durationMs,status,backendVersion,extraMetadata=
           ...scalarDiagnostic
         }
       })
-    });
+    }).finally(()=>clearTimeout(diagTimeoutId));
   }catch(_){ }
 }
-if(analyzeButton)analyzeButton.addEventListener('click',async()=>{if(!selectedFiles.length)return alert('Ta eller velg minst ett bilde først.');const analysisStartedAt=performance.now(),description=itemDescription.value.trim(),preview=document.getElementById('preview'),loading=document.getElementById('loading'),result=document.getElementById('result');analyzeButton.disabled=true;loading.classList.remove('hidden');result.classList.add('hidden');try{const imageSet=await createAnalysisImage(selectedFiles);preview.src=imageSet.analysisImage;preview.classList.remove('hidden');let res=null,data=null,responseText='',responseContentType='';
+if(analyzeButton)analyzeButton.addEventListener('click',async()=>{if(!selectedFiles.length)return alert('Ta eller velg minst ett bilde først.');const analysisStartedAt=performance.now(),description=itemDescription.value.trim(),preview=document.getElementById('preview'),loading=document.getElementById('loading'),result=document.getElementById('result');analyzeButton.disabled=true;loading.classList.remove('hidden');result.classList.add('hidden');let overallWatchdogId=null;try{
+let transportPhase='scan_start';
+let overallTimeoutMs=45000;
+const watchdogPromise=new Promise((_,reject)=>{overallWatchdogId=setTimeout(()=>{transportPhase='overall_timeout_45000ms';const e=new Error('Analysen stoppet etter 45 sekunder uten ferdig svar.');e.backendDiagnostic={http_status:null,status_text:null,error_code:'frontend_overall_timeout',error_type:'overall_timeout',error_param:null,request_id:null,backend_version:null,message:e.message,transport_phase:transportPhase,response_received:false,response_content_type:null,response_body_length:0,response_body_preview:null,fetch_error_name:'TimeoutError',fetch_error_message:e.message,fetch_timeout_ms:overallTimeoutMs,stage:'before_or_during_api_request'};reject(e)},overallTimeoutMs)});
+transportPhase='image_preparation_started';
+const imageSet=await Promise.race([createAnalysisImage(selectedFiles),watchdogPromise]);
+clearTimeout(overallWatchdogId);overallWatchdogId=null;
+transportPhase='image_preparation_completed';preview.src=imageSet.analysisImage;preview.classList.remove('hidden');let res=null,data=null,responseText='',responseContentType='';
 let responseReceived=false;
-let transportPhase='fetch_not_started';
 let fetchStartedAt=null;
 let fetchCompletedAt=null;
-let fetchTimeoutMs=45000;
+let fetchTimeoutMs=40000;
 let fetchAbortController=null;
 try{
   transportPhase='fetch_started';
   fetchStartedAt=performance.now();
   fetchAbortController=new AbortController();
   const fetchTimeoutId=setTimeout(()=>{
-    transportPhase='fetch_timeout_45000ms';
-    try{fetchAbortController.abort('KISTEFUNN_FETCH_TIMEOUT_45000MS')}catch(_){}
+    transportPhase='fetch_timeout_40000ms';
+    try{fetchAbortController.abort('KISTEFUNN_FETCH_TIMEOUT_40000MS')}catch(_){}
   },fetchTimeoutMs);
   try{
     res=await fetch('/api/analyze',{
@@ -580,8 +589,8 @@ try{
   }
 }catch(fetchError){
   if(fetchError?.backendDiagnostic)throw fetchError;
-  const isTimeout=transportPhase==='fetch_timeout_45000ms' || fetchError?.name==='AbortError' || String(fetchError?.message||'').toLowerCase().includes('abort');
-  const transportError=new Error(isTimeout?'Analysekallet timeoutet etter 45 sekunder.':(fetchError?.message||'Kunne ikke kontakte analysebackend.'));
+  const isTimeout=transportPhase==='fetch_timeout_40000ms' || fetchError?.name==='AbortError' || String(fetchError?.message||'').toLowerCase().includes('abort');
+  const transportError=new Error(isTimeout?'Analysekallet timeoutet etter 40 sekunder.':(fetchError?.message||'Kunne ikke kontakte analysebackend.'));
   transportError.backendDiagnostic={
     http_status:res?.status||null,
     status_text:res?.statusText||null,
@@ -655,12 +664,12 @@ localStorage.setItem('kf_finds',JSON.stringify(finds));updateProfileCounts();doc
       transport_phase:failureMeta.transport_phase||transportPhase,
       response_received:failureMeta.response_received??responseReceived,
       transport_captured:true,
-      diagnostic_error:{...failureMeta,transport_captured:true,frontend_diagnostics_version:'v15.5.15'}
+      diagnostic_error:{...failureMeta,transport_captured:true,frontend_diagnostics_version:'v15.5.16'}
     }
   );
   console.error(err);
   alert(err.message||'Det oppstod en feil.');
-}finally{loading.classList.add('hidden');analyzeButton.disabled=false}});
+}finally{if(overallWatchdogId!==null)clearTimeout(overallWatchdogId);loading.classList.add('hidden');analyzeButton.disabled=false}});
 function renderWebReferenceResult(web){const c=document.getElementById('webReferenceResult');if(!c)return;if(!web){c.classList.add('hidden');return}c.classList.remove('hidden');const fmt=v=>Number(v).toLocaleString('no-NO')+' kr';const refs=Array.isArray(web.references)?web.references:[];let html='<div class="ebay-title">🌐 Eksterne markedsreferanser</div>';if(Number(web.exact_match_count)>0){html+='<div class="muted"><strong>'+Number(web.exact_match_count)+' eksakte referanser funnet</strong></div>';if(Number(web.low_nok)>0&&Number(web.high_nok)>0)html+='<div class="ebay-note">Prisene ligger på <strong>'+fmt(web.low_nok)+'–'+fmt(web.high_nok)+'</strong>.</div>';if(Number(web.value_nok)>0)html+='<div class="ebay-note">Robust markedsverdi fra eksakte referanser: <strong>'+fmt(web.value_nok)+'</strong></div>';if(Number(web.outlier_count)>0)html+='<div class="ebay-note">⚠️ '+Number(web.outlier_count)+' ekstremt prisavvik er beholdt som referanse, men er <strong>ikke brukt i verdiberegningen</strong>.</div>';html+=refs.slice(0,8).map(x=>'<div class="ebay-listing"><div class="ebay-listing-title">'+esc(x.title||x.reference||'Eksakt referanse')+'</div>'+(Number(x.price_nok)>0?'<div class="ebay-listing-price">'+fmt(x.price_nok)+'</div>':'')+(x.valuation_included===false?'<div class="muted" style="margin-top:4px">⚠️ Ikke brukt i verdiberegningen</div>':'<div class="muted" style="margin-top:4px">✓ Brukt i verdiberegningen</div>')+(x.url&&x.url.startsWith('http')?'<a class="ebay-link" href="'+esc(x.url)+'" target="_blank" rel="noopener noreferrer">Se kilde →</a>':'')+'</div>').join('')}else{html+='<div class="muted">Ingen verifiserbare priser funnet for den eksakte referansen.</div>';if(web.reason)html+='<div class="ebay-note">'+esc(web.reason)+'</div>'}c.innerHTML=html}function renderEbayResult(ebay,searchQuery){const c=document.getElementById('ebayResult');if(!c)return;c.classList.remove('hidden');if(!ebay||!ebay.enabled){c.innerHTML='<div class="ebay-title">🛒 eBay markedsreferanser</div><div class="muted">eBay-priser kunne ikke hentes akkurat nå.</div>'+(ebay?.reason?'<div class="ebay-note">'+esc(ebay.reason)+'</div>':'');return}const fmt=v=>Number(v).toLocaleString('no-NO')+' kr';const exact=Array.isArray(ebay.exact_listings)?ebay.exact_listings:((ebay.listings||[]).filter(x=>x.match_tier!=='near'));const near=Array.isArray(ebay.near_listings)?ebay.near_listings:((ebay.listings||[]).filter(x=>x.match_tier==='near'));const low=Number(ebay.low_nok)||0,high=Number(ebay.high_nok)||0,median=Number(ebay.median_nok)||0;const renderListings=(items)=>items.slice(0,5).map(x=>'<div class="ebay-listing"><div class="ebay-listing-title">'+esc(x.title||'eBay-annonse')+'</div><div class="ebay-listing-price">'+(Number(x.price_nok)>0?fmt(x.price_nok):'Pris ikke oppgitt')+'</div>'+(x.url&&x.url.startsWith('https://')?'<a class="ebay-link" href="'+esc(x.url)+'" target="_blank" rel="noopener noreferrer">Se annonsen på eBay →</a>':'')+'</div>').join('');let html='<div class="ebay-title">🛒 eBay markedsreferanser</div>'+(searchQuery?'<div class="muted">Søkt etter: <strong>'+esc(searchQuery)+'</strong></div>':'');if(Number(ebay.sample_size)>0){html+='<div class="ebay-summary"><div class="muted">'+ebay.sample_size+' eksakte sammenlignbare annonser</div>'+(low&&high?'<div class="ebay-price-range">'+fmt(low)+' – '+fmt(high)+'</div>':'')+(median?'<div style="margin-top:5px">Median: <strong>'+fmt(median)+'</strong></div>':'')+'</div>'+(exact.length?'<div style="margin-top:12px"><strong>Eksakte markedsreferanser</strong>'+renderListings(exact)+'</div>':'');if(near.length)html+='<div class="ebay-note"><strong>Nærmeste referanser:</strong> Riktig modell/variant, men produksjonsår er ikke dokumentert i annonsen. Disse påvirker ikke verdiberegningen.</div><div style="margin-top:10px">'+renderListings(near)+'</div>';}else if(near.length){html+='<div class="ebay-summary"><div class="muted">Ingen eksakte treff med dokumentert år ble funnet.</div></div><div class="ebay-note"><strong>Nærmeste markedsreferanser</strong><br>Disse ser ut til å være riktig modell/variant, men produksjonsåret er ikke oppgitt. De brukes derfor <strong>ikke</strong> til å beregne verdien.</div><div style="margin-top:12px">'+renderListings(near)+'</div>';}else{html+='<div class="ebay-summary"><div class="muted">Ingen sammenlignbare eBay-annonser ble funnet.</div></div><div class="ebay-note">Ingen gode aktive eBay-annonser ble funnet for dette søket.</div>';}html+='<div class="ebay-note">eBay-prisene er aktive annonsepriser og er derfor ikke nødvendigvis det samme som faktisk salgspris.</div>';c.innerHTML=html}
 function renderBuyOpportunities(opportunities){
   const c=document.getElementById('buyOpportunitiesResult');
