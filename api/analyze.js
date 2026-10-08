@@ -1,4 +1,8 @@
-// Kistefunn analysebackend v15.4
+// Kistefunn analysebackend v15.5.7 TEST
+// V15.5.6 TEST: Korrigerer diagnostikkfeltet for årskrav. Eksakt verdigrunnlag krever dokumentert årstreff, men treffet kan komme fra title_exact, aspect_exact eller description_exact; den gamle diagnostikketiketten for et rent tittelårskrav var derfor misvisende.
+// V15.5.3 TEST: eBay listing quality gate for explicit lots/bundles/sealed/multi-item listings.
+// V15.5.2 TEST: Listing identity hardening.
+// V15.5 TEST: Listing identity quality gate + multi-key dedupe. Stable item ID, canonical URL and seller/title/price identity keys are registered together so one listing cannot survive under a different identity key. Identity-less listings may still be shown, but cannot enter robust valuation.
 // V15.4: Web-reference quality gate. Sparse/conflicting external prices are corroboration only and cannot be presented as robust valuation or influence final market value.
 // V14.35: FX-optimalisering: global TTL-cache + samtidig request-deduplisering for valutakurser.
 // V14.34: Utvider diagnostic_detail med detaljert web-reference timing, OpenAI request-id/status/tokens og antall funn. Ingen endring av markeds-, filter- eller identifikasjonslogikk.
@@ -137,7 +141,7 @@ export default async function handler(req, res) {
         error_param: error?.error_param || null,
         request_id: error?.request_id || null,
         status,
-        version: "v15.4"
+        version: "v15.5.7-test"
       });
     }
 
@@ -3400,8 +3404,108 @@ export default async function handler(req, res) {
         performance.now() - ebayItemDetailsStartedAt
       );
 
+      /*
+       * V15.5 TEST – LISTING IDENTITY QUALITY + MULTI-KEY DEDUPE
+       * -----------------------------------------------------------
+       * En annonse kan komme fra flere eBay-resultater med forskjellige
+       * identitetsfelt. Tidligere valgte vi bare én nøkkel:
+       * item_id -> url -> seller/title/price.
+       *
+       * Det ga en lekkasje når samme annonse dukket opp én gang med item_id
+       * og en annen gang bare med URL. Vi registrerer derfor ALLE tilgjengelige
+       * stabile nøkler for hver annonse. I tillegg får annonser med item_id,
+       * URL eller seller en stabil identitetsstatus. Annonser uten noen av
+       * disse kan vises, men får ikke påvirke robust prisgrunnlag.
+       */
+      function normalizeListingIdentityText(value) {
+        return String(value || "")
+          .toLowerCase()
+          .replace(/\s+/g, " ")
+          .trim();
+      }
+
+      function canonicalListingUrl(value) {
+        const raw = String(value || "").trim();
+        if (!raw) return "";
+        try {
+          const u = new URL(raw);
+          u.hash = "";
+          const removable = [
+            "utm_source", "utm_medium", "utm_campaign", "utm_term",
+            "utm_content", "fbclid", "gclid", "campid", "mkcid",
+            "mkrid", "customid"
+          ];
+          for (const key of removable) u.searchParams.delete(key);
+          const search = u.searchParams.toString();
+          return `${u.protocol}//${u.host}${u.pathname.replace(/\/+$/, "")}${search ? `?${search}` : ""}`.toLowerCase();
+        } catch (_) {
+          return raw.replace(/[#]$/, "").replace(/\/+$/, "").toLowerCase();
+        }
+      }
+
+      function listingIdentityKeys(item) {
+        const keys = [];
+        const itemId = normalizeListingIdentityText(item?.item_id);
+        const url = canonicalListingUrl(item?.url);
+        const seller = normalizeListingIdentityText(item?.seller);
+        const title = normalizeListingIdentityText(item?.title);
+        const price = Math.round(Number(item?.nok) || 0);
+
+        if (itemId) keys.push(`id:${itemId}`);
+        if (url) keys.push(`url:${url}`);
+        // Seller/title/price is a useful bridge when one API response has ID
+        // and another has only URL. It is deliberately not used without seller,
+        // because title+price alone can collapse two different listings.
+        if (seller && title && price > 0 && (!itemId || !url)) {
+          keys.push(`seller:${seller}|title:${title}|price:${price}`);
+        }
+        return [...new Set(keys)];
+      }
+
+      function hasStableListingIdentity(item) {
+        const itemId = normalizeListingIdentityText(item?.item_id);
+        const url = canonicalListingUrl(item?.url);
+        const seller = normalizeListingIdentityText(item?.seller);
+        const title = normalizeListingIdentityText(item?.title);
+        const price = Number(item?.nok);
+        return Boolean(
+          itemId ||
+          url ||
+          (seller && title && Number.isFinite(price) && price > 0)
+        );
+      }
+
+      function isListingQualitySafe(item, targetText) {
+        const title = String(item?.title || "").toLowerCase().replace(/\s+/g, " ").trim();
+        const target = String(targetText || "").toLowerCase().replace(/\s+/g, " ").trim();
+        if (!title) return true;
+
+        // A package/bundle is valid only when the target itself is clearly a package/bundle.
+        const targetIsPackage = /\b(?:bundle|pack(?:age)?|starter\s+(?:set|pack)|beginner\s+(?:set|pack)|sealed(?:\s+product)?|box(?:ed)?|kit)\b/.test(target);
+        const targetIsLot = /\b(?:lot|lot of|collection of|job lot)\b/.test(target);
+        const listingIsPackage = /\b(?:bundle|pack(?:age)?|starter\s+(?:set|pack)|beginner\s+(?:set|pack)|kit)\b/.test(title);
+        if (!targetIsPackage && listingIsPackage) return false;
+
+        // "sealed" is rejected for a loose-object target, but preserved when the target itself is sealed/product packaging.
+        if (!targetIsPackage && /\bsealed\b/.test(title)) return false;
+
+        // Explicit lot language is treated as a multi-item listing.
+        if (!targetIsLot && /\b(?:lot|lot of|collection of|job lot)\b/.test(title)) return false;
+
+        // Explicit multiple-card/item wording. Keep this deliberately narrow to avoid rejecting legitimate product names.
+        if (/\b\d+\s*(?:cards?|copies|items?)\b/.test(title) || /\b(?:multiple|assorted)\s+(?:cards?|items?)\b/.test(title)) return false;
+
+        return true;
+      }
+
+      const listingQualityTargetText = String([
+        built.brand, built.model, built.type, built.manufacturer, parsed?.name, info?.year_or_period
+      ].filter(Boolean).join(" "));
+
       const all = [];
-      const seen = new Set();
+      const seenListingIdentityKeys = new Set();
+      let listingIdentityMissingCount = 0;
+      let listingIdentityDedupedCount = 0;
 
       for (
         const list of preparedNested
@@ -3409,23 +3513,32 @@ export default async function handler(req, res) {
         for (
           const item of list
         ) {
-          const key =
-            String(
-              item.item_id ||
-              item.url ||
-              `${String(item.title || "").trim()}|${Math.round(Number(item.nok) || 0)}|${String(item.seller || "").trim()}`
-            )
-              .trim()
-              .toLowerCase();
-
-          if (
-            !key ||
-            seen.has(key)
-          ) {
+          // V15.5.3: reject explicit non-comparable listing types before identity dedupe,
+          // so a bad duplicate cannot consume the identity of a later good listing.
+          if (!isListingQualitySafe(item, listingQualityTargetText)) {
             continue;
           }
 
-          seen.add(key);
+          const identityKeys = listingIdentityKeys(item);
+          const stableIdentity = hasStableListingIdentity(item);
+
+          if (!stableIdentity) {
+            listingIdentityMissingCount += 1;
+          }
+
+          if (identityKeys.some(key => seenListingIdentityKeys.has(key))) {
+            listingIdentityDedupedCount += 1;
+            continue;
+          }
+
+          for (const key of identityKeys) {
+            seenListingIdentityKeys.add(key);
+          }
+
+          // V15.5: identity-less listings remain visible as candidates,
+          // but are explicitly barred from robust valuation pools below.
+          item.identity_quality = stableIdentity ? "stable" : "missing";
+          item.valuation_identity_ok = stableIdentity;
 
           // V12.2: siste sikkerhetsnett før noen markedsdata kan brukes.
           if (isHardIncompatibleFenderComparable(
@@ -3678,6 +3791,7 @@ export default async function handler(req, res) {
               !targetDrivenFenderVariantAllowed(structuredTargetText, `${String(x.title || "")} ${String(x._ebay_aspect_text || "")}`)
             ) &&
             x.relevance_score >= 45 &&
+            x.valuation_identity_ok !== false &&
             // V11.8 HARD TITLE-YEAR GATE: kjent år krever dokumentert
             // samme år i annonsen. Ingen fallback til manglende år.
             (!built.year || x.year_match === "exact")
@@ -4101,6 +4215,7 @@ export default async function handler(req, res) {
             passesFenderSquierBrandGate(x) &&
             x.match_tier === "same_model" &&
             x.relevance_score >= 50 &&
+            x.valuation_identity_ok !== false &&
             (
               !built.year ||
               x.year_match === "missing"
@@ -4158,20 +4273,11 @@ export default async function handler(req, res) {
        * 3) valuationExcluded = godkjente sammenligninger som ble filtrert
        *    bort fra selve verdiberegningen.
        */
-      const finalPoolKeys = new Set(
-        finalPool.map(
-          x =>
-            `${String(x.title || "").toLowerCase().trim()}|${Math.round(Number(x.nok) || 0)}|${String(x.url || "")}`
-        )
-      );
+      const finalPoolKeys = new Set(finalPool);
 
       const valuationExcluded =
         valuationFilterApplied
-          ? valuationPool.filter(x => {
-              const key =
-                `${String(x.title || "").toLowerCase().trim()}|${Math.round(Number(x.nok) || 0)}|${String(x.url || "")}`;
-              return !finalPoolKeys.has(key);
-            })
+          ? valuationPool.filter(x => !finalPoolKeys.has(x))
           : [];
 
       const nearMatches =
@@ -4482,6 +4588,18 @@ export default async function handler(req, res) {
         total_candidates:
           all.length,
 
+        listing_identity_quality_version:
+          "v15.5.7-multi-key-dedupe",
+
+        listing_identity_missing_count:
+          listingIdentityMissingCount,
+
+        listing_identity_deduped_count:
+          listingIdentityDedupedCount,
+
+        valuation_identity_excluded_count:
+          all.filter(x => x.valuation_identity_ok === false).length,
+
         detail_enriched_count:
           all.filter(x => x._ebay_detail_loaded).length,
 
@@ -4572,8 +4690,11 @@ export default async function handler(req, res) {
           hard_year_gate:
             Boolean(built.year),
 
-          exact_requires_title_year_match:
+          exact_requires_year_evidence_match:
             Boolean(built.year),
+
+          exact_year_evidence_levels:
+            ["title_exact", "aspect_exact", "description_exact"],
 
           year_missing_excluded_from_exact_valuation:
             Boolean(built.year),
@@ -5866,7 +5987,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
        --------------------------------------------------------- */
 
     return res.status(200).json({
-      version: "v15.4",
+      version: "v15.5.7-test",
       timings,
       diagnostic_detail: diagnosticDetail,
       name:
@@ -6014,10 +6135,10 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       },
 
       market_engine_version:
-        "v14.9-structured-target-identity-final-title-gate",
+        "v15.5.7-test-structured-target-identity-final-title-gate",
 
       market_filter_version:
-        "v14.9-hard-model-reference-gate-structured-target-identity-final-title-gate",
+        "v15.5.7-test-hard-model-reference-gate-structured-target-identity-final-title-gate",
 
       buy_opportunities:
         buy_opportunities,
@@ -6064,7 +6185,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       error_type: e?.error_type || null,
       request_id: e?.request_id || null,
       status: 500,
-      version: "v15.4"
+      version: "v15.5.7-test"
     });
   }
 }
