@@ -1,5 +1,5 @@
-// Kistefunn analysebackend v15.4 TEST
-// V15.4 TEST: Web-reference quality gate. Sparse/conflicting external prices are corroboration only and cannot be presented as robust valuation or influence final market value.
+// Kistefunn analysebackend v15.4
+// V15.4: Web-reference quality gate. Sparse/conflicting external prices are corroboration only and cannot be presented as robust valuation or influence final market value.
 // V14.35: FX-optimalisering: global TTL-cache + samtidig request-deduplisering for valutakurser.
 // V14.34: Utvider diagnostic_detail med detaljert web-reference timing, OpenAI request-id/status/tokens og antall funn. Ingen endring av markeds-, filter- eller identifikasjonslogikk.
 // V14.33: Utvider diagnostikken med detaljerte FX-valutaer og eBay item-details per kall (item-ID, tid og feil), samt samlet diagnostic_detail. Ingen endring av markeds-, filter- eller identifikasjonslogikk.
@@ -137,7 +137,7 @@ export default async function handler(req, res) {
         error_param: error?.error_param || null,
         request_id: error?.request_id || null,
         status,
-        version: "v15.3"
+        version: "v15.4"
       });
     }
 
@@ -5866,7 +5866,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
        --------------------------------------------------------- */
 
     return res.status(200).json({
-      version: "v15.3",
+      version: "v15.4",
       timings,
       diagnostic_detail: diagnosticDetail,
       name:
@@ -6064,7 +6064,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       error_type: e?.error_type || null,
       request_id: e?.request_id || null,
       status: 500,
-      version: "v15.3"
+      version: "v15.4"
     });
   }
 }
