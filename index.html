@@ -1,4 +1,4 @@
-<!-- Kistefunn v15.5.11 – diagnostic error propagation – 2026-10-08 -->
+<!-- Kistefunn v15.5.12 – diagnostic transport/error capture – 2026-10-08 -->
 <!doctype html>
 <html lang="no">
 <head>
@@ -503,32 +503,85 @@ async function logAnalysisTiming(durationMs,status,backendVersion,extraMetadata=
     });
   }catch(_){}
 }
-if(analyzeButton)analyzeButton.addEventListener('click',async()=>{if(!selectedFiles.length)return alert('Ta eller velg minst ett bilde først.');const analysisStartedAt=performance.now(),description=itemDescription.value.trim(),preview=document.getElementById('preview'),loading=document.getElementById('loading'),result=document.getElementById('result');analyzeButton.disabled=true;loading.classList.remove('hidden');result.classList.add('hidden');try{const imageSet=await createAnalysisImage(selectedFiles);preview.src=imageSet.analysisImage;preview.classList.remove('hidden');const res=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image:imageSet.analysisImage,description})});const data=await res.json();if(!res.ok){
-  const err=new Error(data.error||'Kunne ikke analysere gjenstanden.');
-  err.backendDiagnostic={
-    http_status:Number.isFinite(Number(data.status))?Number(data.status):null,
-    error_code:data.error_code||null,
-    error_type:data.error_type||null,
-    error_param:data.error_param||null,
-    request_id:data.request_id||null,
-    backend_version:data.version||null,
-    message:data.error||null
+if(analyzeButton)analyzeButton.addEventListener('click',async()=>{if(!selectedFiles.length)return alert('Ta eller velg minst ett bilde først.');const analysisStartedAt=performance.now(),description=itemDescription.value.trim(),preview=document.getElementById('preview'),loading=document.getElementById('loading'),result=document.getElementById('result');analyzeButton.disabled=true;loading.classList.remove('hidden');result.classList.add('hidden');try{const imageSet=await createAnalysisImage(selectedFiles);preview.src=imageSet.analysisImage;preview.classList.remove('hidden');let res=null,data=null,responseText='',responseContentType='';
+try{
+  res=await fetch('/api/analyze',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({image:imageSet.analysisImage,description})
+  });
+  responseContentType=res.headers.get('content-type')||'';
+  responseText=await res.text();
+  try{
+    data=responseText?JSON.parse(responseText):{};
+  }catch(parseError){
+    const transportError=new Error('Backend svarte med ugyldig JSON.');
+    transportError.backendDiagnostic={
+      http_status:res.status||null,
+      status_text:res.statusText||null,
+      error_code:null,
+      error_type:'invalid_json_response',
+      error_param:null,
+      request_id:null,
+      backend_version:null,
+      message:transportError.message,
+      response_content_type:responseContentType,
+      response_body_preview:responseText.slice(0,500),
+      parse_error_name:parseError?.name||'SyntaxError',
+      parse_error_message:parseError?.message||null
+    };
+    throw transportError;
+  }
+}catch(fetchError){
+  if(fetchError?.backendDiagnostic)throw fetchError;
+  const transportError=new Error(fetchError?.message||'Kunne ikke kontakte analysebackend.');
+  transportError.backendDiagnostic={
+    http_status:res?.status||null,
+    status_text:res?.statusText||null,
+    error_code:null,
+    error_type:'fetch_error',
+    error_param:null,
+    request_id:null,
+    backend_version:null,
+    message:transportError.message,
+    response_content_type:responseContentType||null,
+    response_body_preview:responseText?responseText.slice(0,500):null,
+    fetch_error_name:fetchError?.name||'Error',
+    fetch_error_message:fetchError?.message||null
   };
-  const detail=[data.error_code,data.status?('HTTP '+data.status):'',data.request_id].filter(Boolean).join(' · ');
-  err.message+=(detail?' ['+detail+']':'');
+  throw transportError;
+}
+if(!res.ok){
+  const detail=[data?.error_code,data?.error_type,res.status?('HTTP '+res.status):'',data?.request_id].filter(Boolean).join(' · ');
+  const err=new Error(data?.error||'Kunne ikke analysere gjenstanden.');
+  err.backendDiagnostic={
+    http_status:res.status||null,
+    status_text:res.statusText||null,
+    error_code:data?.error_code||null,
+    error_type:data?.error_type||null,
+    error_param:data?.error_param||null,
+    request_id:data?.request_id||null,
+    backend_version:data?.version||null,
+    message:data?.error||null,
+    response_content_type:responseContentType||null,
+    response_body_preview:responseText?responseText.slice(0,500):null
+  };
+  if(detail)err.message+=' ['+detail+']';
   throw err;
-}current={...data,img:imageSet.analysisImage,images:imageSet.originalImages,userDescription:description};
+}
+current={...data,img:imageSet.analysisImage,images:imageSet.originalImages,userDescription:description};
 const findRecord={id:Date.now().toString(),name:data.name||'Ukjent gjenstand',value:data.estimated_value_nok||0,confidence:data.confidence||'',img:imageSet.analysisImage,description:data.description||'',createdAt:new Date().toISOString()};
 finds=[findRecord,...finds.filter(x=>x.name!==findRecord.name||x.img!==findRecord.img)].slice(0,100);
 localStorage.setItem('kf_finds',JSON.stringify(finds));updateProfileCounts();document.getElementById('rname').textContent=data.name||'Ukjent gjenstand';document.getElementById('rdesc').textContent=data.description||'';const raw=data.estimated_value_nok;let display='Verdi ikke fastslått';if(typeof raw==='number'&&Number.isFinite(raw)&&raw>0)display=raw.toLocaleString('no-NO')+' kr';else if(typeof raw==='string'&&raw.trim())display=raw.trim();document.getElementById('rprice').textContent=display;const low=Number(data.low_value_nok),high=Number(data.high_value_nok),priceRange=document.getElementById('priceRange');if(Number.isFinite(low)&&low>0&&Number.isFinite(high)&&high>0){document.getElementById('rlow').textContent=low.toLocaleString('no-NO')+' kr';document.getElementById('rhigh').textContent=high.toLocaleString('no-NO')+' kr';priceRange.classList.remove('hidden')}else priceRange.classList.add('hidden');const confidence=data.confidence||'ukjent';document.getElementById('rconfidence').textContent='Identifiseringssikkerhet: '+confidence;const marketConfidence=document.getElementById('marketConfidence');if(marketConfidence)marketConfidence.textContent='Kistefunn vurderer identifikasjonen som: '+confidence+'.';renderEbayResult(data.ebay,data.ebay_search_query);renderWebReferenceResult(data.web_reference_market);renderBuyOpportunities(data.buy_opportunities);renderBuyPriceWarnings(data.buy_price_warnings);const marketDataSummary=document.getElementById('marketDataSummary');if(marketDataSummary){const exactN=Number(data.ebay?.sample_size)||0,nearN=Number(data.ebay?.near_match_count)||0,webN=Number(data.web_reference_market?.exact_match_count)||0;let parts=[];if(exactN>0){const lowE=Number(data.ebay.low_nok)||0,highE=Number(data.ebay.high_nok)||0,medianE=Number(data.ebay.median_nok)||0;let text=exactN+' eksakte eBay-referanser funnet.';if(lowE&&highE)text+=' Prisene ligger på '+lowE.toLocaleString('no-NO')+'–'+highE.toLocaleString('no-NO')+' kr.';if(medianE)text+=' Median: '+medianE.toLocaleString('no-NO')+' kr.';if(nearN)text+=' '+nearN+' nærreferanser vises separat.';parts.push(text)}else if(nearN>0){parts.push('Ingen eksakte eBay-referanser med dokumentert år. '+nearN+' nærreferanser vises, men påvirker ikke verdiberegningen.')}if(webN>0){const w= data.web_reference_market;let text=webN+' eksakte eksterne referanser funnet.';if(Number(w.low_nok)>0&&Number(w.high_nok)>0)text+=' Prisene ligger på '+Number(w.low_nok).toLocaleString('no-NO')+'–'+Number(w.high_nok).toLocaleString('no-NO')+' kr.';if(Number(w.value_nok)>0)text+=' Median: '+Number(w.value_nok).toLocaleString('no-NO')+' kr.';parts.push(text)}marketDataSummary.textContent=parts.length?parts.join(' '):'Ingen gode sammenlignbare markedsreferanser funnet akkurat nå. Verdien bør derfor sees som et foreløpig estimat.'}await logAnalysisTiming(performance.now()-analysisStartedAt,'success',data?.version||'unknown',{analysis_type:'new_scan',backend_timings:data?.timings||null});result.classList.remove('hidden');result.scrollIntoView({behavior:'smooth',block:'start'})}catch(err){
+  const failureMeta=err?.backendDiagnostic||{};
   await logAnalysisTiming(
     performance.now()-analysisStartedAt,
     'error',
-    err?.backendDiagnostic?.backend_version||'unknown',
+    failureMeta.backend_version||'unknown',
     {
       analysis_type:'new_scan',
       error_message:err?.message||'Ukjent feil',
-      diagnostic_error:err?.backendDiagnostic||null
+      diagnostic_error:{...failureMeta,transport_captured:true}
     }
   );
   console.error(err);
