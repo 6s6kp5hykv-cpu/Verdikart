@@ -465,10 +465,10 @@ photoInput?.addEventListener('change',e=>{addSelectedFiles(e.target.files);e.tar
 function resetScan(){selectedFiles=[];selectedPreviewUrls.forEach(u=>URL.revokeObjectURL(u));selectedPreviewUrls=[];if(photoInput)photoInput.value='';if(cameraInput)cameraInput.value='';const p=document.getElementById('preview');p.src='';p.classList.add('hidden');document.getElementById('result').classList.add('hidden');document.getElementById('loading').classList.add('hidden');itemDescription.value='';current=null;analyzeButton.disabled=true;renderSelectedImages();window.scrollTo({top:0,behavior:'smooth'})}
 async function fileToDataURL(file){return new Promise((resolve,reject)=>{const url=URL.createObjectURL(file),img=new Image();img.onload=()=>{try{const max=1600;let w=img.naturalWidth,h=img.naturalHeight;if(w>max||h>max){if(w>h){h=Math.round(h*max/w);w=max}else{w=Math.round(w*max/h);h=max}}const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);const data=c.toDataURL('image/jpeg',.85);URL.revokeObjectURL(url);resolve(data)}catch(e){URL.revokeObjectURL(url);reject(e)}};img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('Kunne ikke lese bildet.'))};img.src=url})}
 async function createAnalysisImage(files){const images=await Promise.all(files.map(fileToDataURL));if(images.length===1)return{analysisImage:images[0],originalImages:images};const loaded=await Promise.all(images.map(src=>new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>resolve(img);img.onerror=()=>reject(new Error('Kunne ikke lese et av bildene.'));img.src=src})));const width=900,gap=20,widths=loaded.map(i=>Math.min(width,i.naturalWidth)),heights=loaded.map((i,n)=>Math.round(i.naturalHeight*widths[n]/i.naturalWidth));const c=document.createElement('canvas');c.width=width;c.height=heights.reduce((a,b)=>a+b,0)+gap*(loaded.length-1);const ctx=c.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);let y=0;loaded.forEach((img,i)=>{const x=Math.round((c.width-widths[i])/2);ctx.drawImage(img,x,y,widths[i],heights[i]);y+=heights[i]+gap});return{analysisImage:c.toDataURL('image/jpeg',.85),originalImages:images}}
-/* Kistefunn v15.5.14: frontend transportdiagnostikk med flate, lagringsbare diagnosefelt. Behold analyse/prislogikk uendret. */
+/* Kistefunn v15.5.15: frontend transportdiagnostikk + hard fetch-timeout og fasekontroll. Behold analyse/prislogikk uendret. */
 async function logAnalysisTiming(durationMs,status,backendVersion,extraMetadata={}){
   try{
-    const FRONTEND_DIAGNOSTICS_VERSION='v15.5.14';
+    const FRONTEND_DIAGNOSTICS_VERSION='v15.5.15';
     const diagError=extraMetadata?.diagnostic_error||{};
     const diagBackendVersion=diagError.backend_version||backendVersion||'unknown';
     const diagHttpStatus=diagError.http_status??null;
@@ -481,7 +481,7 @@ async function logAnalysisTiming(durationMs,status,backendVersion,extraMetadata=
     const transportCaptured=extraMetadata?.transport_captured===true;
     const scalarDiagnostic={
       frontend_diagnostics_version:FRONTEND_DIAGNOSTICS_VERSION,
-      diagnostic_capture:'frontend_transport_v15.5.14',
+      diagnostic_capture:'frontend_transport_v15.5.15',
       transport_captured:transportCaptured,
       transport_phase:transportPhase,
       response_received:extraMetadata?.response_received??null,
@@ -526,13 +526,29 @@ async function logAnalysisTiming(durationMs,status,backendVersion,extraMetadata=
 if(analyzeButton)analyzeButton.addEventListener('click',async()=>{if(!selectedFiles.length)return alert('Ta eller velg minst ett bilde først.');const analysisStartedAt=performance.now(),description=itemDescription.value.trim(),preview=document.getElementById('preview'),loading=document.getElementById('loading'),result=document.getElementById('result');analyzeButton.disabled=true;loading.classList.remove('hidden');result.classList.add('hidden');try{const imageSet=await createAnalysisImage(selectedFiles);preview.src=imageSet.analysisImage;preview.classList.remove('hidden');let res=null,data=null,responseText='',responseContentType='';
 let responseReceived=false;
 let transportPhase='fetch_not_started';
+let fetchStartedAt=null;
+let fetchCompletedAt=null;
+let fetchTimeoutMs=45000;
+let fetchAbortController=null;
 try{
   transportPhase='fetch_started';
-  res=await fetch('/api/analyze',{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({image:imageSet.analysisImage,description})
-  });
+  fetchStartedAt=performance.now();
+  fetchAbortController=new AbortController();
+  const fetchTimeoutId=setTimeout(()=>{
+    transportPhase='fetch_timeout_45000ms';
+    try{fetchAbortController.abort('KISTEFUNN_FETCH_TIMEOUT_45000MS')}catch(_){}
+  },fetchTimeoutMs);
+  try{
+    res=await fetch('/api/analyze',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({image:imageSet.analysisImage,description}),
+      signal:fetchAbortController.signal
+    });
+  }finally{
+    clearTimeout(fetchTimeoutId);
+  }
+  fetchCompletedAt=performance.now();
   responseReceived=true;
   transportPhase='response_received';
   responseContentType=res.headers.get('content-type')||'';
@@ -564,12 +580,13 @@ try{
   }
 }catch(fetchError){
   if(fetchError?.backendDiagnostic)throw fetchError;
-  const transportError=new Error(fetchError?.message||'Kunne ikke kontakte analysebackend.');
+  const isTimeout=transportPhase==='fetch_timeout_45000ms' || fetchError?.name==='AbortError' || String(fetchError?.message||'').toLowerCase().includes('abort');
+  const transportError=new Error(isTimeout?'Analysekallet timeoutet etter 45 sekunder.':(fetchError?.message||'Kunne ikke kontakte analysebackend.'));
   transportError.backendDiagnostic={
     http_status:res?.status||null,
     status_text:res?.statusText||null,
-    error_code:null,
-    error_type:'fetch_error',
+    error_code:isTimeout?'frontend_fetch_timeout':null,
+    error_type:isTimeout?'fetch_timeout':'fetch_error',
     error_param:null,
     request_id:null,
     backend_version:null,
@@ -580,7 +597,9 @@ try{
     response_body_length:responseText?responseText.length:0,
     response_body_preview:responseText?responseText.slice(0,500):null,
     fetch_error_name:fetchError?.name||'Error',
-    fetch_error_message:fetchError?.message||null
+    fetch_error_message:fetchError?.message||null,
+    fetch_timeout_ms:fetchTimeoutMs,
+    fetch_elapsed_ms:fetchStartedAt!==null?Math.round((fetchCompletedAt||performance.now())-fetchStartedAt):null
   };
   throw transportError;
 }
@@ -636,7 +655,7 @@ localStorage.setItem('kf_finds',JSON.stringify(finds));updateProfileCounts();doc
       transport_phase:failureMeta.transport_phase||transportPhase,
       response_received:failureMeta.response_received??responseReceived,
       transport_captured:true,
-      diagnostic_error:{...failureMeta,transport_captured:true,frontend_diagnostics_version:'v15.5.14'}
+      diagnostic_error:{...failureMeta,transport_captured:true,frontend_diagnostics_version:'v15.5.15'}
     }
   );
   console.error(err);
