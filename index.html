@@ -1,4 +1,4 @@
-<!-- Kistefunn v15.5.12 – diagnostic transport/error capture – 2026-10-08 -->
+<!-- Kistefunn v15.5.13 – diagnostic frontend version proof + transport/error capture – 2026-10-08 -->
 <!doctype html>
 <html lang="no">
 <head>
@@ -468,6 +468,7 @@ async function createAnalysisImage(files){const images=await Promise.all(files.m
 /* Kistefunn v14.31: behold v14.30 OpenAI-token-diagnostikk + gjenopprett ADMIN-panelet. */
 async function logAnalysisTiming(durationMs,status,backendVersion,extraMetadata={}){
   try{
+    const FRONTEND_DIAGNOSTICS_VERSION='v15.5.13';
     const diagError=extraMetadata?.diagnostic_error||{};
     const diagBackendVersion=diagError.backend_version||backendVersion||'unknown';
     const diagHttpStatus=diagError.http_status??null;
@@ -483,7 +484,7 @@ async function logAnalysisTiming(durationMs,status,backendVersion,extraMetadata=
         level:status==='success'?'info':'error',
         stage:'analysis_total',
         code:status==='success'?'analysis_completed':(diagCode||'analysis_failed'),
-        message:diagMessage||(status==='success'?'Komplett analyse mottatt i frontend':'Analyse feilet i frontend')+(extraMetadata?.backend_timings?` | Backend: OpenAI ${Number(extraMetadata.backend_timings.openai_identification_ms||0)} ms · eBay-søk ${Number(extraMetadata.backend_timings.ebay_search_ms||0)} ms · item-details ${Number(extraMetadata.backend_timings.ebay_item_details_ms||0)} ms · web-ref ${Number(extraMetadata.backend_timings.web_reference_openai_ms||0)} ms · FX ${Number(extraMetadata.backend_timings.frankfurter_fx_ms||0)} ms · backend totalt ${Number(extraMetadata.backend_timings.total_backend_ms||0)} ms · OpenAI tokens input/output/reasoning/cached ${String(extraMetadata.backend_timings.openai_diagnostics?.input_tokens??"n/a")}/${String(extraMetadata.backend_timings.openai_diagnostics?.output_tokens??"n/a")}/${String(extraMetadata.backend_timings.openai_diagnostics?.reasoning_tokens??"n/a")}/${String(extraMetadata.backend_timings.openai_diagnostics?.cached_input_tokens??"n/a")} · request ${String(extraMetadata.backend_timings.openai_diagnostics?.request_id??"n/a")}`:''),
+        message:(diagMessage||((status==='success'?'Komplett analyse mottatt i frontend':'Analyse feilet i frontend')+' | Frontend diagnostics '+FRONTEND_DIAGNOSTICS_VERSION))+(extraMetadata?.backend_timings?` | Backend: OpenAI ${Number(extraMetadata.backend_timings.openai_identification_ms||0)} ms · eBay-søk ${Number(extraMetadata.backend_timings.ebay_search_ms||0)} ms · item-details ${Number(extraMetadata.backend_timings.ebay_item_details_ms||0)} ms · web-ref ${Number(extraMetadata.backend_timings.web_reference_openai_ms||0)} ms · FX ${Number(extraMetadata.backend_timings.frankfurter_fx_ms||0)} ms · backend totalt ${Number(extraMetadata.backend_timings.total_backend_ms||0)} ms · OpenAI tokens input/output/reasoning/cached ${String(extraMetadata.backend_timings.openai_diagnostics?.input_tokens??"n/a")}/${String(extraMetadata.backend_timings.openai_diagnostics?.output_tokens??"n/a")}/${String(extraMetadata.backend_timings.openai_diagnostics?.reasoning_tokens??"n/a")}/${String(extraMetadata.backend_timings.openai_diagnostics?.cached_input_tokens??"n/a")} · request ${String(extraMetadata.backend_timings.openai_diagnostics?.request_id??"n/a")}`:''),
         http_status:diagHttpStatus,
         backend_version:diagBackendVersion,
         model:'gpt-5.6-luna',
@@ -491,6 +492,7 @@ async function logAnalysisTiming(durationMs,status,backendVersion,extraMetadata=
         duration_ms:Math.round(durationMs),
         metadata:{
           timing_source:'frontend',
+          frontend_diagnostics_version:FRONTEND_DIAGNOSTICS_VERSION,
           result_status:status,
           error_code:diagCode,
           error_type:diagType,
@@ -581,7 +583,7 @@ localStorage.setItem('kf_finds',JSON.stringify(finds));updateProfileCounts();doc
     {
       analysis_type:'new_scan',
       error_message:err?.message||'Ukjent feil',
-      diagnostic_error:{...failureMeta,transport_captured:true}
+      diagnostic_error:{...failureMeta,transport_captured:true,frontend_diagnostics_version:'v15.5.13'}
     }
   );
   console.error(err);
