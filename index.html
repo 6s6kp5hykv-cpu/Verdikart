@@ -173,15 +173,24 @@ hr{border:0;border-top:1px solid var(--line);margin:18px 0}
 .admin-badge{display:inline-flex;align-items:center;padding:5px 9px;border-radius:999px;background:#e7eefb;color:#17345f;font-size:12px;font-weight:800}
 .admin-status{font-size:13px;color:var(--muted);margin-top:7px;line-height:1.4}
 .admin-diagnostics{margin-top:12px}
-.admin-event{padding:11px 0;border-top:1px solid #dce5f1}
-.admin-event:first-child{border-top:0}
-.admin-event-head{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
-.admin-event-time{font-size:12px;color:var(--muted)}
-.admin-event-level{font-size:11px;font-weight:800;padding:4px 7px;border-radius:999px;background:#eef2f7}
-.admin-event.error .admin-event-level{background:#fee2e2;color:#991b1b}
-.admin-event-title{font-weight:800;margin-top:5px;line-height:1.35}
-.admin-event-meta{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.4}
-.admin-error-code{display:inline-block;margin-top:5px;padding:3px 6px;border-radius:7px;background:#fff;border:1px solid #dce5f1;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px}
+.admin-history{height:278px;overflow-y:auto;background:#fff;border:1px solid #dce5f1;border-radius:12px;padding:4px 10px;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+.admin-history-row{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;border:0;border-bottom:1px solid #edf1f5;background:transparent;padding:10px 2px;text-align:left;cursor:pointer;color:inherit}
+.admin-history-row:last-child{border-bottom:0}
+.admin-history-row:active{background:#f7f9fb}
+.admin-history-main{min-width:0;flex:1}
+.admin-history-top{display:flex;align-items:center;gap:7px;min-width:0}
+.admin-history-time{font-size:11px;color:var(--muted);white-space:nowrap}
+.admin-history-object{font-size:13px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.admin-history-sub{font-size:11px;color:var(--muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.admin-history-status{flex:0 0 auto;font-size:10px;font-weight:900;padding:4px 7px;border-radius:999px;background:#e9f7ed;color:#166534}
+.admin-history-status.error{background:#fee2e2;color:#991b1b}
+.admin-history-status.warn{background:#fff7df;color:#8a5a00}
+.admin-history-chevron{font-size:16px;color:#98a2b3}
+.admin-detail{margin-top:10px;border:1px solid #dce5f1;border-radius:12px;background:#fff;padding:12px}
+.admin-detail-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}
+.admin-detail-title{font-weight:900;font-size:14px}
+.admin-detail-close{border:0;background:#eef2f7;border-radius:8px;padding:6px 9px;font-weight:800;cursor:pointer}
+.admin-detail-pre{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:#172033}
 
 </style>
 </style>
@@ -327,6 +336,78 @@ function esc(value){return String(value||'').replace(/[&<>"']/g,m=>({'&':'&amp;'
 function show(id){document.querySelectorAll('.nav button').forEach(b=>{b.classList.remove('primary');b.classList.add('secondary')});const buttons=[...document.querySelectorAll('.nav button')],names=['marketplace','scan','collection','wanted','account'],idx=names.indexOf(id);if(idx>=0&&buttons[idx]){buttons[idx].classList.remove('secondary');buttons[idx].classList.add('primary')}names.forEach(x=>document.getElementById(x)?.classList.toggle('hidden',x!==id));if(id==='collection'){updatePrivateSections();if(currentUser)renderItems()}if(id==='wanted'){updatePrivateSections();if(currentUser)renderWants()}if(id==='marketplace'){if(currentUser)searchMarketplace();else renderMarketplaceLogin()}}
 function setAuthMessage(message){const box=document.getElementById('authMessage');if(!box)return;box.textContent=message||'';box.classList.toggle('hidden',!message)}
 function updateProfileCounts(){const fc=document.getElementById('favoriteCount'),dc=document.getElementById('findCount');if(fc)fc.textContent=favorites.length+' lagret';if(dc)dc.textContent=finds.length+(finds.length===1?' funn':' funn')}
+function adminStatusInfo(e){
+  const level=String(e?.level||'info').toLowerCase();
+  if(level==='error')return {label:'FEIL',className:'error'};
+  if(level==='warn'||level==='warning')return {label:'ADVARSEL',className:'warn'};
+  return {label:'OK',className:''};
+}
+function adminObjectName(e){
+  const m=e?.metadata&&typeof e.metadata==='object'?e.metadata:{};
+  return String(m.object_name||m.item_name||m.identification||m.product||m.target||e?.stage||'Diagnose').trim()||'Diagnose';
+}
+function adminFormatDate(value){
+  if(!value)return 'Ukjent tidspunkt';
+  const d=new Date(value);
+  if(Number.isNaN(d.getTime()))return String(value);
+  return d.toLocaleString('no-NO',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+function adminPlainText(e){
+  const m=e?.metadata&&typeof e.metadata==='object'?e.metadata:{};
+  const level=String(e?.level||'info').toUpperCase();
+  const status=e?.http_status!=null?String(e.http_status):'';
+  const code=e?.code||m.error_code||'';
+  const type=m.error_type||'';
+  const requestId=e?.request_id||m.request_id||'';
+  const duration=e?.duration_ms!=null?String(e.duration_ms)+' ms':'';
+  const lines=[];
+  lines.push('KISTEFUNN DIAGNOSTIKK');
+  lines.push('');
+  lines.push('DATO / TID');
+  lines.push(adminFormatDate(e?.created_at));
+  lines.push('');
+  lines.push('STATUS');
+  lines.push(level==='ERROR'?'✗ FEIL':level==='WARN'||level==='WARNING'?'⚠ ADVARSEL':'✓ OK');
+  lines.push('');
+  lines.push('STEG');
+  lines.push(String(e?.stage||'Ukjent'));
+  if(e?.message){lines.push('');lines.push('MELDING');lines.push(String(e.message));}
+  if(code||type||status||requestId||duration){
+    lines.push('');lines.push('TEKNISK');
+    if(code)lines.push('Feilkode: '+code);
+    if(type)lines.push('Feiltype: '+type);
+    if(status)lines.push('HTTP-status: '+status);
+    if(requestId)lines.push('Request ID: '+requestId);
+    if(duration)lines.push('Varighet: '+duration);
+  }
+  if(e?.backend_version||e?.model){
+    lines.push('');lines.push('VERSJON');
+    if(e.backend_version)lines.push('Backend: '+e.backend_version);
+    if(e.model)lines.push('Modell: '+e.model);
+  }
+  const usefulMeta=Object.entries(m).filter(([k,v])=>v!==null&&v!==undefined&&v!==''&&!/key|token|secret|password|authorization|cookie|image|base64|dataurl/i.test(k));
+  if(usefulMeta.length){
+    lines.push('');lines.push('METADATA');
+    for(const [k,v] of usefulMeta){
+      const value=typeof v==='object'?JSON.stringify(v):String(v);
+      lines.push(k+': '+value);
+    }
+  }
+  return lines.join('\n');
+}
+function showAdminDiagnosticDetail(index,events){
+  const detail=document.getElementById('adminDiagnosticDetail');
+  if(!detail)return;
+  const e=events[index];
+  if(!e)return;
+  detail.classList.remove('hidden');
+  detail.innerHTML='<div class="admin-detail-head"><div class="admin-detail-title">Detaljert diagnose · '+esc(adminFormatDate(e.created_at))+'</div><button class="admin-detail-close" type="button" onclick="closeAdminDiagnosticDetail()">Lukk</button></div><pre class="admin-detail-pre">'+esc(adminPlainText(e))+'</pre>';
+  detail.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+function closeAdminDiagnosticDetail(){
+  const detail=document.getElementById('adminDiagnosticDetail');
+  if(detail){detail.classList.add('hidden');detail.innerHTML='';}
+}
 async function loadAdminDiagnostics(){
   const panel=document.getElementById('adminPanel');
   const status=document.getElementById('adminStatus');
@@ -346,28 +427,20 @@ async function loadAdminDiagnostics(){
     const raw=await response.text();
     let result={};
     try{result=raw?JSON.parse(raw):{}}catch(_){result={}};
-    if(response.status===403){
-      panel.classList.add('hidden');
-      return;
-    }
+    if(response.status===403){panel.classList.add('hidden');return;}
     if(!response.ok)throw new Error(result.error||raw||('HTTP '+response.status));
-    status.textContent='Admin-tilgang bekreftet · viser siste '+((result.events||[]).length)+' hendelser.';
-    button?.classList.remove('hidden');
     const events=Array.isArray(result.events)?result.events:[];
-    if(!events.length){
-      container.innerHTML='<div class="muted" style="margin-top:10px">Ingen diagnostikkhendelser funnet.</div>';
-      return;
-    }
-    container.innerHTML=events.map(e=>{
-      const meta=e.metadata&&typeof e.metadata==='object'?e.metadata:{};
-      const errorCode=meta.error_code||e.error_code||'';
-      const errorType=meta.error_type||e.error_type||'';
-      const requestId=e.request_id||meta.request_id||'';
-      const duration=e.duration_ms!=null?String(e.duration_ms)+' ms':'';
-      const details=[e.backend_version||'',e.model||'',duration,requestId?'request '+requestId:''].filter(Boolean).join(' · ');
-      const code=errorCode?'<div class="admin-error-code">'+esc(errorCode)+(errorType?' · '+esc(errorType):'')+'</div>':'';
-      return '<div class="admin-event '+(e.level==='error'?'error':'')+'"><div class="admin-event-head"><div class="admin-event-time">'+esc(new Date(e.created_at).toLocaleString('no-NO'))+'</div><div class="admin-event-level">'+esc(e.level||'info')+'</div></div><div class="admin-event-title">'+esc(e.stage||'Hendelse')+(e.code?' · '+esc(e.code):'')+'</div><div class="admin-event-meta">'+esc(e.message||'')+(details?'<br>'+esc(details):'')+'</div>'+code+'</div>';
+    status.textContent='Admin-tilgang bekreftet · '+events.length+' diagnoser lagret.';
+    button?.classList.remove('hidden');
+    if(!events.length){container.innerHTML='<div class="muted" style="margin-top:10px">Ingen diagnostikkhendelser funnet.</div>';return;}
+    const rows=events.map((e,index)=>{
+      const info=adminStatusInfo(e);
+      const objectName=adminObjectName(e);
+      const sub=[e?.stage||'Hendelse',e?.code||''].filter(Boolean).join(' · ');
+      return '<button class="admin-history-row" type="button" onclick="showAdminDiagnosticDetail('+index+',window.__kfAdminEvents)"><div class="admin-history-main"><div class="admin-history-top"><span class="admin-history-time">'+esc(adminFormatDate(e?.created_at))+'</span><span class="admin-history-object">'+esc(objectName)+'</span></div><div class="admin-history-sub">'+esc(sub)+'</div></div><span class="admin-history-status '+info.className+'">'+info.label+'</span><span class="admin-history-chevron">›</span></button>';
     }).join('');
+    window.__kfAdminEvents=events;
+    container.innerHTML='<div class="admin-history" aria-label="Diagnostikkhistorikk">'+rows+'</div><div id="adminDiagnosticDetail" class="admin-detail hidden"></div>';
   }catch(err){
     status.textContent='Kunne ikke hente diagnostikk.';
     container.innerHTML='<div class="note">'+esc(err.message||'Ukjent feil')+'</div>';
