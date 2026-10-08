@@ -1,7 +1,30 @@
-// Kistefunn OpenAI-identifikasjon v14.30
-// V14.30: Testversjon basert direkte på v14.29. Ingen endring av prompt, modell, request eller identifikasjonslogikk.
+// Kistefunn OpenAI-identifikasjon v15.3
+// V15.3: Deploy-kandidat basert på v14.30. Fail-closed ved ugyldig AI-JSON + kontrollert OpenAI-timeout.
+// V14.30: Baseline for prompt, modell og request-struktur beholdes.
 // OpenAI-delen er flyttet fra v14.25 uten endring av prompt eller request-struktur.
 // V14.27: Beholder SAFE v2-logikken, men eksponerer OpenAI error.code, error.type, status og request-id til backend-diagnostikken.
+
+
+const OPENAI_TIMEOUT_MS = 30_000;
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = OPENAI_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      const timeoutError = new Error(`OpenAI-kall timeout etter ${timeoutMs} ms`);
+      timeoutError.status = 504;
+      timeoutError.error_code = "openai_timeout";
+      timeoutError.error_type = "timeout";
+      throw timeoutError;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 export async function identifyWithOpenAI({ image, userDescription }) {
   const contextText = userDescription
@@ -12,7 +35,7 @@ Bruk dette som et sterkt identifikasjonssignal. Hvis brukeren oppgir en konkret 
 
   const identificationStartedAt = performance.now();
 
-  const response = await fetch("https://api.openai.com/v1/responses", {
+  const response = await fetchWithTimeout("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -209,18 +232,14 @@ Returner KUN gyldig JSON:
     }
   }
 
-  if (!parsed) {
-    parsed = {
-      name: "Ukjent",
-      description: text,
-      estimated_value_nok: null,
-      low_value_nok: null,
-      high_value_nok: null,
-      confidence: "lav",
-      condition: "",
-      item_info: {},
-      ebay_search_query: ""
-    };
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) ||
+      !parsed.item_info || typeof parsed.item_info !== "object" || Array.isArray(parsed.item_info)) {
+    const error = new Error("OpenAI returnerte ugyldig JSON-struktur");
+    error.status = 502;
+    error.error_code = "invalid_ai_json";
+    error.error_type = "validation";
+    error.request_id = requestId;
+    throw error;
   }
 
   const usage = data?.usage || {};
