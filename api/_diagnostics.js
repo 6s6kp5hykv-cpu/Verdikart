@@ -1,11 +1,11 @@
 /*
 KISTEFUNN DIAGNOSTICS
-Version: diag-v2
+Version: diag-v3
 */
 
 var crypto = require("crypto");
 
-var DIAG_VERSION = "diag-v2";
+var DIAG_VERSION = "diag-v3";
 
 function cleanText(value, max) {
   if (max === undefined) max = 2000;
@@ -13,30 +13,29 @@ function cleanText(value, max) {
   return String(value).slice(0, max);
 }
 
-function safeMetadata(value) {
-  if (!value || typeof value !== "object") return null;
+function safeMetadata(value, depth) {
+  depth = depth || 0;
+  if (value === null || value === undefined) return null;
+  if (depth > 6) return "[truncated-depth]";
 
   var blocked = /key|token|secret|password|authorization|cookie|image|base64|dataurl/i;
+  if (typeof value === "string") return value.slice(0, 500);
+  if (typeof value === "number" || typeof value === "boolean") return value;
+  if (Array.isArray(value)) {
+    return value.slice(0, 30).map(function (item) {
+      return safeMetadata(item, depth + 1);
+    });
+  }
+  if (typeof value !== "object") return null;
+
   var out = {};
-
-  Object.keys(value).forEach(function (key) {
+  Object.keys(value).slice(0, 40).forEach(function (key) {
     if (blocked.test(key)) return;
-
     var val = value[key];
-
-    if (
-      typeof val === "string" ||
-      typeof val === "number" ||
-      typeof val === "boolean" ||
-      val === null
-    ) {
-      out[key] =
-        typeof val === "string"
-          ? val.slice(0, 500)
-          : val;
+    if (val === null || ["string", "number", "boolean"].includes(typeof val) || Array.isArray(val) || (val && typeof val === "object")) {
+      out[key.slice(0, 100)] = safeMetadata(val, depth + 1);
     }
   });
-
   return out;
 }
 
@@ -93,7 +92,7 @@ async function logDiagnostic(options) {
   var code = options.code || null;
   var message = options.message || null;
   var http_status = options.http_status || null;
-  var backend_version = options.backend_version || "v14.18";
+  var backend_version = options.backend_version || "unspecified";
   var model = options.model || null;
   var request_id = options.request_id || null;
   var image_count = options.image_count;
