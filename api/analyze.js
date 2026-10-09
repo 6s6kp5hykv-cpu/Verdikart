@@ -1,5 +1,5 @@
 // Kistefunn analysebackend v15.5.23 EBAY SEARCH DIAGNOSTICS CANDIDATE
-// V15.5.23: Diagnostic-only eBay search trace per marketplace/query: HTTP status, raw count, total, error stage/code, and post-filter candidate count. No valuation/filter logic changes.
+// V15.5.23: Diagnostic-only eBay search trace per marketplace/query: HTTP status, raw count, total, and error stage/code. No valuation/filter logic changes.
 // V15.5.22: Audit-fix candidate baseline.
 // V15.5.21: Fail-closed positive-price guards for AI/eBay/web/FINN source combination; zero-evidence eBay gate; OpenAI failure timing fix. Deploy candidate only; not deployed.
 // V15.5.6 TEST: Korrigerer diagnostikkfeltet for årskrav. Eksakt verdigrunnlag krever dokumentert årstreff, men treffet kan komme fra title_exact, aspect_exact eller description_exact; den gamle diagnostikketiketten for et rent tittelårskrav var derfor misvisende.
@@ -185,7 +185,7 @@ export default async function handler(req, res) {
         error_param: error?.error_param || null,
         request_id: requestId,
         status,
-        version: "v15.5.22-audit-fix-candidate"
+        version: "v15.5.23-ebay-search-diagnostics-candidate"
       });
     }
 
@@ -6080,7 +6080,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
        --------------------------------------------------------- */
 
     return res.status(200).json({
-      version: "v15.5.22-audit-fix-candidate",
+      version: "v15.5.23-ebay-search-diagnostics-candidate",
       timings,
       diagnostic_detail: diagnosticDetail,
       name:
@@ -6234,7 +6234,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
         "v15.5.7-test-hard-model-reference-gate-structured-target-identity-final-title-gate",
 
       backend_release_version:
-        "v15.5.22-audit-fix-candidate",
+        "v15.5.23-ebay-search-diagnostics-candidate",
 
       buy_opportunities:
         buy_opportunities,
@@ -6279,7 +6279,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       code: e?.error_code || "analysis_unhandled_exception",
       message: e?.message || "Ukjent feil",
       http_status: 500,
-      backend_version: "v15.5.22-audit-fix-candidate",
+      backend_version: "v15.5.23-ebay-search-diagnostics-candidate",
       model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
       request_id: e?.request_id || null,
       metadata: {
@@ -6300,7 +6300,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       error_type: e?.error_type || null,
       request_id: e?.request_id || null,
       status: 500,
-      version: "v15.5.22-audit-fix-candidate"
+      version: "v15.5.23-ebay-search-diagnostics-candidate"
     });
   }
 }
