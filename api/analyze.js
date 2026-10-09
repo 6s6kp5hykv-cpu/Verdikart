@@ -1,5 +1,5 @@
-// Kistefunn analysebackend v15.5.17 DIAGNOSTIC
-// V15.5.17: Server-side OpenAI failure capture. Analysis/pricing/search logic unchanged.
+// Kistefunn analysebackend v15.5.22 AUDIT FIX CANDIDATE
+// V15.5.21: Fail-closed positive-price guards for AI/eBay/web/FINN source combination; zero-evidence eBay gate; OpenAI failure timing fix. Deploy candidate only; not deployed.
 // V15.5.6 TEST: Korrigerer diagnostikkfeltet for årskrav. Eksakt verdigrunnlag krever dokumentert årstreff, men treffet kan komme fra title_exact, aspect_exact eller description_exact; den gamle diagnostikketiketten for et rent tittelårskrav var derfor misvisende.
 // V15.5.3 TEST: eBay listing quality gate for explicit lots/bundles/sealed/multi-item listings.
 // V15.5.2 TEST: Listing identity hardening.
@@ -137,6 +137,7 @@ export default async function handler(req, res) {
        --------------------------------------------------------- */
 
     let parsed;
+    const identificationStartedAt = performance.now();
     try {
       const aiResult = await identifyWithOpenAI({
         image,
@@ -158,13 +159,13 @@ export default async function handler(req, res) {
         code: errorCode || "openai_request_failed",
         message: errorMessage,
         http_status: status,
-        backend_version: "v15.5.17-diag",
+        backend_version: "v15.5.22-audit-fix-candidate",
         model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
         request_id: requestId,
         duration_ms: Math.round(performance.now() - identificationStartedAt),
         metadata: {
           source: "backend",
-          diagnostic_version: "v15.5.17",
+          diagnostic_version: "v15.5.22",
           error_code: errorCode,
           error_type: errorType,
           error_param: error?.error_param || null,
@@ -182,7 +183,7 @@ export default async function handler(req, res) {
         error_param: error?.error_param || null,
         request_id: requestId,
         status,
-        version: "v15.5.17-diag"
+        version: "v15.5.22-audit-fix-candidate"
       });
     }
 
@@ -5436,6 +5437,15 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
     );
     timings.web_reference_fx_ms = Number(webReferenceSearch?.diagnostic?.fx_ms || timings.web_reference_fx_ms || 0);
 
+    // v15.5.19: Centralized fail-closed market-price validation.
+    // Reject null/undefined/empty strings, non-finite values and non-positive prices.
+    const isValidMarketPrice = (value) => {
+      if (typeof value !== "number" && typeof value !== "string") return false;
+      if (typeof value === "string" && value.trim() === "") return false;
+      const numericValue = typeof value === "number" ? value : Number(value);
+      return Number.isFinite(numericValue) && numericValue > 0;
+    };
+
     const marketSources = {
       ai: {
         enabled: Number.isFinite(aiEstimated),
@@ -5451,15 +5461,18 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       },
 
       ebay: {
-        enabled: Boolean(ebay?.enabled),
-        value_nok: Number.isFinite(Number(ebay?.median_nok))
-          ? Math.round(Number(ebay.median_nok))
+        // V15.5.18: An empty successful search is not a price source.
+        // Use raw numeric values so Number(null) cannot silently become 0.
+        enabled: Boolean(ebay?.enabled) &&
+          Number.isFinite(ebay?.median_nok) && ebay.median_nok > 0,
+        value_nok: Number.isFinite(ebay?.median_nok) && ebay.median_nok > 0
+          ? Math.round(ebay.median_nok)
           : null,
-        low_nok: Number.isFinite(Number(ebay?.low_nok))
-          ? Math.round(Number(ebay.low_nok))
+        low_nok: Number.isFinite(ebay?.low_nok) && ebay.low_nok > 0
+          ? Math.round(ebay.low_nok)
           : null,
-        high_nok: Number.isFinite(Number(ebay?.high_nok))
-          ? Math.round(Number(ebay.high_nok))
+        high_nok: Number.isFinite(ebay?.high_nok) && ebay.high_nok > 0
+          ? Math.round(ebay.high_nok)
           : null,
         exact_match_count: Number(ebay?.exact_match_count || 0),
         same_model_match_count: Number(ebay?.same_model_match_count || 0),
@@ -5467,10 +5480,18 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       },
 
       web_reference: {
-        enabled: Boolean(webReferenceSearch?.enabled),
-        value_nok: Number.isFinite(Number(webReferenceSearch?.value_nok)) ? Math.round(Number(webReferenceSearch.value_nok)) : null,
-        low_nok: Number.isFinite(Number(webReferenceSearch?.low_nok)) ? Math.round(Number(webReferenceSearch.low_nok)) : null,
-        high_nok: Number.isFinite(Number(webReferenceSearch?.high_nok)) ? Math.round(Number(webReferenceSearch.high_nok)) : null,
+        // V15.5.18 TEST: null/undefined must not become numeric zero.
+        // A web reference is enabled as a valuation source only with a real positive value.
+        enabled: Boolean(webReferenceSearch?.enabled) &&
+          webReferenceSearch?.value_nok != null &&
+          Number.isFinite(Number(webReferenceSearch.value_nok)) &&
+          Number(webReferenceSearch.value_nok) > 0,
+        value_nok: isValidMarketPrice(webReferenceSearch?.value_nok)
+          ? Math.round(Number(webReferenceSearch.value_nok)) : null,
+        low_nok: isValidMarketPrice(webReferenceSearch?.low_nok)
+          ? Math.round(Number(webReferenceSearch.low_nok)) : null,
+        high_nok: isValidMarketPrice(webReferenceSearch?.high_nok)
+          ? Math.round(Number(webReferenceSearch.high_nok)) : null,
         exact_match_count: Number(webReferenceSearch?.exact_match_count || 0),
         same_model_match_count: 0,
         distinct_count: Number(webReferenceSearch?.distinct_count || 0),
@@ -5522,13 +5543,19 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
     marketSources.finn.adapter_requires = finnAdapter.requires;
 
     function calculateEbayQuality(source) {
-      if (!source?.enabled || !Number.isFinite(source.value_nok)) {
+      if (!source?.enabled || !Number.isFinite(source.value_nok) || source.value_nok <= 0) {
         return 0;
       }
 
       const exact = Math.max(0, source.exact_match_count || 0);
       const sameModel = Math.max(0, source.same_model_match_count || 0);
       const distinct = Math.max(0, source.distinct_count || 0);
+
+      // V15.5.21: fail closed when the source reports no valuation evidence.
+      // A positive median alone must not earn market weight if all match counts are zero.
+      if (exact === 0 && sameModel === 0 && distinct === 0) {
+        return 0;
+      }
       const hasYear = Boolean(
         ebay?.filtering?.exact_year_required_for_valuation
       );
@@ -5582,7 +5609,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
     }
 
     function calculateWebReferenceQuality(source) {
-      if (!source?.enabled || !Number.isFinite(source.value_nok)) return 0;
+      if (!source?.enabled || !Number.isFinite(source.value_nok) || source.value_nok <= 0) return 0;
       const exact = Math.max(0, Number(source.exact_match_count || 0));
       const distinct = Math.max(0, Number(source.distinct_count || 0));
       const valuationRefs = Math.max(0, Number(source.valuation_reference_count || 0));
@@ -5607,7 +5634,8 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
 
       if (
         sources.ai?.enabled &&
-        Number.isFinite(sources.ai.value_nok)
+        Number.isFinite(sources.ai.value_nok) &&
+        sources.ai.value_nok > 0
       ) {
         candidates.push({
           source: "ai",
@@ -5653,7 +5681,8 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
 
       if (
         sources.finn?.enabled &&
-        Number.isFinite(sources.finn.value_nok)
+        Number.isFinite(sources.finn.value_nok) &&
+        sources.finn.value_nok > 0
       ) {
         candidates.push({
           source: "finn",
@@ -5891,19 +5920,19 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       marketSources.web_reference?.enabled &&
       Number(marketSources.web_reference.exact_match_count || 0) >= 4 &&
       Number(marketSources.web_reference.valuation_reference_count || 0) >= 3 &&
-      Number.isFinite(Number(marketSources.web_reference.value_nok));
+      isValidMarketPrice(marketSources.web_reference.value_nok);
 
     const strongExactEbayMarket =
       marketSources.ebay?.enabled &&
       Number(marketSources.ebay.exact_match_count || 0) >= 4 &&
       Number(marketSources.ebay.distinct_count || 0) >= 3 &&
-      Number.isFinite(Number(marketSources.ebay.value_nok));
+      isValidMarketPrice(marketSources.ebay.value_nok);
 
     const strongExactFinnMarket =
       marketSources.finn?.enabled &&
       Number(marketSources.finn.exact_match_count || 0) >= 4 &&
       Number(marketSources.finn.distinct_count || 0) >= 3 &&
-      Number.isFinite(Number(marketSources.finn.value_nok));
+      isValidMarketPrice(marketSources.finn.value_nok);
 
     /*
      * V14.2 – STERKT EKSAKT MARKED = HOVEDVERDI
@@ -5919,10 +5948,10 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
      */
     if (strongExactWebMarket && !strongExactEbayMarket && !strongExactFinnMarket) {
       market.estimated_nok = Math.round(Number(marketSources.web_reference.value_nok));
-      market.low_nok = Number.isFinite(Number(marketSources.web_reference.low_nok))
+      market.low_nok = isValidMarketPrice(marketSources.web_reference.low_nok)
         ? Math.round(Number(marketSources.web_reference.low_nok))
         : market.low_nok;
-      market.high_nok = Number.isFinite(Number(marketSources.web_reference.high_nok))
+      market.high_nok = isValidMarketPrice(marketSources.web_reference.high_nok)
         ? Math.round(Number(marketSources.web_reference.high_nok))
         : market.high_nok;
       market.confidence = "høy";
@@ -5932,10 +5961,10 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       ];
     } else if (strongExactEbayMarket && !strongExactWebMarket && !strongExactFinnMarket) {
       market.estimated_nok = Math.round(Number(marketSources.ebay.value_nok));
-      market.low_nok = Number.isFinite(Number(marketSources.ebay.low_nok))
+      market.low_nok = isValidMarketPrice(marketSources.ebay.low_nok)
         ? Math.round(Number(marketSources.ebay.low_nok))
         : market.low_nok;
-      market.high_nok = Number.isFinite(Number(marketSources.ebay.high_nok))
+      market.high_nok = isValidMarketPrice(marketSources.ebay.high_nok)
         ? Math.round(Number(marketSources.ebay.high_nok))
         : market.high_nok;
       market.confidence = "høy";
@@ -5945,10 +5974,10 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       ];
     } else if (strongExactFinnMarket && !strongExactWebMarket && !strongExactEbayMarket) {
       market.estimated_nok = Math.round(Number(marketSources.finn.value_nok));
-      market.low_nok = Number.isFinite(Number(marketSources.finn.low_nok))
+      market.low_nok = isValidMarketPrice(marketSources.finn.low_nok)
         ? Math.round(Number(marketSources.finn.low_nok))
         : market.low_nok;
-      market.high_nok = Number.isFinite(Number(marketSources.finn.high_nok))
+      market.high_nok = isValidMarketPrice(marketSources.finn.high_nok)
         ? Math.round(Number(marketSources.finn.high_nok))
         : market.high_nok;
       market.confidence = "høy";
@@ -6012,6 +6041,8 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
         elapsed_ms: Number(timings.web_reference_openai_ms || 0),
         fetch_ms: Number(timings.web_reference_fetch_ms || 0),
         fx_ms: Number(timings.web_reference_fx_ms || 0),
+        valuation_price_nok: isValidMarketPrice(webReferenceSearch?.value_nok) ? Number(webReferenceSearch.value_nok) : null,
+        valuation_price_valid: isValidMarketPrice(webReferenceSearch?.value_nok),
         diagnostic: webReferenceSearch?.diagnostic || null
       },
       ebay_item_details: {
@@ -6028,7 +6059,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
        --------------------------------------------------------- */
 
     return res.status(200).json({
-      version: "v15.5.7-test",
+      version: "v15.5.22-audit-fix-candidate",
       timings,
       diagnostic_detail: diagnosticDetail,
       name:
@@ -6169,9 +6200,9 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
         reason: marketSources.web_reference?.reason || "",
         exact_match_count: Number(marketSources.web_reference?.exact_match_count || 0),
         distinct_count: Number(marketSources.web_reference?.distinct_count || 0),
-        value_nok: Number.isFinite(Number(marketSources.web_reference?.value_nok)) ? Math.round(Number(marketSources.web_reference.value_nok)) : null,
-        low_nok: Number.isFinite(Number(marketSources.web_reference?.low_nok)) ? Math.round(Number(marketSources.web_reference.low_nok)) : null,
-        high_nok: Number.isFinite(Number(marketSources.web_reference?.high_nok)) ? Math.round(Number(marketSources.web_reference.high_nok)) : null,
+        value_nok: marketSources.web_reference?.value_nok != null && Number.isFinite(Number(marketSources.web_reference?.value_nok)) && Number(marketSources.web_reference?.value_nok) > 0 ? Math.round(Number(marketSources.web_reference.value_nok)) : null,
+        low_nok: marketSources.web_reference?.low_nok != null && Number.isFinite(Number(marketSources.web_reference?.low_nok)) && Number(marketSources.web_reference?.low_nok) > 0 ? Math.round(Number(marketSources.web_reference.low_nok)) : null,
+        high_nok: marketSources.web_reference?.high_nok != null && Number.isFinite(Number(marketSources.web_reference?.high_nok)) && Number(marketSources.web_reference?.high_nok) > 0 ? Math.round(Number(marketSources.web_reference.high_nok)) : null,
         references: Array.isArray(marketSources.web_reference?.references) ? marketSources.web_reference.references.slice(0, 8) : []
       },
 
@@ -6180,6 +6211,9 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
 
       market_filter_version:
         "v15.5.7-test-hard-model-reference-gate-structured-target-identity-final-title-gate",
+
+      backend_release_version:
+        "v15.5.22-audit-fix-candidate",
 
       buy_opportunities:
         buy_opportunities,
@@ -6224,12 +6258,12 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       code: e?.error_code || "analysis_unhandled_exception",
       message: e?.message || "Ukjent feil",
       http_status: 500,
-      backend_version: "v15.5.17-diag",
+      backend_version: "v15.5.22-audit-fix-candidate",
       model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
       request_id: e?.request_id || null,
       metadata: {
         source: "backend",
-        diagnostic_version: "v15.5.17",
+        diagnostic_version: "v15.5.22",
         error_code: e?.error_code || null,
         error_type: e?.error_type || null,
         error_param: e?.error_param || null,
@@ -6245,7 +6279,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       error_type: e?.error_type || null,
       request_id: e?.request_id || null,
       status: 500,
-      version: "v15.5.17-diag"
+      version: "v15.5.22-audit-fix-candidate"
     });
   }
 }
