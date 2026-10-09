@@ -1,8 +1,9 @@
 /*
  * KISTEFUNN ADMIN DIAGNOSTICS
- * Version: v14.28
+ * Version: v15.5.27 candidate (based on verified v14.28 admin gate)
  *
  * Secure server-side admin gate for the in-app diagnostics panel.
+ * Candidate integration: standalone endpoint; production files untouched.
  *
  * Required Vercel environment variables:
  * - SUPABASE_URL
