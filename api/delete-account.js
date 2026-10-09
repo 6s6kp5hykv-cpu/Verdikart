@@ -4,6 +4,7 @@ export default async function handler(req, res) {
   }
 
   try {
+    // Kistefunn v15.5.33: align account deletion with current frontend tables and fail closed.
     // This is the public Supabase project URL.
     const supabaseUrl =
       "https://tiqwlxpclqqncykdwvjf.supabase.co";
@@ -54,9 +55,17 @@ export default async function handler(req, res) {
 
     const userId = userData.id;
 
-    // Delete application data belonging to this user.
-    // If a table does not exist, continue to account deletion.
-    for (const table of ["collection", "wants"]) {
+    // Delete rows from the tables actually used by the current frontend.
+    // Order child records before parent records to reduce foreign-key conflicts.
+    // Fail closed: do not delete the Auth user if any data cleanup fails.
+    const userTables = [
+      "marketplace_listings",
+      "value_history",
+      "collection_items",
+      "wanted_items"
+    ];
+
+    for (const table of userTables) {
       const deleteResponse = await fetch(
         `${supabaseUrl}/rest/v1/${table}?user_id=eq.${encodeURIComponent(userId)}`,
         {
@@ -70,8 +79,11 @@ export default async function handler(req, res) {
       );
 
       if (!deleteResponse.ok) {
-        const errorText = await deleteResponse.text();
-        console.error(`Delete ${table} failed:`, errorText);
+        const errorText = await deleteResponse.text().catch(() => "");
+        console.error(`Delete ${table} failed with HTTP ${deleteResponse.status}:`, errorText.slice(0, 300));
+        return res.status(502).json({
+          error: "Kunne ikke slette alle brukerdata. Kontoen er beholdt; prøv igjen eller kontakt support."
+        });
       }
     }
 
@@ -94,7 +106,6 @@ export default async function handler(req, res) {
 
       return res.status(500).json({
         error: "Kunne ikke slette brukerkontoen.",
-        details: errorText
       });
     }
 
@@ -107,7 +118,6 @@ export default async function handler(req, res) {
 
     return res.status(500).json({
       error: "Serverfeil ved sletting av konto.",
-      details: error.message
     });
   }
 }
