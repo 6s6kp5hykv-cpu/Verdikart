@@ -1,4 +1,6 @@
-// Kistefunn analysebackend v15.5.22 AUDIT FIX CANDIDATE
+// Kistefunn analysebackend v15.5.23 EBAY SEARCH DIAGNOSTICS CANDIDATE
+// V15.5.23: Diagnostic-only eBay search trace per marketplace/query: HTTP status, raw count, total, error stage/code, and post-filter candidate count. No valuation/filter logic changes.
+// V15.5.22: Audit-fix candidate baseline.
 // V15.5.21: Fail-closed positive-price guards for AI/eBay/web/FINN source combination; zero-evidence eBay gate; OpenAI failure timing fix. Deploy candidate only; not deployed.
 // V15.5.6 TEST: Korrigerer diagnostikkfeltet for årskrav. Eksakt verdigrunnlag krever dokumentert årstreff, men treffet kan komme fra title_exact, aspect_exact eller description_exact; den gamle diagnostikketiketten for et rent tittelårskrav var derfor misvisende.
 // V15.5.3 TEST: eBay listing quality gate for explicit lots/bundles/sealed/multi-item listings.
@@ -159,7 +161,7 @@ export default async function handler(req, res) {
         code: errorCode || "openai_request_failed",
         message: errorMessage,
         http_status: status,
-        backend_version: "v15.5.22-audit-fix-candidate",
+        backend_version: "v15.5.23-ebay-search-diagnostics-candidate",
         model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
         request_id: requestId,
         duration_ms: Math.round(performance.now() - identificationStartedAt),
@@ -2701,6 +2703,8 @@ export default async function handler(req, res) {
           listings: [],
           rawItems: [],
           reason: ebayDiagnosticError.message,
+          http_status: r.status,
+          total_results: Number.isFinite(Number(d?.total)) ? Number(d.total) : null,
           diagnostic: {
             stage: ebayDiagnosticError.stage,
             status: ebayDiagnosticError.status,
@@ -2709,14 +2713,14 @@ export default async function handler(req, res) {
         };
       }
 
+      const rawItems = Array.isArray(d.itemSummaries) ? d.itemSummaries : [];
       return {
         enabled: true,
         query,
         marketplace,
-        rawItems:
-          Array.isArray(d.itemSummaries)
-            ? d.itemSummaries
-            : []
+        http_status: r.status,
+        total_results: Number.isFinite(Number(d?.total)) ? Number(d.total) : null,
+        rawItems
       };
     }
 
@@ -4622,6 +4626,17 @@ export default async function handler(req, res) {
           built.queries,
         discovery_queries:
           searchQueries,
+        // V15.5.23: bounded diagnostic trace; excludes listing titles, seller data and credentials.
+        search_trace: results.slice(0, 12).map(result => ({
+          marketplace: String(result?.marketplace || "").slice(0, 20),
+          query: String(result?.query || "").slice(0, 120),
+          enabled: Boolean(result?.enabled),
+          http_status: Number.isFinite(Number(result?.http_status)) ? Number(result.http_status) : (Number.isFinite(Number(result?.diagnostic?.status)) ? Number(result.diagnostic.status) : null),
+          raw_count: Array.isArray(result?.rawItems) ? result.rawItems.length : 0,
+          total_results: Number.isFinite(Number(result?.total_results)) ? Number(result.total_results) : null,
+          error_stage: result?.diagnostic?.stage || null,
+          error_code: result?.diagnostic?.code || null
+        })),
         successful_queries:
           successfulQueries,
         near_match_queries:
@@ -6051,6 +6066,12 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
         slowest_ms: Number(timings.ebay_item_details_slowest_ms || 0),
         failed: Number(timings.ebay_item_details_failed || 0),
         trace: ebayItemDetailsTrace
+      },
+      ebay_search: {
+        requested_queries: Array.isArray(ebay?.discovery_queries) ? ebay.discovery_queries.length : 0,
+        successful_queries: Array.isArray(ebay?.successful_queries) ? ebay.successful_queries.length : 0,
+        raw_total: Array.isArray(ebay?.search_trace) ? ebay.search_trace.reduce((sum, x) => sum + (Number(x.raw_count) || 0), 0) : 0,
+        trace: Array.isArray(ebay?.search_trace) ? ebay.search_trace.slice(0, 12) : []
       }
     };
 
