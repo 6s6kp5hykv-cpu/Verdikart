@@ -112,9 +112,14 @@
     Teknisk feillogg – viser de siste hendelsene fra backend.
   </div>
 
-  <button id="refresh" type="button">
-    Oppdater diagnostikk
-  </button>
+  <div id="loginBox" class="status">
+    <p>Logg inn med administratorkontoen for å vise diagnostikk.</p>
+    <p><label for="email">E-post</label><br><input id="email" type="email" autocomplete="username" style="width:100%;padding:10px;box-sizing:border-box"></p>
+    <p><label for="password">Passord</label><br><input id="password" type="password" autocomplete="current-password" style="width:100%;padding:10px;box-sizing:border-box"></p>
+    <button id="login" type="button">Logg inn</button>
+    <button id="logout" type="button" hidden>Logg ut</button>
+  </div>
+  <button id="refresh" type="button" hidden>Oppdater diagnostikk</button>
 
   <div id="status" class="status">
     Laster...
@@ -123,7 +128,14 @@
   <div id="logs"></div>
 </main>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
+  const SUPABASE_URL = 'https://tiqwlxpclqqncykdwvjf.supabase.co';
+  const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_2lQgSsDQRbOO4DIg6pbDsg_5n1lfGKS';
+  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+  const loginBtn = document.getElementById('login');
+  const logoutBtn = document.getElementById('logout');
+  const loginBox = document.getElementById('loginBox');
   const statusEl = document.getElementById("status");
   const logsEl = document.getElementById("logs");
   const refreshBtn = document.getElementById("refresh");
@@ -236,22 +248,23 @@
     statusEl.textContent = "Laster diagnostikk...";
 
     try {
-      const response = await fetch("/api/diagnostics?limit=100", {
-        cache: "no-store"
+      const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
+      if (sessionError) throw sessionError;
+      const token = sessionData?.session?.access_token;
+      if (!token) throw new Error('Logg inn med administratorkontoen først.');
+      const response = await fetch("/api/admin-diagnostics", {
+        cache: "no-store",
+        headers: { Authorization: 'Bearer ' + token }
       });
 
       const data = await response.json();
 
       if (!response.ok || !data.ok) {
-        throw new Error(
-          data?.error?.message || "Kunne ikke hente diagnostikk."
-        );
+        throw new Error(data?.error || data?.detail || "Kunne ikke hente diagnostikk.");
       }
-
-      statusEl.textContent =
-        `OK – ${data.count} hendelser. Diagnostikkversjon ${data.diagnostic_version}.`;
-
-      render(data.rows || []);
+      const rows = Array.isArray(data.events) ? data.events : [];
+      statusEl.textContent = `OK – ${rows.length} hendelser. Beskyttet admin-endepunkt.`;
+      render(rows);
     } catch (error) {
       statusEl.textContent =
         "❌ Diagnostikk kunne ikke hentes: " +
@@ -263,9 +276,44 @@
     }
   }
 
-  refreshBtn.addEventListener("click", loadDiagnostics);
-
-  loadDiagnostics();
+  loginBtn.addEventListener('click', async () => {
+    loginBtn.disabled = true;
+    try {
+      const { error } = await supabaseClient.auth.signInWithPassword({
+        email: document.getElementById('email').value.trim(),
+        password: document.getElementById('password').value
+      });
+      if (error) throw error;
+      await loadDiagnostics();
+    } catch (error) {
+      statusEl.textContent = 'Innlogging/tilgang feilet: ' + (error?.message || String(error));
+    } finally { loginBtn.disabled = false; }
+  });
+  logoutBtn.addEventListener('click', async () => {
+    await supabaseClient.auth.signOut();
+    logsEl.innerHTML = '';
+    statusEl.textContent = 'Logget ut.';
+    refreshBtn.hidden = true;
+    logoutBtn.hidden = true;
+    loginBtn.hidden = false;
+  });
+  refreshBtn.addEventListener('click', loadDiagnostics);
+  supabaseClient.auth.onAuthStateChange((event, session) => {
+    const loggedIn = Boolean(session?.access_token);
+    refreshBtn.hidden = !loggedIn;
+    logoutBtn.hidden = !loggedIn;
+    loginBtn.hidden = loggedIn;
+    if (!loggedIn) loginBox.hidden = false;
+  });
+  (async () => {
+    const { data } = await supabaseClient.auth.getSession();
+    if (data?.session?.access_token) {
+      refreshBtn.hidden = false; logoutBtn.hidden = false; loginBtn.hidden = true;
+      await loadDiagnostics();
+    } else {
+      statusEl.textContent = 'Logg inn med administratorkontoen for å hente diagnostikk.';
+    }
+  })();
 </script>
 </body>
 </html>
