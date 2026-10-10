@@ -1,5 +1,8 @@
-// Kistefunn analysebackend v15.5.23 EBAY SEARCH DIAGNOSTICS CANDIDATE
-// V15.5.23: Diagnostic-only eBay search trace per marketplace/query: HTTP status, raw count, total, and error stage/code. No valuation/filter logic changes.
+// Kistefunn analysebackend v15.5.34 TEST 7 CANDIDATE
+// V15.5.34 TEST 7: Generalizes exact-reference web-search instructions; no valuation/filter algorithm changes.
+// Based on v15.5.33-account-deletion-safe. Not approved for production.
+// V15.5.31: Expands vehicle accessory/parts rejection after adversarial local regression tests. Not deployed; requires Preview validation.
+// V15.5.28: Persists bounded successful-analysis diagnostic_detail to Supabase through diag-v3.
 // V15.5.22: Audit-fix candidate baseline.
 // V15.5.21: Fail-closed positive-price guards for AI/eBay/web/FINN source combination; zero-evidence eBay gate; OpenAI failure timing fix. Deploy candidate only; not deployed.
 // V15.5.6 TEST: Korrigerer diagnostikkfeltet for årskrav. Eksakt verdigrunnlag krever dokumentert årstreff, men treffet kan komme fra title_exact, aspect_exact eller description_exact; den gamle diagnostikketiketten for et rent tittelårskrav var derfor misvisende.
@@ -161,13 +164,13 @@ export default async function handler(req, res) {
         code: errorCode || "openai_request_failed",
         message: errorMessage,
         http_status: status,
-        backend_version: "v15.5.23-ebay-search-diagnostics-candidate",
+        backend_version: "v15.5.33-account-deletion-safe",
         model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
         request_id: requestId,
         duration_ms: Math.round(performance.now() - identificationStartedAt),
         metadata: {
           source: "backend",
-          diagnostic_version: "v15.5.22",
+          diagnostic_version: "diag-v3",
           error_code: errorCode,
           error_type: errorType,
           error_param: error?.error_param || null,
@@ -185,7 +188,7 @@ export default async function handler(req, res) {
         error_param: error?.error_param || null,
         request_id: requestId,
         status,
-        version: "v15.5.23-ebay-search-diagnostics-candidate"
+        version: "v15.5.33-account-deletion-safe"
       });
     }
 
@@ -749,6 +752,15 @@ export default async function handler(req, res) {
           .test(s)
       ) {
         return "console";
+      }
+
+      // V15.5.29: identify complete motor vehicles as a separate market category.
+      // This lets the listing gate reject car parts even when brand/model text matches.
+      if (
+        /\b(car|cars|bil|biler|vehicle|vehicles|automobile|automotive|suv|crossover|sedan|hatchback|station wagon|estate car|pickup truck|personbil|varebil|qashqai)\b/
+          .test(s)
+      ) {
+        return "vehicle";
       }
 
       if (
@@ -1826,6 +1838,46 @@ export default async function handler(req, res) {
       }
 
       /* -------------------------------------------------------
+         MOTORVEHICLE – COMPLETE VEHICLE VS. PARTS
+         ------------------------------------------------------- */
+
+      if (category === "vehicle") {
+        const vehiclePartPatterns = [
+          /\b(cabin|pollen|interior|air|oil|fuel)\s+filter\b/,
+          /\b(wiper|windscreen wiper|windshield wiper)\b/,
+          /\b(wiper|windshield|windscreen)\s*(cover|cap|trim|cowl)\b/,
+          /\b(key|remote|fob)\s*(cover|case|shell|button|replacement)\b/,
+          /\b(keyring|key ring|keychain|key chain)\b/,
+          /\b(clip|clips|fastener|retainer|trim clip)\b/,
+          /\b(bumper|mirror|headlight|tail light|taillight|door handle|grille|radiator|brake pad|brake disc|wheel bearing|spark plug|floor mat|seat cover)\b/,
+          /\b(roof rack|roof bars?|roof box|roof carrier|tow ?bar|trailer hitch|winter wheels?|alloy wheels?|steel wheels?|wheel set|tyres?|tires?|car battery|vehicle battery|gearbox|transmission|engine only|spare key|replacement key|key fob|keyless remote|car mats?|floor mats?|workshop manual|owners? manual)\b/,
+          /\b(for parts|parts only|part only|spare part|replacement part|repair part)\b/
+        ];
+
+        if (vehiclePartPatterns.some(pattern => pattern.test(t))) {
+          return {
+            score: -100,
+            accepted: false,
+            near_match: false,
+            year_match: year ? "missing" : "not_required",
+            reason: "bildel/tilbehør – ikke komplett kjøretøy"
+          };
+        }
+
+        // Listings must indicate a complete vehicle, not just repeat its model name.
+        const completeVehicleSignals = /\b(automatic|manual|mileage|miles|km|km\/h|diesel|petrol|gasoline|hybrid|electric|awd|4wd|2wd|hatchback|sedan|estate|wagon|suv|crossover|personbil|varebil|kjørt|kilometer|drivstoff|automat|manuell|registrert|regnr|registration)\b/.test(t);
+        if (!completeVehicleSignals) {
+          return {
+            score: -100,
+            accepted: false,
+            near_match: false,
+            year_match: year ? "missing" : "not_required",
+            reason: "ikke dokumentert komplett kjøretøy"
+          };
+        }
+      }
+
+      /* -------------------------------------------------------
          KONSOLL
          ------------------------------------------------------- */
 
@@ -2629,7 +2681,8 @@ export default async function handler(req, res) {
           (
             category === "guitar" ||
             category === "bicycle" ||
-            category === "console"
+            category === "console" ||
+            category === "vehicle"
           )
             ? "category_gate"
             : "exact"
@@ -4854,10 +4907,9 @@ export default async function handler(req, res) {
                   "exact",
                 year_match:
                   item.year_match,
+                // v15.5.23: finalPoolKeys is a Set of listing objects; use object identity.
                 valuation_included:
-                  finalPoolKeys.has(
-                    `${String(item.title || "").toLowerCase().trim()}|${Math.round(Number(item.nok) || 0)}|${String(item.url || "")}`
-                  ),
+                  finalPoolKeys.has(item),
                 valuation_exclusion_reason:
                   valuationExcluded.some(x => x === item)
                     ? "prisavvik filtrert fra verdiberegningen"
@@ -5061,7 +5113,7 @@ Eksakt referanse: ${code}
 KRITISK MATCH-REGEL:
 - En kilde teller bare hvis siden/listingen selv viser den eksakte referansen "${code}".
 - ${code} må være identisk med referansen, med bindestrek, mellomrom og store/små bokstaver ignorert.
-- Ikke bruk 5304, 5204, 5905 eller andre Patek Philippe Grand Complications som erstatning.
+- Ikke bruk andre modellnumre, varianter eller produkter som erstatning for den eksakte referansen.
 - Ikke bruk generelle artikler, auksjonsestimater, prisguider, forum eller sider uten en faktisk oppgitt pris.
 - Prioriter seriøse forhandlere, markedsplasser og produsent.
 - Se etter sider der både "${code}" og en konkret pris faktisk finnes.
@@ -6075,12 +6127,39 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       }
     };
 
+    // Persist a bounded summary of successful runs. The response still returns
+    // diagnostic_detail to the frontend; this adds a durable server-side trace.
+    await writeBackendDiagnostic({
+      level: "info",
+      stage: "analysis_completed",
+      code: "analysis_completed",
+      message: "Analyse fullført; eBay- og markedsdiagnostikk lagret.",
+      http_status: 200,
+      backend_version: "v15.5.33-account-deletion-safe",
+      model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
+      request_id: timings.openai_diagnostics?.request_id || null,
+      duration_ms: timings.total_backend_ms,
+      metadata: {
+        source: "backend",
+        diagnostic_version: "diag-v3",
+        diagnostic_detail: diagnosticDetail,
+        timings: {
+          openai_identification_ms: timings.openai_identification_ms,
+          ebay_oauth_ms: timings.ebay_oauth_ms,
+          ebay_search_ms: timings.ebay_search_ms,
+          ebay_item_details_ms: timings.ebay_item_details_ms,
+          market_processing_ms: timings.market_processing_ms,
+          total_backend_ms: timings.total_backend_ms
+        }
+      }
+    });
+
     /* ---------------------------------------------------------
        8. RETURNER
        --------------------------------------------------------- */
 
     return res.status(200).json({
-      version: "v15.5.23-ebay-search-diagnostics-candidate",
+      version: "v15.5.33-account-deletion-safe",
       timings,
       diagnostic_detail: diagnosticDetail,
       name:
@@ -6234,7 +6313,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
         "v15.5.7-test-hard-model-reference-gate-structured-target-identity-final-title-gate",
 
       backend_release_version:
-        "v15.5.23-ebay-search-diagnostics-candidate",
+        "v15.5.33-account-deletion-safe",
 
       buy_opportunities:
         buy_opportunities,
@@ -6279,12 +6358,12 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       code: e?.error_code || "analysis_unhandled_exception",
       message: e?.message || "Ukjent feil",
       http_status: 500,
-      backend_version: "v15.5.23-ebay-search-diagnostics-candidate",
+      backend_version: "v15.5.33-account-deletion-safe",
       model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
       request_id: e?.request_id || null,
       metadata: {
         source: "backend",
-        diagnostic_version: "v15.5.22",
+        diagnostic_version: "diag-v3",
         error_code: e?.error_code || null,
         error_type: e?.error_type || null,
         error_param: e?.error_param || null,
@@ -6300,7 +6379,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       error_type: e?.error_type || null,
       request_id: e?.request_id || null,
       status: 500,
-      version: "v15.5.23-ebay-search-diagnostics-candidate"
+      version: "v15.5.33-account-deletion-safe"
     });
   }
 }
