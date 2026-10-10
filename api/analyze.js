@@ -4905,10 +4905,9 @@ export default async function handler(req, res) {
                   "exact",
                 year_match:
                   item.year_match,
+                // v15.5.23: finalPoolKeys is a Set of listing objects; use object identity.
                 valuation_included:
-                  finalPoolKeys.has(
-                    `${String(item.title || "").toLowerCase().trim()}|${Math.round(Number(item.nok) || 0)}|${String(item.url || "")}`
-                  ),
+                  finalPoolKeys.has(item),
                 valuation_exclusion_reason:
                   valuationExcluded.some(x => x === item)
                     ? "prisavvik filtrert fra verdiberegningen"
