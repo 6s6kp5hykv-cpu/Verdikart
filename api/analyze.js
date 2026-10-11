@@ -1,4 +1,4 @@
-// Kistefunn analysebackend v15.5.41-test7.7-market-pipeline-stage-diagnostics
+// Kistefunn analysebackend v15.5.42-test7.8-market-pipeline-scope-fix
 // V15.5.40 TEST 7.6: Adds bounded eBay post-search pipeline counts to diagnostics only; no search, filter, valuation or UI behavior changes.
 // V15.5.38 TEST 7.3: Supports text-only identification and market search when no image is provided.
 // V15.5.36 TEST 7.1: Prioritizes explicitly requested guitar colors without requiring color when omitted.
@@ -103,6 +103,8 @@ export default async function handler(req, res) {
   try {
     // V14.25: Intern tidsmåling. Kun måling – ingen endring av markeds-/filterlogikk.
     const backendStartedAt = performance.now();
+    // V15.5.42 TEST7.8: declare at request scope so response diagnostics can read it.
+    let ebayPipelineStageTrace = [];
     const timings = {
       openai_identification_ms: null,
       ebay_oauth_ms: null,
@@ -3466,9 +3468,9 @@ export default async function handler(req, res) {
        * der "Year Manufactured" ofte ligger som et item aspect og ikke i tittelen.
        */
       const ebayItemDetailsStartedAt = performance.now();
-      // V15.5.41 TEST7.7: stage-level pipeline diagnostics. Counts only;
+      // V15.5.42 TEST7.8: stage-level pipeline diagnostics scope fix. Counts only;
       // never change acceptance rules or log credentials/seller information.
-      const ebayPipelineStageTrace = [];
+      ebayPipelineStageTrace = [];
       const preparedNested =
         await Promise.all(
           results.map(
