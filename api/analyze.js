@@ -1,11 +1,11 @@
-// Kistefunn analysebackend v15.5.40-test7.6-market-filter-diagnostics
+// Kistefunn analysebackend v15.5.41-test7.7-market-pipeline-stage-diagnostics
 // V15.5.40 TEST 7.6: Adds bounded eBay post-search pipeline counts to diagnostics only; no search, filter, valuation or UI behavior changes.
 // V15.5.38 TEST 7.3: Supports text-only identification and market search when no image is provided.
 // V15.5.36 TEST 7.1: Prioritizes explicitly requested guitar colors without requiring color when omitted.
 // V15.5.34 TEST 7.1: Fixes NOK price parsing for spaced ranges and aligns runtime backend version reporting.
 // Based on v15.5.33-account-deletion-safe. Not approved for production.
 // V15.5.31: Expands vehicle accessory/parts rejection after adversarial local regression tests. Not deployed; requires Preview validation.
-// V15.5.28: Persists bounded successful-analysis diagnostic_detail to Supabase through diag-v3.
+// V15.5.28: Persists bounded successful-analysis diagnostic_detail to Supabase through diag-v4.
 // V15.5.22: Audit-fix candidate baseline.
 // V15.5.21: Fail-closed positive-price guards for AI/eBay/web/FINN source combination; zero-evidence eBay gate; OpenAI failure timing fix. Deploy candidate only; not deployed.
 // V15.5.6 TEST: Korrigerer diagnostikkfeltet for årskrav. Eksakt verdigrunnlag krever dokumentert årstreff, men treffet kan komme fra title_exact, aspect_exact eller description_exact; den gamle diagnostikketiketten for et rent tittelårskrav var derfor misvisende.
@@ -168,13 +168,13 @@ export default async function handler(req, res) {
         code: errorCode || "openai_request_failed",
         message: errorMessage,
         http_status: status,
-        backend_version: "v15.5.40-test7.6-market-filter-diagnostics",
+        backend_version: "v15.5.41-test7.7-market-pipeline-stage-diagnostics",
         model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
         request_id: requestId,
         duration_ms: Math.round(performance.now() - identificationStartedAt),
         metadata: {
           source: "backend",
-          diagnostic_version: "diag-v3",
+          diagnostic_version: "diag-v4",
           error_code: errorCode,
           error_type: errorType,
           error_param: error?.error_param || null,
@@ -192,7 +192,7 @@ export default async function handler(req, res) {
         error_param: error?.error_param || null,
         request_id: requestId,
         status,
-        version: "v15.5.40-test7.6-market-filter-diagnostics"
+        version: "v15.5.41-test7.7-market-pipeline-stage-diagnostics"
       });
     }
 
@@ -3466,6 +3466,9 @@ export default async function handler(req, res) {
        * der "Year Manufactured" ofte ligger som et item aspect og ikke i tittelen.
        */
       const ebayItemDetailsStartedAt = performance.now();
+      // V15.5.41 TEST7.7: stage-level pipeline diagnostics. Counts only;
+      // never change acceptance rules or log credentials/seller information.
+      const ebayPipelineStageTrace = [];
       const preparedNested =
         await Promise.all(
           results.map(
@@ -3478,6 +3481,35 @@ export default async function handler(req, res) {
                 Array.isArray(result.rawItems)
                   ? result.rawItems
                   : [];
+              const stage = {
+                marketplace: String(result?.marketplace || '').slice(0, 20),
+                query: String(result?.query || '').slice(0, 120),
+                raw_count: rawItems.length,
+                with_title: 0,
+                with_item_id: 0,
+                with_url: 0,
+                with_price_value: 0,
+                with_currency: 0,
+                with_price_and_currency: 0,
+                score_accepted: 0,
+                score_near_match: 0,
+                score_rejected: 0,
+                prepared_count: 0,
+                prepare_rejected_count: 0,
+                prepared_sample: []
+              };
+              for (const item of rawItems) {
+                if (String(item?.title || '').trim()) stage.with_title += 1;
+                if (String(item?.itemId || '').trim()) stage.with_item_id += 1;
+                if (String(item?.itemWebUrl || '').trim()) stage.with_url += 1;
+                if (Number.isFinite(Number(item?.price?.value))) stage.with_price_value += 1;
+                if (String(item?.price?.currency || '').trim()) stage.with_currency += 1;
+                if (Number.isFinite(Number(item?.price?.value)) && String(item?.price?.currency || '').trim()) stage.with_price_and_currency += 1;
+                const scored = scoreListing(String(item?.title || ''), { ...built, marketplace: result.marketplace });
+                if (scored?.accepted) stage.score_accepted += 1;
+                else if (scored?.near_match) stage.score_near_match += 1;
+                else stage.score_rejected += 1;
+              }
 
               const ranked = rawItems
                 .map(item => {
@@ -3546,6 +3578,16 @@ export default async function handler(req, res) {
                   );
 
                 if (prepared) {
+                  stage.prepared_count += 1;
+                  if (stage.prepared_sample.length < 3) {
+                    stage.prepared_sample.push({
+                      title: String(prepared.title || '').slice(0, 100),
+                      price_value: Number(prepared.price?.value) || null,
+                      currency: String(prepared.price?.currency || '').slice(0, 8),
+                      nok: Number(prepared.nok) || null,
+                      match_tier: String(prepared.match_tier || prepared.valuation_tier || '').slice(0, 20)
+                    });
+                  }
                   // V12.2: siste, uavhengige sikkerhetsnett.
                   // Squier/FSR/Special/62 osv. skal ikke eksistere i
                   // exact, same-model eller nærtreff når målet er en
@@ -3559,9 +3601,11 @@ export default async function handler(req, res) {
                   }
 
                   list.push(prepared);
+                } else {
+                  stage.prepare_rejected_count += 1;
                 }
               }
-
+              ebayPipelineStageTrace.push(stage);
               return list;
             }
           )
@@ -6244,6 +6288,8 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
         trace: Array.isArray(ebay?.search_trace) ? ebay.search_trace.slice(0, 12) : []
       },
       ebay_market_pipeline: {
+        stage_trace_entries: ebayPipelineStageTrace.length,
+        stage_trace: ebayPipelineStageTrace.slice(0, 12),
         total_candidates_after_processing: Number.isFinite(Number(ebay?.total_candidates)) ? Number(ebay.total_candidates) : null,
         listing_identity_deduped_count: Number.isFinite(Number(ebay?.listing_identity_deduped_count)) ? Number(ebay.listing_identity_deduped_count) : null,
         listing_identity_missing_count: Number.isFinite(Number(ebay?.listing_identity_missing_count)) ? Number(ebay.listing_identity_missing_count) : null,
@@ -6270,13 +6316,13 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       code: "analysis_completed",
       message: "Analyse fullført; eBay- og markedsdiagnostikk lagret.",
       http_status: 200,
-      backend_version: "v15.5.40-test7.6-market-filter-diagnostics",
+      backend_version: "v15.5.41-test7.7-market-pipeline-stage-diagnostics",
       model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
       request_id: timings.openai_diagnostics?.request_id || null,
       duration_ms: timings.total_backend_ms,
       metadata: {
         source: "backend",
-        diagnostic_version: "diag-v3",
+        diagnostic_version: "diag-v4",
         diagnostic_detail: diagnosticDetail,
         timings: {
           openai_identification_ms: timings.openai_identification_ms,
@@ -6294,7 +6340,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
        --------------------------------------------------------- */
 
     return res.status(200).json({
-      version: "v15.5.40-test7.6-market-filter-diagnostics",
+      version: "v15.5.41-test7.7-market-pipeline-stage-diagnostics",
       timings,
       diagnostic_detail: diagnosticDetail,
       name:
@@ -6448,7 +6494,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
         "v15.5.7-test-hard-model-reference-gate-structured-target-identity-final-title-gate",
 
       backend_release_version:
-        "v15.5.40-test7.6-market-filter-diagnostics",
+        "v15.5.41-test7.7-market-pipeline-stage-diagnostics",
 
       buy_opportunities:
         buy_opportunities,
@@ -6493,12 +6539,12 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       code: e?.error_code || "analysis_unhandled_exception",
       message: e?.message || "Ukjent feil",
       http_status: 500,
-      backend_version: "v15.5.40-test7.6-market-filter-diagnostics",
+      backend_version: "v15.5.41-test7.7-market-pipeline-stage-diagnostics",
       model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
       request_id: e?.request_id || null,
       metadata: {
         source: "backend",
-        diagnostic_version: "diag-v3",
+        diagnostic_version: "diag-v4",
         error_code: e?.error_code || null,
         error_type: e?.error_type || null,
         error_param: e?.error_param || null,
@@ -6514,7 +6560,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       error_type: e?.error_type || null,
       request_id: e?.request_id || null,
       status: 500,
-      version: "v15.5.40-test7.6-market-filter-diagnostics"
+      version: "v15.5.41-test7.7-market-pipeline-stage-diagnostics"
     });
   }
 }
