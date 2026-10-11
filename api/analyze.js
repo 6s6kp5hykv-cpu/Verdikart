@@ -1,4 +1,4 @@
-// Kistefunn analysebackend v15.5.38-text-search
+// Kistefunn analysebackend v15.5.39-test7.4-console-search-fallback
 // V15.5.38 TEST 7.3: Supports text-only identification and market search when no image is provided.
 // V15.5.36 TEST 7.1: Prioritizes explicitly requested guitar colors without requiring color when omitted.
 // V15.5.34 TEST 7.1: Fixes NOK price parsing for spaced ranges and aligns runtime backend version reporting.
@@ -167,7 +167,7 @@ export default async function handler(req, res) {
         code: errorCode || "openai_request_failed",
         message: errorMessage,
         http_status: status,
-        backend_version: "v15.5.38-text-search",
+        backend_version: "v15.5.39-test7.4-console-search-fallback",
         model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
         request_id: requestId,
         duration_ms: Math.round(performance.now() - identificationStartedAt),
@@ -191,7 +191,7 @@ export default async function handler(req, res) {
         error_param: error?.error_param || null,
         request_id: requestId,
         status,
-        version: "v15.5.38-text-search"
+        version: "v15.5.39-test7.4-console-search-fallback"
       });
     }
 
@@ -1225,9 +1225,52 @@ export default async function handler(req, res) {
         }
       }
 
+      /*
+       * V15.5.39 TEST 7.4 — CONSOLE DISCOVERY FALLBACKS
+       * Text-only identification can correctly name a console while a single
+       * exact phrase returns no Browse API results in a given marketplace.
+       * Keep the exact model query first, then try a few controlled equivalent
+       * phrases. Existing console part/accessory and model-variant gates remain
+       * authoritative; these are discovery queries, not relaxed acceptance rules.
+       */
+      const consoleFallbacks = [];
+      if (category === "console") {
+        const consoleIdentity = [brand, model].filter(Boolean).join(" ").trim();
+        const identityLower = consoleIdentity.toLowerCase();
+        const isNintendoSwitch = /\bnintendo\b/.test(identityLower) && /\bswitch\b/.test(identityLower);
+        const isOled = /\boled\b/.test(`${identityLower} ${parsed.name || ""}`.toLowerCase());
+
+        if (isNintendoSwitch && isOled) {
+          consoleFallbacks.push("Nintendo Switch OLED console");
+          consoleFallbacks.push("Nintendo Switch OLED model");
+          consoleFallbacks.push("Switch OLED Nintendo console");
+        } else if (isNintendoSwitch) {
+          consoleFallbacks.push("Nintendo Switch console");
+          consoleFallbacks.push("Nintendo Switch system");
+        } else if (brand && model) {
+          consoleFallbacks.push(`${brand} ${model} console`);
+        }
+      }
+
+      const orderedDiscovery = [];
+      const orderedSeen = new Set();
+      const addOrdered = value => {
+        const q = compact(value, 7);
+        if (!q || q.length < 4) return;
+        const key = q.toLowerCase();
+        if (orderedSeen.has(key)) return;
+        orderedSeen.add(key);
+        orderedDiscovery.push(q);
+      };
+      // Preserve the most specific original query, insert fallback variants,
+      // then keep any remaining AI/model-generated discovery queries.
+      if (discovery.length) addOrdered(discovery[0]);
+      for (const q of consoleFallbacks) addOrdered(q);
+      for (const q of discovery.slice(1)) addOrdered(q);
+
       return {
         queries: out,
-        discovery_queries: discovery.slice(0, 4),
+        discovery_queries: orderedDiscovery.slice(0, 4),
         brand,
         model,
         type,
@@ -6207,7 +6250,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       code: "analysis_completed",
       message: "Analyse fullført; eBay- og markedsdiagnostikk lagret.",
       http_status: 200,
-      backend_version: "v15.5.38-text-search",
+      backend_version: "v15.5.39-test7.4-console-search-fallback",
       model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
       request_id: timings.openai_diagnostics?.request_id || null,
       duration_ms: timings.total_backend_ms,
@@ -6231,7 +6274,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
        --------------------------------------------------------- */
 
     return res.status(200).json({
-      version: "v15.5.38-text-search",
+      version: "v15.5.39-test7.4-console-search-fallback",
       timings,
       diagnostic_detail: diagnosticDetail,
       name:
@@ -6385,7 +6428,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
         "v15.5.7-test-hard-model-reference-gate-structured-target-identity-final-title-gate",
 
       backend_release_version:
-        "v15.5.38-text-search",
+        "v15.5.39-test7.4-console-search-fallback",
 
       buy_opportunities:
         buy_opportunities,
@@ -6430,7 +6473,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       code: e?.error_code || "analysis_unhandled_exception",
       message: e?.message || "Ukjent feil",
       http_status: 500,
-      backend_version: "v15.5.38-text-search",
+      backend_version: "v15.5.39-test7.4-console-search-fallback",
       model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
       request_id: e?.request_id || null,
       metadata: {
@@ -6451,7 +6494,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       error_type: e?.error_type || null,
       request_id: e?.request_id || null,
       status: 500,
-      version: "v15.5.38-text-search"
+      version: "v15.5.39-test7.4-console-search-fallback"
     });
   }
 }
