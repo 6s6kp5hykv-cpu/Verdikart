@@ -30,3 +30,10 @@ TEST 7.3 CANDIDATE — TEXT-ONLY SEARCH
 - Backend accepts description-only requests; OpenAI input omits input_image when absent.
 - No Main/production deployment performed.
 - Requires Preview verification with text-only, image-only, and image+text cases.
+
+
+TEST 7.4 LOCAL CHANGE
+- Added controlled console-specific eBay discovery fallback queries for Nintendo Switch OLED.
+- Kept original specific query first.
+- No acceptance/relevance filter was weakened.
+- Live eBay behavior remains unverified; Preview diagnostics must show raw results and rejection reasons.

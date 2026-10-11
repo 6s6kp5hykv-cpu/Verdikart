@@ -45,3 +45,13 @@ Frontend: v15.5.27-test7.2-text-search
 Nytt: Brukeren kan identifisere/søke etter en gjenstand ved å skrive merke/modell i beskrivelsesfeltet uten å laste opp bilde. Knappen aktiveres når bilde eller tekst er til stede. Backend godtar tekst alene, og OpenAI får ikke et input_image-felt når bilde mangler. Prompten instruerer modellen til ikke å påstå visuelle observasjoner i tekstmodus.
 
 Teststatus: lokale syntaks- og pakkekontroller bestått. Ikke deployet. Må verifiseres i Preview med (1) tekst alene, (2) bilde alene, (3) bilde + tekst. Kontroller også at tekst uten oppgitt farge ikke snevrer inn fargesøket.
+
+
+TEST 7.4 — KONSOLL-SØK FALLBACK
+Backend: v15.5.39-test7.4-console-search-fallback
+
+Problem observed in Preview: text-only Nintendo Switch OLED identification returned an AI estimate but zero comparable eBay listings. The displayed query was only “Nintendo Switch OLED”. This does not prove whether Browse API returned zero raw hits or later relevance gates rejected them; diagnostic data is needed to distinguish those cases.
+
+Candidate change: for recognized Nintendo Switch OLED targets, preserve the exact model query first and add up to three controlled discovery alternatives (“Nintendo Switch OLED console”, “Nintendo Switch OLED model”, “Switch OLED Nintendo console”). Existing console part/accessory and model-variant rejection gates are unchanged. No production deployment.
+
+Required Preview validation: check the generated discovery_queries and raw/accepted eBay counts in diagnostics. If raw results are zero, investigate eBay Browse API/marketplace/query behavior. If raw results exist but accepted count is zero, inspect rejection reasons before changing filters.
