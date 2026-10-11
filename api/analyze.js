@@ -1,4 +1,5 @@
-// Kistefunn analysebackend v15.5.42-test7.8-market-pipeline-scope-fix
+// Kistefunn analysebackend v15.5.43-test7.9-rejection-diagnostics
+// V15.5.43 TEST 7.9: Adds bounded scoring rejection reason counts and up to 5 title-only examples per market/query trace; scoring/acceptance behavior unchanged.
 // V15.5.40 TEST 7.6: Adds bounded eBay post-search pipeline counts to diagnostics only; no search, filter, valuation or UI behavior changes.
 // V15.5.38 TEST 7.3: Supports text-only identification and market search when no image is provided.
 // V15.5.36 TEST 7.1: Prioritizes explicitly requested guitar colors without requiring color when omitted.
@@ -3496,6 +3497,8 @@ export default async function handler(req, res) {
                 score_accepted: 0,
                 score_near_match: 0,
                 score_rejected: 0,
+                score_rejection_reasons: {},
+                score_rejected_sample: [],
                 prepared_count: 0,
                 prepare_rejected_count: 0,
                 prepared_sample: []
@@ -3508,9 +3511,25 @@ export default async function handler(req, res) {
                 if (String(item?.price?.currency || '').trim()) stage.with_currency += 1;
                 if (Number.isFinite(Number(item?.price?.value)) && String(item?.price?.currency || '').trim()) stage.with_price_and_currency += 1;
                 const scored = scoreListing(String(item?.title || ''), { ...built, marketplace: result.marketplace });
-                if (scored?.accepted) stage.score_accepted += 1;
-                else if (scored?.near_match) stage.score_near_match += 1;
-                else stage.score_rejected += 1;
+                if (scored?.accepted) {
+                  stage.score_accepted += 1;
+                } else if (scored?.near_match) {
+                  stage.score_near_match += 1;
+                } else {
+                  stage.score_rejected += 1;
+                  const reason = String(scored?.reason || 'ukjent avvisningsgrunn').slice(0, 100);
+                  stage.score_rejection_reasons[reason] = (stage.score_rejection_reasons[reason] || 0) + 1;
+                  // Diagnostics only: bounded title-only samples; no seller data or credentials.
+                  if (stage.score_rejected_sample.length < 5) {
+                    stage.score_rejected_sample.push({
+                      title: String(item?.title || '').slice(0, 140),
+                      score: Number.isFinite(Number(scored?.score)) ? Number(scored.score) : null,
+                      reason,
+                      year_match: String(scored?.year_match || '').slice(0, 24),
+                      variant_match: String(scored?.variant_match || '').slice(0, 40)
+                    });
+                  }
+                }
               }
 
               const ranked = rawItems
