@@ -1,4 +1,5 @@
-// Kistefunn analysebackend v15.5.36-test7.1
+// Kistefunn analysebackend v15.5.38-text-search
+// V15.5.38 TEST 7.3: Supports text-only identification and market search when no image is provided.
 // V15.5.36 TEST 7.1: Prioritizes explicitly requested guitar colors without requiring color when omitted.
 // V15.5.34 TEST 7.1: Fixes NOK price parsing for spaced ranges and aligns runtime backend version reporting.
 // Based on v15.5.33-account-deletion-safe. Not approved for production.
@@ -128,16 +129,16 @@ export default async function handler(req, res) {
     let priceInvestigations = [];
     const { image, description } = req.body || {};
 
-    if (!image || typeof image !== "string") {
-      return res.status(400).json({ error: "Mangler bilde" });
-    }
-
-    if (!image.startsWith("data:image/")) {
-      return res.status(400).json({ error: "Ugyldig bildeformat" });
-    }
-
     const userDescription =
       typeof description === "string" ? description.trim() : "";
+    const hasImage = typeof image === "string" && image.startsWith("data:image/");
+
+    if (image && !hasImage) {
+      return res.status(400).json({ error: "Ugyldig bildeformat" });
+    }
+    if (!hasImage && !userDescription) {
+      return res.status(400).json({ error: "Skriv en beskrivelse eller legg til et bilde." });
+    }
 
     /* ---------------------------------------------------------
        1. IDENTIFISER MED OPENAI
@@ -166,7 +167,7 @@ export default async function handler(req, res) {
         code: errorCode || "openai_request_failed",
         message: errorMessage,
         http_status: status,
-        backend_version: "v15.5.36-test7.1",
+        backend_version: "v15.5.38-text-search",
         model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
         request_id: requestId,
         duration_ms: Math.round(performance.now() - identificationStartedAt),
@@ -190,7 +191,7 @@ export default async function handler(req, res) {
         error_param: error?.error_param || null,
         request_id: requestId,
         status,
-        version: "v15.5.36-test7.1"
+        version: "v15.5.38-text-search"
       });
     }
 
@@ -6206,7 +6207,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       code: "analysis_completed",
       message: "Analyse fullført; eBay- og markedsdiagnostikk lagret.",
       http_status: 200,
-      backend_version: "v15.5.36-test7.1",
+      backend_version: "v15.5.38-text-search",
       model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
       request_id: timings.openai_diagnostics?.request_id || null,
       duration_ms: timings.total_backend_ms,
@@ -6230,7 +6231,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
        --------------------------------------------------------- */
 
     return res.status(200).json({
-      version: "v15.5.36-test7.1",
+      version: "v15.5.38-text-search",
       timings,
       diagnostic_detail: diagnosticDetail,
       name:
@@ -6384,7 +6385,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
         "v15.5.7-test-hard-model-reference-gate-structured-target-identity-final-title-gate",
 
       backend_release_version:
-        "v15.5.36-test7.1",
+        "v15.5.38-text-search",
 
       buy_opportunities:
         buy_opportunities,
@@ -6429,7 +6430,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       code: e?.error_code || "analysis_unhandled_exception",
       message: e?.message || "Ukjent feil",
       http_status: 500,
-      backend_version: "v15.5.36-test7.1",
+      backend_version: "v15.5.38-text-search",
       model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
       request_id: e?.request_id || null,
       metadata: {
@@ -6450,7 +6451,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       error_type: e?.error_type || null,
       request_id: e?.request_id || null,
       status: 500,
-      version: "v15.5.36-test7.1"
+      version: "v15.5.38-text-search"
     });
   }
 }
