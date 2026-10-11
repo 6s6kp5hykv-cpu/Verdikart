@@ -1,4 +1,5 @@
-// Kistefunn analysebackend v15.5.39-test7.4-console-search-fallback
+// Kistefunn analysebackend v15.5.40-test7.6-market-filter-diagnostics
+// V15.5.40 TEST 7.6: Adds bounded eBay post-search pipeline counts to diagnostics only; no search, filter, valuation or UI behavior changes.
 // V15.5.38 TEST 7.3: Supports text-only identification and market search when no image is provided.
 // V15.5.36 TEST 7.1: Prioritizes explicitly requested guitar colors without requiring color when omitted.
 // V15.5.34 TEST 7.1: Fixes NOK price parsing for spaced ranges and aligns runtime backend version reporting.
@@ -167,7 +168,7 @@ export default async function handler(req, res) {
         code: errorCode || "openai_request_failed",
         message: errorMessage,
         http_status: status,
-        backend_version: "v15.5.39-test7.4-console-search-fallback",
+        backend_version: "v15.5.40-test7.6-market-filter-diagnostics",
         model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
         request_id: requestId,
         duration_ms: Math.round(performance.now() - identificationStartedAt),
@@ -191,7 +192,7 @@ export default async function handler(req, res) {
         error_param: error?.error_param || null,
         request_id: requestId,
         status,
-        version: "v15.5.39-test7.4-console-search-fallback"
+        version: "v15.5.40-test7.6-market-filter-diagnostics"
       });
     }
 
@@ -6235,10 +6236,29 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
         trace: ebayItemDetailsTrace
       },
       ebay_search: {
-        requested_queries: Array.isArray(ebay?.discovery_queries) ? ebay.discovery_queries.length : 0,
-        successful_queries: Array.isArray(ebay?.successful_queries) ? ebay.successful_queries.length : 0,
+        requested_query_strings: Array.isArray(ebay?.discovery_queries) ? ebay.discovery_queries.length : 0,
+        successful_query_strings: Array.isArray(ebay?.successful_queries) ? ebay.successful_queries.length : 0,
+        successful_query_string_values: Array.isArray(ebay?.successful_queries) ? ebay.successful_queries.slice(0, 8) : [],
         raw_total: Array.isArray(ebay?.search_trace) ? ebay.search_trace.reduce((sum, x) => sum + (Number(x.raw_count) || 0), 0) : 0,
+        trace_entries: Array.isArray(ebay?.search_trace) ? ebay.search_trace.length : 0,
         trace: Array.isArray(ebay?.search_trace) ? ebay.search_trace.slice(0, 12) : []
+      },
+      ebay_market_pipeline: {
+        total_candidates_after_processing: Number.isFinite(Number(ebay?.total_candidates)) ? Number(ebay.total_candidates) : null,
+        listing_identity_deduped_count: Number.isFinite(Number(ebay?.listing_identity_deduped_count)) ? Number(ebay.listing_identity_deduped_count) : null,
+        listing_identity_missing_count: Number.isFinite(Number(ebay?.listing_identity_missing_count)) ? Number(ebay.listing_identity_missing_count) : null,
+        valuation_identity_excluded_count: Number.isFinite(Number(ebay?.valuation_identity_excluded_count)) ? Number(ebay.valuation_identity_excluded_count) : null,
+        raw_exact_match_count: Number.isFinite(Number(ebay?.raw_exact_match_count)) ? Number(ebay.raw_exact_match_count) : null,
+        balanced_exact_match_count: Number.isFinite(Number(ebay?.balanced_exact_match_count)) ? Number(ebay.balanced_exact_match_count) : null,
+        exact_match_count: Number.isFinite(Number(ebay?.exact_match_count)) ? Number(ebay.exact_match_count) : null,
+        exact_price_filter_removed: Number.isFinite(Number(ebay?.exact_price_filter_removed)) ? Number(ebay.exact_price_filter_removed) : null,
+        valuation_filter_applied: ebay?.valuation_filter_applied ?? null,
+        valuation_excluded_count: Number.isFinite(Number(ebay?.valuation_excluded_count)) ? Number(ebay.valuation_excluded_count) : null,
+        same_model_match_count: Number.isFinite(Number(ebay?.same_model_match_count)) ? Number(ebay.same_model_match_count) : null,
+        sample_size_used_for_valuation: Number.isFinite(Number(ebay?.sample_size)) ? Number(ebay.sample_size) : null,
+        distinct_valuation_count: Number.isFinite(Number(ebay?.distinct_valuation_count)) ? Number(ebay.distinct_valuation_count) : null,
+        near_match_count: Number.isFinite(Number(ebay?.near_match_count)) ? Number(ebay.near_match_count) : null,
+        successful_marketplaces: Array.isArray(ebay?.successful_marketplaces) ? ebay.successful_marketplaces : []
       }
     };
 
@@ -6250,7 +6270,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       code: "analysis_completed",
       message: "Analyse fullført; eBay- og markedsdiagnostikk lagret.",
       http_status: 200,
-      backend_version: "v15.5.39-test7.4-console-search-fallback",
+      backend_version: "v15.5.40-test7.6-market-filter-diagnostics",
       model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
       request_id: timings.openai_diagnostics?.request_id || null,
       duration_ms: timings.total_backend_ms,
@@ -6274,7 +6294,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
        --------------------------------------------------------- */
 
     return res.status(200).json({
-      version: "v15.5.39-test7.4-console-search-fallback",
+      version: "v15.5.40-test7.6-market-filter-diagnostics",
       timings,
       diagnostic_detail: diagnosticDetail,
       name:
@@ -6428,7 +6448,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
         "v15.5.7-test-hard-model-reference-gate-structured-target-identity-final-title-gate",
 
       backend_release_version:
-        "v15.5.39-test7.4-console-search-fallback",
+        "v15.5.40-test7.6-market-filter-diagnostics",
 
       buy_opportunities:
         buy_opportunities,
@@ -6473,7 +6493,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       code: e?.error_code || "analysis_unhandled_exception",
       message: e?.message || "Ukjent feil",
       http_status: 500,
-      backend_version: "v15.5.39-test7.4-console-search-fallback",
+      backend_version: "v15.5.40-test7.6-market-filter-diagnostics",
       model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
       request_id: e?.request_id || null,
       metadata: {
@@ -6494,7 +6514,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       error_type: e?.error_type || null,
       request_id: e?.request_id || null,
       status: 500,
-      version: "v15.5.39-test7.4-console-search-fallback"
+      version: "v15.5.40-test7.6-market-filter-diagnostics"
     });
   }
 }
