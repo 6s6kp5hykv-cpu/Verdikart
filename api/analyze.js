@@ -1,4 +1,4 @@
-// Kistefunn analysebackend v15.5.43-test7.9-switch-accessory-filter-fix
+// Kistefunn analysebackend v15.5.44-test7.10-details-cache-price-diagnostics
 // V15.5.40 TEST 7.6: Adds bounded eBay post-search pipeline counts to diagnostics only; no search, filter, valuation or UI behavior changes.
 // V15.5.38 TEST 7.3: Supports text-only identification and market search when no image is provided.
 // V15.5.36 TEST 7.1: Prioritizes explicitly requested guitar colors without requiring color when omitted.
@@ -114,6 +114,7 @@ export default async function handler(req, res) {
       ebay_item_details_total_call_ms: 0,
       ebay_item_details_slowest_ms: 0,
       ebay_item_details_failed: 0,
+      ebay_item_details_cache_hits: 0,
       web_reference_openai_ms: null,
       web_reference_fetch_ms: null,
       web_reference_fx_ms: 0,
@@ -170,7 +171,7 @@ export default async function handler(req, res) {
         code: errorCode || "openai_request_failed",
         message: errorMessage,
         http_status: status,
-        backend_version: "v15.5.43-test7.9-switch-accessory-filter-fix",
+        backend_version: "v15.5.44-test7.10-details-cache-price-diagnostics",
         model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
         request_id: requestId,
         duration_ms: Math.round(performance.now() - identificationStartedAt),
@@ -194,7 +195,7 @@ export default async function handler(req, res) {
         error_param: error?.error_param || null,
         request_id: requestId,
         status,
-        version: "v15.5.43-test7.9-switch-accessory-filter-fix"
+        version: "v15.5.44-test7.10-details-cache-price-diagnostics"
       });
     }
 
@@ -2845,7 +2846,36 @@ export default async function handler(req, res) {
       };
     }
 
+    // V15.5.44: request-scoped cache for duplicate eBay detail lookups.
+    // Same item may appear in several overlapping queries; cache only the
+    // enrichment fields so each listing retains its own query/market context.
+    const ebayItemDetailsCache = new Map();
+    let ebayItemDetailsCacheHits = 0;
+
     async function enrichEbayItem(item, marketplace) {
+      const itemId = String(item?.itemId || "").trim();
+      if (!itemId) return item;
+      const cacheKey = `${String(marketplace || "").toUpperCase()}|${itemId}`;
+      if (ebayItemDetailsCache.has(cacheKey)) {
+        ebayItemDetailsCacheHits += 1;
+        const cached = await ebayItemDetailsCache.get(cacheKey);
+        return {
+          ...item,
+          ...(cached || {})
+        };
+      }
+      const pending = enrichEbayItemUncached(item, marketplace).then(enriched => ({
+        _ebay_detail_loaded: enriched?._ebay_detail_loaded === true,
+        _ebay_aspects: enriched?._ebay_aspects || {},
+        _ebay_aspect_text: enriched?._ebay_aspect_text || "",
+        _ebay_description: enriched?._ebay_description || ""
+      }));
+      ebayItemDetailsCache.set(cacheKey, pending);
+      const cached = await pending;
+      return { ...item, ...cached };
+    }
+
+    async function enrichEbayItemUncached(item, marketplace) {
       const itemId = String(item?.itemId || "").trim();
 
       if (!itemId) return item;
@@ -6252,6 +6282,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       performance.now() - backendStartedAt
     );
 
+    timings.ebay_item_details_cache_hits = Number(ebayItemDetailsCacheHits || 0);
     const ebayItemDetailsTrace = Array.isArray(timings.ebay_item_details_trace)
       ? timings.ebay_item_details_trace.slice(0, 50)
       : [];
@@ -6305,6 +6336,11 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
         sample_size_used_for_valuation: Number.isFinite(Number(ebay?.sample_size)) ? Number(ebay.sample_size) : null,
         distinct_valuation_count: Number.isFinite(Number(ebay?.distinct_valuation_count)) ? Number(ebay.distinct_valuation_count) : null,
         near_match_count: Number.isFinite(Number(ebay?.near_match_count)) ? Number(ebay.near_match_count) : null,
+        median_nok: Number.isFinite(Number(ebay?.median_nok)) ? Number(ebay.median_nok) : null,
+        exact_median_nok: Number.isFinite(Number(ebay?.exact_median_nok)) ? Number(ebay.exact_median_nok) : null,
+        low_nok: Number.isFinite(Number(ebay?.low_nok)) ? Number(ebay.low_nok) : null,
+        high_nok: Number.isFinite(Number(ebay?.high_nok)) ? Number(ebay.high_nok) : null,
+        exact_prices_nok: Array.isArray(ebay?.exact_prices_nok) ? ebay.exact_prices_nok.slice(0, 100).map(Number).filter(Number.isFinite) : [],
         successful_marketplaces: Array.isArray(ebay?.successful_marketplaces) ? ebay.successful_marketplaces : []
       }
     };
@@ -6317,7 +6353,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       code: "analysis_completed",
       message: "Analyse fullført; eBay- og markedsdiagnostikk lagret.",
       http_status: 200,
-      backend_version: "v15.5.43-test7.9-switch-accessory-filter-fix",
+      backend_version: "v15.5.44-test7.10-details-cache-price-diagnostics",
       model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
       request_id: timings.openai_diagnostics?.request_id || null,
       duration_ms: timings.total_backend_ms,
@@ -6341,7 +6377,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
        --------------------------------------------------------- */
 
     return res.status(200).json({
-      version: "v15.5.43-test7.9-switch-accessory-filter-fix",
+      version: "v15.5.44-test7.10-details-cache-price-diagnostics",
       timings,
       diagnostic_detail: diagnosticDetail,
       name:
@@ -6495,7 +6531,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
         "v15.5.7-test-hard-model-reference-gate-structured-target-identity-final-title-gate",
 
       backend_release_version:
-        "v15.5.43-test7.9-switch-accessory-filter-fix",
+        "v15.5.44-test7.10-details-cache-price-diagnostics",
 
       buy_opportunities:
         buy_opportunities,
@@ -6540,7 +6576,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       code: e?.error_code || "analysis_unhandled_exception",
       message: e?.message || "Ukjent feil",
       http_status: 500,
-      backend_version: "v15.5.43-test7.9-switch-accessory-filter-fix",
+      backend_version: "v15.5.44-test7.10-details-cache-price-diagnostics",
       model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
       request_id: e?.request_id || null,
       metadata: {
@@ -6561,7 +6597,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       error_type: e?.error_type || null,
       request_id: e?.request_id || null,
       status: 500,
-      version: "v15.5.43-test7.9-switch-accessory-filter-fix"
+      version: "v15.5.44-test7.10-details-cache-price-diagnostics"
     });
   }
 }
