@@ -1,24 +1,26 @@
+
 name: Kistefunn Preview access check
 
-‘on’:
-workflow_dispatch:
-inputs:
-preview_url:
-description: “Vercel Preview URL (not production)”
-required: true
-default: “https://verdikartmvpiphone-le790hars-rehtmar.vercel.app”
-type: string
+on:
+  workflow_dispatch:
+    inputs:
+      preview_url:
+        description: "Vercel Preview URL (not production)"
+        required: true
+        default: "https://verdikartmvpiphone-le790hars-rehtmar.vercel.app"
+        type: string
 
 permissions:
-contents: read
+  contents: read
 
 jobs:
-check-preview:
-runs-on: ubuntu-latest
-timeout-minutes: 2
-steps:
-- name: Check protected Preview without running analysis
-env:
-PREVIEW_URL: ${{ inputs.preview_url }}
-VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-run: bash scripts/preview-access-check.sh
+  check-preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - name: Check protected Preview without running analysis
+        env:
+          PREVIEW_URL: ${{ inputs.preview_url }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: bash scripts/preview-access-check.sh
