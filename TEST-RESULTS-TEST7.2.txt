@@ -22,3 +22,11 @@ Limitations / required next checks
 - Confirm exact-color counts against real titles/aspects and inspect the market-audit diagnostics in Preview.
 - Confirm UI clearly distinguishes other-color fallback references when fewer than two exact-color references exist.
 - Do not deploy to production until Preview checks pass.
+
+
+TEST 7.3 CANDIDATE — TEXT-ONLY SEARCH
+- Added text-only identification/search when no image is selected and a description is provided.
+- Analyze button is enabled when either at least one image or non-empty text is present.
+- Backend accepts description-only requests; OpenAI input omits input_image when absent.
+- No Main/production deployment performed.
+- Requires Preview verification with text-only, image-only, and image+text cases.

@@ -36,3 +36,12 @@ Test 7.1 candidate changes (not deployed)
 Test 7.2 candidate change (2026-10-11)
 6. Backend v15.5.36-test7.1 adds color-aware comparable selection for guitar listings. If the target explicitly names a color, exact-color references become the primary exact pool when at least two are available. If fewer than two are available, other colors remain as fallback evidence. If no target color is specified, color does not filter otherwise-valid comparisons. The target parser distinguishes White Blonde and Olympic White before generic white. Sunburst recognizes 2-/3-tone and 2-/3-color wording.
 7. This is a local candidate only. Preview/live eBay validation is still required; do not deploy to production yet.
+
+
+TEST 7.3 — TEKSTSØK UTEN BILDE
+Backend: v15.5.38-text-search
+Frontend: v15.5.27-test7.2-text-search
+
+Nytt: Brukeren kan identifisere/søke etter en gjenstand ved å skrive merke/modell i beskrivelsesfeltet uten å laste opp bilde. Knappen aktiveres når bilde eller tekst er til stede. Backend godtar tekst alene, og OpenAI får ikke et input_image-felt når bilde mangler. Prompten instruerer modellen til ikke å påstå visuelle observasjoner i tekstmodus.
+
+Teststatus: lokale syntaks- og pakkekontroller bestått. Ikke deployet. Må verifiseres i Preview med (1) tekst alene, (2) bilde alene, (3) bilde + tekst. Kontroller også at tekst uten oppgitt farge ikke snevrer inn fargesøket.
