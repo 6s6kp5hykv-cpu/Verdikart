@@ -1,5 +1,4 @@
-// Kistefunn analysebackend v15.5.43-test7.9-rejection-diagnostics
-// V15.5.43 TEST 7.9: Adds bounded scoring rejection reason counts and up to 5 title-only examples per market/query trace; scoring/acceptance behavior unchanged.
+// Kistefunn analysebackend v15.5.43-test7.9-switch-accessory-filter-fix
 // V15.5.40 TEST 7.6: Adds bounded eBay post-search pipeline counts to diagnostics only; no search, filter, valuation or UI behavior changes.
 // V15.5.38 TEST 7.3: Supports text-only identification and market search when no image is provided.
 // V15.5.36 TEST 7.1: Prioritizes explicitly requested guitar colors without requiring color when omitted.
@@ -171,7 +170,7 @@ export default async function handler(req, res) {
         code: errorCode || "openai_request_failed",
         message: errorMessage,
         http_status: status,
-        backend_version: "v15.5.42-test7.8-market-pipeline-scope-fix",
+        backend_version: "v15.5.43-test7.9-switch-accessory-filter-fix",
         model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
         request_id: requestId,
         duration_ms: Math.round(performance.now() - identificationStartedAt),
@@ -195,7 +194,7 @@ export default async function handler(req, res) {
         error_param: error?.error_param || null,
         request_id: requestId,
         status,
-        version: "v15.5.42-test7.8-market-pipeline-scope-fix"
+        version: "v15.5.43-test7.9-switch-accessory-filter-fix"
       });
     }
 
@@ -1389,7 +1388,6 @@ export default async function handler(req, res) {
         "capo",
         "knob",
         "potentiometer",
-        "switch",
         "sticker",
         "decal",
         "parts",
@@ -3497,8 +3495,6 @@ export default async function handler(req, res) {
                 score_accepted: 0,
                 score_near_match: 0,
                 score_rejected: 0,
-                score_rejection_reasons: {},
-                score_rejected_sample: [],
                 prepared_count: 0,
                 prepare_rejected_count: 0,
                 prepared_sample: []
@@ -3511,25 +3507,9 @@ export default async function handler(req, res) {
                 if (String(item?.price?.currency || '').trim()) stage.with_currency += 1;
                 if (Number.isFinite(Number(item?.price?.value)) && String(item?.price?.currency || '').trim()) stage.with_price_and_currency += 1;
                 const scored = scoreListing(String(item?.title || ''), { ...built, marketplace: result.marketplace });
-                if (scored?.accepted) {
-                  stage.score_accepted += 1;
-                } else if (scored?.near_match) {
-                  stage.score_near_match += 1;
-                } else {
-                  stage.score_rejected += 1;
-                  const reason = String(scored?.reason || 'ukjent avvisningsgrunn').slice(0, 100);
-                  stage.score_rejection_reasons[reason] = (stage.score_rejection_reasons[reason] || 0) + 1;
-                  // Diagnostics only: bounded title-only samples; no seller data or credentials.
-                  if (stage.score_rejected_sample.length < 5) {
-                    stage.score_rejected_sample.push({
-                      title: String(item?.title || '').slice(0, 140),
-                      score: Number.isFinite(Number(scored?.score)) ? Number(scored.score) : null,
-                      reason,
-                      year_match: String(scored?.year_match || '').slice(0, 24),
-                      variant_match: String(scored?.variant_match || '').slice(0, 40)
-                    });
-                  }
-                }
+                if (scored?.accepted) stage.score_accepted += 1;
+                else if (scored?.near_match) stage.score_near_match += 1;
+                else stage.score_rejected += 1;
               }
 
               const ranked = rawItems
@@ -6337,7 +6317,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       code: "analysis_completed",
       message: "Analyse fullført; eBay- og markedsdiagnostikk lagret.",
       http_status: 200,
-      backend_version: "v15.5.42-test7.8-market-pipeline-scope-fix",
+      backend_version: "v15.5.43-test7.9-switch-accessory-filter-fix",
       model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
       request_id: timings.openai_diagnostics?.request_id || null,
       duration_ms: timings.total_backend_ms,
@@ -6361,7 +6341,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
        --------------------------------------------------------- */
 
     return res.status(200).json({
-      version: "v15.5.42-test7.8-market-pipeline-scope-fix",
+      version: "v15.5.43-test7.9-switch-accessory-filter-fix",
       timings,
       diagnostic_detail: diagnosticDetail,
       name:
@@ -6515,7 +6495,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
         "v15.5.7-test-hard-model-reference-gate-structured-target-identity-final-title-gate",
 
       backend_release_version:
-        "v15.5.42-test7.8-market-pipeline-scope-fix",
+        "v15.5.43-test7.9-switch-accessory-filter-fix",
 
       buy_opportunities:
         buy_opportunities,
@@ -6560,7 +6540,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       code: e?.error_code || "analysis_unhandled_exception",
       message: e?.message || "Ukjent feil",
       http_status: 500,
-      backend_version: "v15.5.42-test7.8-market-pipeline-scope-fix",
+      backend_version: "v15.5.43-test7.9-switch-accessory-filter-fix",
       model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
       request_id: e?.request_id || null,
       metadata: {
@@ -6581,7 +6561,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       error_type: e?.error_type || null,
       request_id: e?.request_id || null,
       status: 500,
-      version: "v15.5.42-test7.8-market-pipeline-scope-fix"
+      version: "v15.5.43-test7.9-switch-accessory-filter-fix"
     });
   }
 }
