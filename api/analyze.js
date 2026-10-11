@@ -1,4 +1,5 @@
-// Kistefunn analysebackend v15.5.34-test7.1
+// Kistefunn analysebackend v15.5.35-test7.1
+// V15.5.35 TEST 7.1: Rejects explicit HT/hardtail bridge mismatches for Stratocaster/Telecaster comparables.
 // V15.5.34 TEST 7.1: Fixes NOK price parsing for spaced ranges and aligns runtime backend version reporting.
 // Based on v15.5.33-account-deletion-safe. Not approved for production.
 // V15.5.31: Expands vehicle accessory/parts rejection after adversarial local regression tests. Not deployed; requires Preview validation.
@@ -48,6 +49,7 @@
 // - FINN aktiveres først når legitim API-tilgang er tilgjengelig.
 
 import { identifyWithOpenAI } from "./lib/openai.js";
+import { isCompatibleGuitarBridgeVariant } from "../lib/matching.js";
 import diagnostics from "./_diagnostics.js";
 
 const { logDiagnostic } = diagnostics;
@@ -164,7 +166,7 @@ export default async function handler(req, res) {
         code: errorCode || "openai_request_failed",
         message: errorMessage,
         http_status: status,
-        backend_version: "v15.5.34-test7.1",
+        backend_version: "v15.5.35-test7.1",
         model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
         request_id: requestId,
         duration_ms: Math.round(performance.now() - identificationStartedAt),
@@ -188,7 +190,7 @@ export default async function handler(req, res) {
         error_param: error?.error_param || null,
         request_id: requestId,
         status,
-        version: "v15.5.34-test7.1"
+        version: "v15.5.35-test7.1"
       });
     }
 
@@ -1277,6 +1279,32 @@ export default async function handler(req, res) {
 
       const category =
         criteria.category || "generic";
+
+      /*
+       * TEST 7.1 Preview finding: a Squier Classic Vibe Stratocaster
+       * target without HT/hardtail was accepting explicit HT/hardtail
+       * listings as exact comparisons. The bridge construction is a
+       * material model variant, unlike cosmetic colour differences.
+       * Reject the opposite bridge type before relevance scoring.
+       */
+      if (category === "guitar") {
+        const targetGuitarIdentity =
+          `${criteria.user_model_text || ""} ${criteria.model || ""} ${criteria.type || ""}`;
+        const bridgeVariant = isCompatibleGuitarBridgeVariant(
+          targetGuitarIdentity,
+          raw
+        );
+        if (!bridgeVariant.compatible) {
+          return {
+            score: -100,
+            accepted: false,
+            near_match: false,
+            year_match: year ? "missing" : "not_required",
+            reason: bridgeVariant.reason,
+            variant_match: "rejected_bridge_variant"
+          };
+        }
+      }
 
       let score = 0;
       const reasons = [];
@@ -6127,7 +6155,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       code: "analysis_completed",
       message: "Analyse fullført; eBay- og markedsdiagnostikk lagret.",
       http_status: 200,
-      backend_version: "v15.5.34-test7.1",
+      backend_version: "v15.5.35-test7.1",
       model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
       request_id: timings.openai_diagnostics?.request_id || null,
       duration_ms: timings.total_backend_ms,
@@ -6151,7 +6179,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
        --------------------------------------------------------- */
 
     return res.status(200).json({
-      version: "v15.5.34-test7.1",
+      version: "v15.5.35-test7.1",
       timings,
       diagnostic_detail: diagnosticDetail,
       name:
@@ -6305,7 +6333,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
         "v15.5.7-test-hard-model-reference-gate-structured-target-identity-final-title-gate",
 
       backend_release_version:
-        "v15.5.34-test7.1",
+        "v15.5.35-test7.1",
 
       buy_opportunities:
         buy_opportunities,
@@ -6350,7 +6378,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       code: e?.error_code || "analysis_unhandled_exception",
       message: e?.message || "Ukjent feil",
       http_status: 500,
-      backend_version: "v15.5.34-test7.1",
+      backend_version: "v15.5.35-test7.1",
       model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
       request_id: e?.request_id || null,
       metadata: {
@@ -6371,7 +6399,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       error_type: e?.error_type || null,
       request_id: e?.request_id || null,
       status: 500,
-      version: "v15.5.34-test7.1"
+      version: "v15.5.35-test7.1"
     });
   }
 }
