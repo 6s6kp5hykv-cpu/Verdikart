@@ -1,4 +1,5 @@
-// Kistefunn OpenAI-identifikasjon v15.3
+// Kistefunn OpenAI-identifikasjon v15.5.38-text-search
+// V15.5.38 TEST 7.3: Image input is optional; text-only identification is supported.
 // V15.3: Deploy-kandidat basert på v14.30. Fail-closed ved ugyldig AI-JSON + kontrollert OpenAI-timeout.
 // V14.30: Baseline for prompt, modell og request-struktur beholdes.
 // OpenAI-delen er flyttet fra v14.25 uten endring av prompt eller request-struktur.
@@ -49,7 +50,7 @@ Bruk dette som et sterkt identifikasjonssignal. Hvis brukeren oppgir en konkret 
           {
             type: "input_text",
             text: `
-Du er ekspert på visuell identifisering og verdivurdering av fysiske gjenstander.
+Du er ekspert på identifisering og verdivurdering av fysiske gjenstander, både fra bilder og fra tekst.
 
 IDENTIFIKASJON SKAL VÆRE BEVISDREVET.
 
@@ -70,6 +71,8 @@ Før du bestemmer identiteten skal du aktivt lese og vurdere:
 Hvis et merkenavn er synlig på selve gjenstanden, skal dette veie tyngre enn generell form/silhuett.
 
 ${contextText}
+
+${image ? "BILDE ER TILGJENGELIG: Bruk både synlige bevis og brukerens tekst. Marker eventuelle konflikter." : "TEKSTBASERT SØK UTEN BILDE: Brukerens tekst er eneste identifikasjonsgrunnlag. Ikke påstå at logo, tilstand, serienummer, materiale eller andre visuelle detaljer er observert. Hvis teksten angir en konkret merke/modell, bruk denne som søkemål, men gjør usikkerhet og manglende fysisk kontroll tydelig. Sett identifiseringssikkerheten konservativt når tekst ikke er nok til å bekrefte varianten."}
 
 FOR SYKLER:
 Kontroller spesielt:
@@ -168,11 +171,11 @@ Returner KUN gyldig JSON:
 }
 `
           },
-          {
+          ...(image ? [{
             type: "input_image",
             image_url: image,
             detail: "high"
-          }
+          }] : [])
         ]
       }]
     })
