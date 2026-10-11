@@ -1,18 +1,30 @@
-Kistefunn Test 7.7 – market pipeline stage diagnostics
-Backend: v15.5.41-test7.7-market-pipeline-stage-diagnostics
-Based on: Test 7.6 / v15.5.40-test7.6-market-filter-diagnostics
+KISTEFUNN – TEST 7.8 SCOPE-FIX CANDIDATE
+Dato: 2026-10-11
+Gren: Testrunner
 
-Purpose
-- Identify where eBay raw results disappear before becoming valuation candidates.
-- Add per marketplace/query counts for title, itemId, URL, numeric price, currency, both price+currency, score accepted, near-match, score rejected, prepareListing accepted/rejected.
-- Include up to three bounded prepared listing examples per query (title truncated to 100 chars; price/currency/NOK/match tier only).
-- Keep the existing market acceptance and valuation rules unchanged.
-- Update diagnostic version to diag-v4.
+FORMÅL
+Denne pakken viderefører Testrunner-kandidaten fra Test 7 og beholder test-runneren og diagnostikkfilene. Backend-kandidaten retter scope for ebayPipelineStageTrace slik at feltet kan leses i responsdiagnostikken.
 
-Important
-- This is a candidate for the Testrunner branch only.
-- Not deployed by this ZIP creation; deploy separately as Preview and confirm backend_version.
-- Do not merge to main or deploy production.
-- After Preview confirms v15.5.41, run Nintendo Switch OLED once and inspect diagnostic_detail.ebay_market_pipeline.stage_trace.
-- Then run Squier regression once to ensure existing variant filtering remains intact.
-- Local syntax checks do not substitute for live Preview verification.
+VERSJON
+api/analyze.js: v15.5.42-test7.8-market-pipeline-scope-fix
+Viktig: backend_version/version-feltene i API-responsen er satt til samme versjon som toppkommentaren. Kontroller alltid faktisk backend_version i Preview-rapporten etter deploy.
+
+STATUS FØR DENNE PAKKEN
+Preview-rapporter datert 2026-10-11 viste backend v15.5.41-test7.7-market-pipeline-stage-diagnostics. eBay returnerte 12 søk med HTTP 200 og totalt 600 råtreff, men scoring godkjente 0 og klargjorde 0. Disse rapportene beviser ikke at v15.5.42 er aktiv eller at prisgrunnlaget fungerer.
+
+TESTER UTFØRT PÅ DENNE PAKKEN
+- ZIP-integritet: bestått.
+- Node.js syntakskontroll av alle .js-filer: kjøres separat ved pakkebygging.
+- Kontroll av versjonsmarkører i analyze.js: forventet v15.5.42 i topptekst og responsfelt.
+- Live Vercel/eBay/OpenAI/Supabase-integrasjon: IKKE verifisert av lokal kontroll.
+
+VIKTIG
+Dette er en testkandidat, ikke godkjent for produksjon. Ikke kopier til main eller produksjon. Behold Test 7-baselinen urørt. Ikke løs problemet ved å svekke listing-filtrene; bruk diagnostikk til å finne avvisningsårsaken.
+
+FREMGANGSMÅTE
+1. Erstatt innholdet i GitHub-grenen Testrunner med filene i denne ZIP-en.
+2. Vent til Vercel Preview-deployen er Ready.
+3. Kjør én Nintendo Switch OLED-test.
+4. Bekreft at rapporten viser v15.5.42-test7.8-market-pipeline-scope-fix.
+5. Kontroller at stage_trace_entries finnes og at treff ikke lenger blir avvist 100 % uten forklaring.
+6. Hvis alle treff fortsatt avvises, hent konkrete avvisningsårsaker før neste kodeendring.

@@ -1,0 +1,27 @@
+KISTEFUNN – ARBEIDSLISTE ETTER TEST 7.8-PAKKE
+Dato: 2026-10-11
+
+SIKKERHET / BRANCHER
+- Test 7 ZIP er referansebaseline og skal stå urørt.
+- Denne pakken er kun for GitHub-grenen Testrunner.
+- Ikke deploy til main/produksjon uten eksplisitt godkjenning.
+
+ENDRING I DENNE PAKKEN
+- Beholder Testrunner-filstrukturen, test-runneren og diagnostikkverktøyene.
+- Beholder scope-fiksen for ebayPipelineStageTrace.
+- Synkroniserer API-responsens backend_version/version-felter til v15.5.42-test7.8-market-pipeline-scope-fix, slik at rapporten kan identifisere den deployede kandidaten.
+- Oppdaterer README for å beskrive faktisk status og testbegrensninger.
+
+LOKALE KONTROLLER
+- ZIP-integritet: bestått.
+- JavaScript-syntaks: kontrolleres i byggeskriptet.
+- Live API/marketplace-test: ikke utført her; krever Vercel Preview og reell kjøring.
+
+NESTE STEG
+1. Last opp/erstatt filene kun på Testrunner.
+2. Vent på Ready-deploy.
+3. Kjør én Nintendo Switch OLED-test.
+4. Bekreft backend_version v15.5.42.
+5. Se på ebay_market_pipeline.stage_trace om treff blir godkjent/klargjort.
+6. Hvis score_rejected fortsatt er 50 per query, legg til sikre avvisningsårsaker og eksempel-titler (uten persondata/tokens) før endring av filterregler.
+7. Kjør Squier/Fender-regresjon etter at Nintendo-diagnostikken er forstått.
