@@ -1,4 +1,5 @@
-// Kistefunn analysebackend v15.5.35-test7.1
+// Kistefunn analysebackend v15.5.36-test7.1-r2
+// V15.5.36 TEST 7.1 r2: Canonicalizes external-reference URLs while preserving potentially meaningful ref/referrer parameters and removes tracking parameters before deduplication.
 // V15.5.35 TEST 7.1: Rejects explicit HT/hardtail bridge mismatches for Stratocaster/Telecaster comparables.
 // V15.5.34 TEST 7.1: Fixes NOK price parsing for spaced ranges and aligns runtime backend version reporting.
 // Based on v15.5.33-account-deletion-safe. Not approved for production.
@@ -166,7 +167,7 @@ export default async function handler(req, res) {
         code: errorCode || "openai_request_failed",
         message: errorMessage,
         http_status: status,
-        backend_version: "v15.5.35-test7.1",
+        backend_version: "v15.5.36-test7.1-r2",
         model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
         request_id: requestId,
         duration_ms: Math.round(performance.now() - identificationStartedAt),
@@ -190,7 +191,7 @@ export default async function handler(req, res) {
         error_param: error?.error_param || null,
         request_id: requestId,
         status,
-        version: "v15.5.35-test7.1"
+        version: "v15.5.36-test7.1-r2"
       });
     }
 
@@ -5335,15 +5336,46 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
         webDiagnostic.converted_reference_count = converted.length;
         webDiagnostic.currencies = [...new Set(references.map(x => x.currency).filter(Boolean))];
 
-        // Deduplicate by URL + rounded NOK price.
-        const unique = [];
-        const seen = new Set();
-        for (const item of converted) {
-          const key = `${item.url}|${Math.round(item.price_nok)}`;
-          if (!seen.has(key)) {
-            seen.add(key);
-            unique.push(item);
+        // V15.5.36 TEST 7.1: canonical URL dedupe for external references.
+        // Tracking/query parameters and fragments must not make the same source
+        // look like multiple independent references. Keep path case intact because
+        // some servers treat URL paths as case-sensitive. Distinct URLs remain
+        // distinct even when titles/prices match, avoiding over-aggressive merging.
+        function canonicalExternalReferenceUrl(value) {
+          const raw = String(value || "").trim();
+          if (!raw) return "";
+          try {
+            const u = new URL(raw);
+            u.hash = "";
+            u.hostname = u.hostname.toLowerCase();
+            if ((u.protocol === "https:" && u.port === "443") ||
+                (u.protocol === "http:" && u.port === "80")) u.port = "";
+            const trackingKeys = new Set([
+              "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
+              "utm_id", "utm_name", "fbclid", "gclid", "dclid", "msclkid",
+              "mc_cid", "mc_eid", "affiliate", "affid"
+            ]);
+            const kept = [...u.searchParams.entries()]
+              .filter(([key]) => !trackingKeys.has(key.toLowerCase()))
+              .sort(([ak, av], [bk, bv]) => ak.localeCompare(bk) || av.localeCompare(bv));
+            u.search = "";
+            for (const [key, val] of kept) u.searchParams.append(key, val);
+            u.pathname = u.pathname.replace(/\/+$/, "") || "/";
+            return u.toString().replace(/\/$/, u.pathname === "/" ? "/" : "");
+          } catch (_) {
+            return raw.replace(/[#].*$/, "").replace(/\/+$/, "");
           }
+        }
+
+        const unique = [];
+        const seenExternalUrls = new Set();
+        for (const item of converted) {
+          const canonicalUrl = canonicalExternalReferenceUrl(item.url);
+          // The upstream validation requires an HTTP(S) URL. Fail closed if it
+          // cannot be canonicalized instead of counting an unstable reference.
+          if (!canonicalUrl || seenExternalUrls.has(canonicalUrl)) continue;
+          seenExternalUrls.add(canonicalUrl);
+          unique.push({ ...item, canonical_url: canonicalUrl });
         }
 
         const values = unique
@@ -6155,7 +6187,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       code: "analysis_completed",
       message: "Analyse fullført; eBay- og markedsdiagnostikk lagret.",
       http_status: 200,
-      backend_version: "v15.5.35-test7.1",
+      backend_version: "v15.5.36-test7.1-r2",
       model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
       request_id: timings.openai_diagnostics?.request_id || null,
       duration_ms: timings.total_backend_ms,
@@ -6179,7 +6211,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
        --------------------------------------------------------- */
 
     return res.status(200).json({
-      version: "v15.5.35-test7.1",
+      version: "v15.5.36-test7.1-r2",
       timings,
       diagnostic_detail: diagnosticDetail,
       name:
@@ -6333,7 +6365,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
         "v15.5.7-test-hard-model-reference-gate-structured-target-identity-final-title-gate",
 
       backend_release_version:
-        "v15.5.35-test7.1",
+        "v15.5.36-test7.1-r2",
 
       buy_opportunities:
         buy_opportunities,
@@ -6378,7 +6410,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       code: e?.error_code || "analysis_unhandled_exception",
       message: e?.message || "Ukjent feil",
       http_status: 500,
-      backend_version: "v15.5.35-test7.1",
+      backend_version: "v15.5.36-test7.1-r2",
       model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
       request_id: e?.request_id || null,
       metadata: {
@@ -6399,7 +6431,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       error_type: e?.error_type || null,
       request_id: e?.request_id || null,
       status: 500,
-      version: "v15.5.35-test7.1"
+      version: "v15.5.36-test7.1-r2"
     });
   }
 }
