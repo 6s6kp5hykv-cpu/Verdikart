@@ -1,6 +1,6 @@
 name: Kistefunn Preview access check
 
-on:
+‘on’:
 workflow_dispatch:
 inputs:
 preview_url:
