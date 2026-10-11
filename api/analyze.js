@@ -1,6 +1,5 @@
-// Kistefunn analysebackend v15.5.36-test7.1-r2
-// V15.5.36 TEST 7.1 r2: Canonicalizes external-reference URLs while preserving potentially meaningful ref/referrer parameters and removes tracking parameters before deduplication.
-// V15.5.35 TEST 7.1: Rejects explicit HT/hardtail bridge mismatches for Stratocaster/Telecaster comparables.
+// Kistefunn analysebackend v15.5.36-test7.1
+// V15.5.36 TEST 7.1: Prioritizes explicitly requested guitar colors without requiring color when omitted.
 // V15.5.34 TEST 7.1: Fixes NOK price parsing for spaced ranges and aligns runtime backend version reporting.
 // Based on v15.5.33-account-deletion-safe. Not approved for production.
 // V15.5.31: Expands vehicle accessory/parts rejection after adversarial local regression tests. Not deployed; requires Preview validation.
@@ -167,7 +166,7 @@ export default async function handler(req, res) {
         code: errorCode || "openai_request_failed",
         message: errorMessage,
         http_status: status,
-        backend_version: "v15.5.36-test7.1-r2",
+        backend_version: "v15.5.36-test7.1",
         model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
         request_id: requestId,
         duration_ms: Math.round(performance.now() - identificationStartedAt),
@@ -191,7 +190,7 @@ export default async function handler(req, res) {
         error_param: error?.error_param || null,
         request_id: requestId,
         status,
-        version: "v15.5.36-test7.1-r2"
+        version: "v15.5.36-test7.1"
       });
     }
 
@@ -952,19 +951,21 @@ export default async function handler(req, res) {
             : null;
 
       const targetColor =
-        /\b(black|svart|sort)\b/.test(objectText)
-          ? "black"
-          : /\b(white|hvit)\b/.test(objectText)
-            ? "white"
-            : /\b(red|rød)\b/.test(objectText)
-              ? "red"
-              : /\b(blue|blå)\b/.test(objectText)
-                ? "blue"
-                : /\b(sunburst|sun burst)\b/.test(objectText)
-                  ? "sunburst"
-                  : /\b(olympic white)\b/.test(objectText)
-                    ? "olympic_white"
-                    : null;
+        /\bwhite\s+blonde\b/.test(objectText)
+          ? "white_blonde"
+          : /\bolympic\s+white\b/.test(objectText)
+            ? "olympic_white"
+            : /\b(black|svart|sort)\b/.test(objectText)
+              ? "black"
+              : /\b(white|hvit)\b/.test(objectText)
+                ? "white"
+                : /\b(red|rød)\b/.test(objectText)
+                  ? "red"
+                  : /\b(blue|blå)\b/.test(objectText)
+                    ? "blue"
+                    : /\b(sunburst|sun burst)\b/.test(objectText)
+                      ? "sunburst"
+                      : null;
 
       const targetSpecial =
         /\b(anniversary|50th ann|50th anniversary|special edition|62['’]? special)\b/.test(objectText);
@@ -3917,6 +3918,54 @@ export default async function handler(req, res) {
             (!built.year || x.year_match === "exact")
         );
 
+      /*
+       * V15.5.36 – COLOR-AWARE COMPARABLES
+       * A color is a hard preference only when the target explicitly names one.
+       * If no target color is known, keep all otherwise-valid colors eligible.
+       * If a target color is known, use exact-color listings as the primary
+       * exact pool when at least two such independent references exist. When
+       * fewer than two exist, retain other colors as fallback evidence rather
+       * than returning an artificially empty/fragile market sample.
+       */
+      function normalizeMarketColor(text) {
+        const value = String(text || "").toLowerCase();
+        const rules = [
+          ["sunburst", /\b(?:2[- ]?(?:tone|color)|3[- ]?(?:tone|color))?\s*sunburst\b|\bsun\s*burst\b|\b3ts\b|\b2ts\b/],
+          ["white_blonde", /\bwhite\s+blonde\b|\bblonde\s+white\b/],
+          ["olympic_white", /\bolympic\s+white\b/],
+          ["black", /\b(?:black|svart|sort|blk)\b/],
+          ["white", /\b(?:white|hvit)\b/],
+          ["red", /\b(?:red|rød|fiesta\s+red|frd|candy\s+apple\s+red)\b/],
+          ["blue", /\b(?:blue|blå|blonde\s+blue)\b/],
+          ["green", /\b(?:green|grønn|surf\s+green)\b/],
+          ["yellow", /\b(?:yellow|gul|butterscotch)\b/],
+          ["natural", /\b(?:natural|naturlig|butterscotch\s+blonde)\b/]
+        ];
+        return rules.find(([, pattern]) => pattern.test(value))?.[0] || null;
+      }
+
+      const requestedMarketColor = String(criteria?.target_color || "").toLowerCase() || null;
+      for (const listing of rawExactPool) {
+        const listingText = `${listing.title || ""} ${listing._ebay_aspect_text || ""}`;
+        listing._market_color = normalizeMarketColor(listingText);
+        listing._target_color_match = !requestedMarketColor
+          ? "not_requested"
+          : !listing._market_color
+            ? "unknown"
+            : listing._market_color === requestedMarketColor ||
+              (requestedMarketColor === "white" && ["olympic_white", "white_blonde"].includes(listing._market_color))
+              ? "exact"
+              : "different";
+      }
+
+      const exactColorCount = requestedMarketColor
+        ? rawExactPool.filter(x => x._target_color_match === "exact").length
+        : 0;
+      const colorFilteredExactPool =
+        requestedMarketColor && exactColorCount >= 2
+          ? rawExactPool.filter(x => x._target_color_match === "exact")
+          : rawExactPool;
+
       // Ekstra sikkerhetskontroll før prisberegning og visning.
       // Dette gjør at en annonse uten år aldri kan bli med i exactPool
       // selv om et senere steg skulle endre match_tier.
@@ -3961,14 +4010,14 @@ export default async function handler(req, res) {
 
       const modelCodeExactPool =
         targetModelCode
-          ? rawExactPool.filter(x => {
+          ? colorFilteredExactPool.filter(x => {
               const listingText =
                 normalizeModelCode(
                   `${x.title || ""} ${x._ebay_aspect_text || ""}`
                 );
               return listingText.includes(targetModelCode);
             })
-          : rawExactPool;
+          : colorFilteredExactPool;
 
       const strictExactPool =
         built.year
@@ -5336,46 +5385,15 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
         webDiagnostic.converted_reference_count = converted.length;
         webDiagnostic.currencies = [...new Set(references.map(x => x.currency).filter(Boolean))];
 
-        // V15.5.36 TEST 7.1: canonical URL dedupe for external references.
-        // Tracking/query parameters and fragments must not make the same source
-        // look like multiple independent references. Keep path case intact because
-        // some servers treat URL paths as case-sensitive. Distinct URLs remain
-        // distinct even when titles/prices match, avoiding over-aggressive merging.
-        function canonicalExternalReferenceUrl(value) {
-          const raw = String(value || "").trim();
-          if (!raw) return "";
-          try {
-            const u = new URL(raw);
-            u.hash = "";
-            u.hostname = u.hostname.toLowerCase();
-            if ((u.protocol === "https:" && u.port === "443") ||
-                (u.protocol === "http:" && u.port === "80")) u.port = "";
-            const trackingKeys = new Set([
-              "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
-              "utm_id", "utm_name", "fbclid", "gclid", "dclid", "msclkid",
-              "mc_cid", "mc_eid", "affiliate", "affid"
-            ]);
-            const kept = [...u.searchParams.entries()]
-              .filter(([key]) => !trackingKeys.has(key.toLowerCase()))
-              .sort(([ak, av], [bk, bv]) => ak.localeCompare(bk) || av.localeCompare(bv));
-            u.search = "";
-            for (const [key, val] of kept) u.searchParams.append(key, val);
-            u.pathname = u.pathname.replace(/\/+$/, "") || "/";
-            return u.toString().replace(/\/$/, u.pathname === "/" ? "/" : "");
-          } catch (_) {
-            return raw.replace(/[#].*$/, "").replace(/\/+$/, "");
-          }
-        }
-
+        // Deduplicate by URL + rounded NOK price.
         const unique = [];
-        const seenExternalUrls = new Set();
+        const seen = new Set();
         for (const item of converted) {
-          const canonicalUrl = canonicalExternalReferenceUrl(item.url);
-          // The upstream validation requires an HTTP(S) URL. Fail closed if it
-          // cannot be canonicalized instead of counting an unstable reference.
-          if (!canonicalUrl || seenExternalUrls.has(canonicalUrl)) continue;
-          seenExternalUrls.add(canonicalUrl);
-          unique.push({ ...item, canonical_url: canonicalUrl });
+          const key = `${item.url}|${Math.round(item.price_nok)}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            unique.push(item);
+          }
         }
 
         const values = unique
@@ -6187,7 +6205,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       code: "analysis_completed",
       message: "Analyse fullført; eBay- og markedsdiagnostikk lagret.",
       http_status: 200,
-      backend_version: "v15.5.36-test7.1-r2",
+      backend_version: "v15.5.36-test7.1",
       model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
       request_id: timings.openai_diagnostics?.request_id || null,
       duration_ms: timings.total_backend_ms,
@@ -6211,7 +6229,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
        --------------------------------------------------------- */
 
     return res.status(200).json({
-      version: "v15.5.36-test7.1-r2",
+      version: "v15.5.36-test7.1",
       timings,
       diagnostic_detail: diagnosticDetail,
       name:
@@ -6365,7 +6383,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
         "v15.5.7-test-hard-model-reference-gate-structured-target-identity-final-title-gate",
 
       backend_release_version:
-        "v15.5.36-test7.1-r2",
+        "v15.5.36-test7.1",
 
       buy_opportunities:
         buy_opportunities,
@@ -6410,7 +6428,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       code: e?.error_code || "analysis_unhandled_exception",
       message: e?.message || "Ukjent feil",
       http_status: 500,
-      backend_version: "v15.5.36-test7.1-r2",
+      backend_version: "v15.5.36-test7.1",
       model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
       request_id: e?.request_id || null,
       metadata: {
@@ -6431,7 +6449,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       error_type: e?.error_type || null,
       request_id: e?.request_id || null,
       status: 500,
-      version: "v15.5.36-test7.1-r2"
+      version: "v15.5.36-test7.1"
     });
   }
 }
