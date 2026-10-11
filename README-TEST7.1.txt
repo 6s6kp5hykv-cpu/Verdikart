@@ -3,7 +3,7 @@ Date: 2026-10-11
 
 Versions
 - Frontend: v15.5.25-test7
-- Backend: v15.5.36-test7.1-r2
+- Backend: v15.5.36-test7.1
 - Parent/reference: uploaded Verdikart-Test 6.zip
 - This is a separate candidate. It has NOT been deployed.
 
@@ -33,20 +33,6 @@ Test 7.1 candidate changes (not deployed)
 5. These are targeted candidate changes only; live eBay/OpenAI/Supabase behavior remains unverified.
 
 
-V15.5.36-TEST7.1-R1 (local candidate, not deployed)
-- External-reference deduplication now canonicalizes URLs before counting references.
-- Removes common tracking parameters and URL fragments; sorts remaining query parameters.
-- Preserves URL path case and does not merge different URLs just because title/price match.
-- Backend runtime/header version aligned to v15.5.36-test7.1-r2.
-- Requires regression and Preview verification; no production approval.
-
-
-V15.5.36-TEST7.1-R2 follow-up:
-- URL canonicalization no longer strips generic `ref` or `referrer` parameters, because some sites may use them as meaningful item/reference identifiers.
-- Local regression tests include a check that URLs with different `ref` values remain distinct.
-
-
-R4 verification note (2026-10-11):
-- The visible index.html header is still v15.5.25-test7; the diagnostic instrumentation constant is v15.5.26-test7.1. This split is documented intentionally and should not be interpreted as the entire frontend being version-bumped.
-- Local validation: 7 JavaScript files + both inline HTML scripts pass syntax checks; manifest valid; no duplicate HTML IDs.
-- Live integrations remain unverified.
+Test 7.2 candidate change (2026-10-11)
+6. Backend v15.5.36-test7.1 adds color-aware comparable selection for guitar listings. If the target explicitly names a color, exact-color references become the primary exact pool when at least two are available. If fewer than two are available, other colors remain as fallback evidence. If no target color is specified, color does not filter otherwise-valid comparisons. The target parser distinguishes White Blonde and Olympic White before generic white. Sunburst recognizes 2-/3-tone and 2-/3-color wording.
+7. This is a local candidate only. Preview/live eBay validation is still required; do not deploy to production yet.

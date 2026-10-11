@@ -23,3 +23,5 @@ Validation scope
 Safety
 - Keep Test 6 original ZIP as the untouched reference.
 - Do not deploy Test 7 to production until Preview tests pass.
+
+Candidate update: backend v15.5.36-test7.1 adds color-aware comparable selection; see README-TEST7.1.txt and TEST-RESULTS-TEST7.2.txt.

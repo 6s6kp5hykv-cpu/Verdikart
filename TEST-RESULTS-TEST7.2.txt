@@ -1,0 +1,24 @@
+KISTEFUNN — TEST 7.2 LOCAL CANDIDATE
+Date: 2026-10-11
+Backend: v15.5.36-test7.1
+Frontend: v15.5.25-test7 (unchanged)
+Parent: Verdikart-Test-7.zip (original preserved in Library)
+
+Change
+- Explicitly requested color is prioritized when at least two matching-color exact references are available.
+- When fewer than two matching-color references are available, other colors remain as fallback evidence.
+- If no target color is specified, color does not filter otherwise-valid comparisons.
+- Added color classification for sunburst, white blonde, Olympic white, black, white, red, blue, green, yellow and natural; 2-/3-tone and 2-/3-color sunburst spellings are recognized.
+- Backend version labels updated to v15.5.36-test7.1.
+
+Local checks
+- node --check: all api/*.js, api/lib/*.js, lib/*.js passed.
+- index.html inline JavaScript syntax: passed (1 inline script).
+- manifest.webmanifest JSON: passed.
+- Color-selection regression cases: 8 passed (explicit Sunburst, White Blonde, Fiesta Red, Black, Blue; no-color target allows all colors; two exact-color references filter other colors; one exact-color reference retains fallback colors).
+
+Limitations / required next checks
+- These are static/local tests, not live eBay results.
+- Confirm exact-color counts against real titles/aspects and inspect the market-audit diagnostics in Preview.
+- Confirm UI clearly distinguishes other-color fallback references when fewer than two exact-color references exist.
+- Do not deploy to production until Preview checks pass.

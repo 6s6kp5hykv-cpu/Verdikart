@@ -2,14 +2,14 @@ KISTEFUNN — TEST 7.1 LOCAL TEST REPORT
 Date: 2026-10-11
 Status: LOCAL TESTS PASSED; NOT DEPLOYED; NOT PRODUCTION-APPROVED
 Baseline: Verdikart-Test-7-CANDIDATE(3).zip (preserved separately)
-Candidate backend: v15.5.36-test7.1-r2 (updated local candidate)
-Frontend diagnostics: v15.5.26-test7.1 (index.html page header remains v15.5.25-test7)
+Candidate backend: v15.5.34-test7.1
+Frontend: v15.5.25-test7
 
 SUMMARY
 - 76 targeted runtime/unit/mock assertions passed across the listed suites.
 - JavaScript syntax checks passed for API, library, and inline frontend scripts.
 - manifest.webmanifest parsed as valid JSON.
-- index.html: 72 unique IDs; diagnostics.html: 8 unique IDs; no duplicate IDs found.
+- All 73 HTML IDs are unique.
 - No likely hardcoded API secrets found by the simple source scan.
 - No TODO/FIXME/XXX markers found in JS/HTML source.
 - ZIP contents and real external integrations have not been deployed or live-verified.
@@ -57,27 +57,3 @@ NEXT REQUIRED STEPS
 5. Test an item with a grouped NOK range and a case with no valid price.
 6. Verify diagnostic persistence in the actual Supabase project.
 7. Only after recording those real results decide whether Test 7.1 can be accepted.
-
-
-ADDITIONAL LOCAL TEST — V15.5.36-TEST7.1-R1
-- Added canonical external-reference URL deduplication in api/analyze.js.
-- Regression cases to verify: identical URL with utm tracking/hash collapses to one; query parameter order does not affect identity; distinct product paths remain distinct; case-sensitive paths remain distinct; invalid URL fails closed.
-- These are local logic tests only. Live source independence and real Preview behavior are not verified by this ZIP.
-
-
-ADDITIONAL LOCAL TEST — V15.5.36-TEST7.1-R2
-- Follow-up regression exposed that treating generic `ref` as a tracking parameter could merge URLs whose `ref` value identifies a distinct product/offer.
-- Removed generic `ref` and `referrer` from the parameters stripped during canonicalization. Explicit common campaign/click tracking parameters remain stripped.
-- Tested tracking/hash normalization, query ordering, distinct paths, case-sensitive paths, host case normalization, trailing slash normalization, and preservation of distinct `ref` values.
-- These are local logic tests only; external-source semantics and Preview behavior remain unverified.
-
-
-FOLLOW-UP VALIDATION — CANDIDATE R4 (2026-10-11)
-- Re-ran Node syntax checks on every JavaScript file in the archive: 7 files passed.
-- Re-ran syntax checks on inline scripts: index.html (1) and diagnostics.html (1) passed.
-- Rechecked HTML IDs: index.html 72 IDs / 72 unique; diagnostics.html 8 IDs / 8 unique; no duplicates.
-- manifest.webmanifest parsed as valid JSON.
-- Rechecked archive integrity after extraction/repackaging.
-- URL canonicalization regression: 8/8 focused cases passed (tracking/hash normalization, query order, distinct paths, path case, host case, trailing slash, preserving different `ref` and `referrer` values).
-- Documentation discrepancy corrected: the app page header remains v15.5.25-test7 while the diagnostic instrumentation is v15.5.26-test7.1; this is intentional/needs product decision, not proof the whole frontend was bumped.
-- Important: these are static/local tests only. No live eBay, OpenAI, Supabase or Vercel Preview calls were performed.
