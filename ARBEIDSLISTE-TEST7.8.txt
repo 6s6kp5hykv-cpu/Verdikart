@@ -25,3 +25,9 @@ NESTE STEG
 5. Se på ebay_market_pipeline.stage_trace om treff blir godkjent/klargjort.
 6. Hvis score_rejected fortsatt er 50 per query, legg til sikre avvisningsårsaker og eksempel-titler (uten persondata/tokens) før endring av filterregler.
 7. Kjør Squier/Fender-regresjon etter at Nintendo-diagnostikken er forstått.
+
+OPPDATERING – TEST 7.9-KANDIDAT (2026-10-11)
+- Ny kandidatversjon: api/analyze.js v15.5.43-test7.9-rejection-diagnostics.
+- Diagnostikk legger til score_rejection_reasons og maks 5 score_rejected_sample per eBay-marked/søk. Eksemplene inneholder bare annonsetittel, score, reason, year_match og variant_match; ingen selgerdata.
+- Ingen endring i søkestrenger, scoringterskler, godkjenningsregler, filtrering eller prisberegning er tilsiktet.
+- Neste steg: lokal syntakskontroll, deploy kun til Preview/Testrunner, kjør én Nintendo Switch OLED-test og inspiser JSON. Ikke deploy til main/produksjon uten eksplisitt godkjenning.
