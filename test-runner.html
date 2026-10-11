@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="no"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Kistefunn – automatisk testpakke</title>
+<style>
+:root{color-scheme:light dark;font-family:system-ui,-apple-system,sans-serif}body{margin:0;padding:16px;max-width:900px;margin-inline:auto}h1{font-size:1.5rem}.note,.panel{border:1px solid #8886;border-radius:12px;padding:14px;margin:12px 0}.actions{display:flex;flex-wrap:wrap;gap:8px}button{font:inherit;padding:11px 14px;border:1px solid #8888;border-radius:9px;cursor:pointer}button:disabled{opacity:.5}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#8881;padding:12px;border-radius:8px;max-height:60vh;overflow:auto}.status{font-weight:600}.muted{opacity:.75}
+</style></head><body><h1>Kistefunn – automatisk testpakke</h1>
+<div class="note"><strong>Kun testmiljø.</strong> Denne siden sender reelle forespørsler til <code>/api/analyze</code>, som kan bruke OpenAI/eBay-kvoter. Ingen test kjøres før du trykker på en knapp. Ikke bruk på produksjonsadressen. Testresultater blir ikke automatisk lagret i samlingen.</div>
+<div class="panel"><div class="actions"><button id="oled">Kjør Nintendo Switch OLED</button><button id="squier">Kjør Squier-regresjon</button><button id="both">Kjør begge testene</button><button id="copy" disabled>Kopier rapport</button><button id="download" disabled>Last ned JSON</button></div><p id="status" class="status">Klar – ingen tester kjørt.</p><p class="muted">Rapporten viser bare felter backend faktisk returnerer. Manglende diagnostikk merkes som «ikke returnert».</p></div>
+<div class="panel"><h2>Samlet rapport</h2><pre id="report">Ingen tester kjørt ennå.</pre></div>
+<script>
+(()=>{
+const VERSION='test-runner-v1';
+const cases=[
+ {id:'nintendo_switch_oled',label:'Nintendo Switch OLED',description:'Nintendo Switch OLED'},
+ {id:'squier_classic_vibe_50s',label:"Squier Classic Vibe '50s Stratocaster MN",description:"Squier Classic Vibe '50s Stratocaster MN"}
+];
+let running=false,results=[];
+const $=id=>document.getElementById(id);
+function safe(v){return v===undefined||v===null?'ikke returnert':v}
+function reportText(){return JSON.stringify({report_type:'kistefunn_test_runner',runner_version:VERSION,created_at:new Date().toISOString(),page_url:location.origin,results},null,2)}
+function render(){ $('report').textContent=results.length?reportText():'Ingen tester kjørt ennå.';$('copy').disabled=!results.length;$('download').disabled=!results.length; }
+function setBusy(v){running=v;for(const id of ['oled','squier','both'])$(id).disabled=v;}
+async function runOne(test){const started=new Date().toISOString(),t0=performance.now();let responseStatus=null,payload=null,raw='',networkError=null;
+try{const response=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},cache:'no-store',body:JSON.stringify({description:test.description})});responseStatus=response.status;raw=await response.text();try{payload=raw?JSON.parse(raw):{};}catch(e){networkError='Backend returnerte ikke gyldig JSON: '+e.message;}}
+catch(e){networkError=(e&&e.message)||String(e);}
+const elapsed=Math.round(performance.now()-t0);const result={test_id:test.id,label:test.label,started_at:started,elapsed_ms:elapsed,http_status:responseStatus,transport_error:networkError,backend_version:safe(payload?.version),identified_name:safe(payload?.name),estimated_value_nok:safe(payload?.estimated_value_nok),low_value_nok:safe(payload?.low_value_nok),high_value_nok:safe(payload?.high_value_nok),timings:safe(payload?.timings),diagnostic_detail:safe(payload?.diagnostic_detail),error:safe(payload?.error),error_code:safe(payload?.error_code),request_id:safe(payload?.request_id),raw_response_preview:!payload&&raw?raw.slice(0,1500):undefined};results.push(result);render();return result;}
+async function run(which){if(running)return;setBusy(true);$('status').textContent='Tester kjører. Ikke lukk siden …';try{const selected=which==='both'?cases:cases.filter(c=>c.id===which);for(const test of selected){$('status').textContent='Kjører: '+test.label+' …';await runOne(test);}const failed=results.filter(r=>r.http_status===null||r.http_status<200||r.http_status>=300||r.transport_error||r.error!=='ikke returnert');$('status').textContent='Ferdig. '+selected.length+' test(er) kjørt i denne runden. Se rapporten før ny kjøring.';}finally{setBusy(false);}}
+$('oled').addEventListener('click',()=>run('nintendo_switch_oled'));
+$('squier').addEventListener('click',()=>run('squier_classic_vibe_50s'));
+$('both').addEventListener('click',()=>run('both'));
+$('copy').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(reportText());$('status').textContent='Rapport kopiert.';}catch(e){$('status').textContent='Kopiering blokkert av nettleseren. Marker og kopier rapporten manuelt.';}});
+$('download').addEventListener('click',()=>{const blob=new Blob([reportText()],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='kistefunn-test-report-'+new Date().toISOString().replace(/[:.]/g,'-')+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});
+})();
+</script></body></html>
