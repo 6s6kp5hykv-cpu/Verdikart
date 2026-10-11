@@ -1,0 +1,33 @@
+KISTEFUNN – ARBEIDSLISTE ETTER TEST 7.9
+Dato: 2026-10-11
+
+SIKKERHET / BRANCHER
+- Test 7 ZIP er referansebaseline og skal stå urørt.
+- Denne pakken er kun for GitHub-grenen Testrunner.
+- Ikke deploy til main/produksjon uten eksplisitt godkjenning.
+
+FUNN FRA TEST 7.8
+- Nintendo Switch OLED fikk 600 rå eBay-treff, men 0 godkjente.
+- Alle avvisningene hadde årsaken "tilbehør/del".
+- I api/analyze.js lå den generelle accessoryTerms-listen "switch".
+- Filteret bruker t.includes(term), som gjør at selve ordet "Switch" i Nintendo Switch treffer tilbehørsfilteret.
+- Dette er en konkret kodefeil som forklarer rapporten; ingen grunn til å svekke andre relevansfiltre.
+
+ENDRING I TEST 7.9-KANDIDATEN
+- Fjerner det generelle termen "switch" fra accessoryTerms.
+- Beholder egne kategorispesifikke filtre for konsolldeler og tilbehør.
+- Oppdaterer backend-versjon til v15.5.43-test7.9-switch-accessory-filter-fix.
+- Ingen produksjonsfiler eller Test 7-baseline endres.
+
+KONTROLLER
+- Denne ZIP-pakken er bygget fra brukerens opplastede Testrunner ZIP.
+- Neste lokale steg: kontroller JavaScript-syntaks og ZIP-integritet.
+- Live eBay/Preview-test er IKKE utført her.
+
+NESTE STEG
+1. Erstatt filene på Testrunner med denne kandidatpakken.
+2. Vent på Preview-deploy og bekreft backend_version v15.5.43-test7.9-switch-accessory-filter-fix.
+3. Kjør Nintendo Switch OLED én gang.
+4. Kontroller at vanlige komplette konsoller ikke lenger avvises som "tilbehør/del", og at faktiske deler fortsatt filtreres.
+5. Kjør Fender/Squier-regresjon før godkjenning.
+6. Ikke deploy til main/produksjon uten eksplisitt godkjenning.

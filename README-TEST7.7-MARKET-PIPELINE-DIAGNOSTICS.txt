@@ -6,7 +6,7 @@ FORMÅL
 Denne pakken viderefører Testrunner-kandidaten fra Test 7 og beholder test-runneren og diagnostikkfilene. Backend-kandidaten retter scope for ebayPipelineStageTrace slik at feltet kan leses i responsdiagnostikken.
 
 VERSJON
-api/analyze.js: v15.5.42-test7.8-market-pipeline-scope-fix
+api/analyze.js: v15.5.43-test7.9-switch-accessory-filter-fix
 Viktig: backend_version/version-feltene i API-responsen er satt til samme versjon som toppkommentaren. Kontroller alltid faktisk backend_version i Preview-rapporten etter deploy.
 
 STATUS FØR DENNE PAKKEN
@@ -25,6 +25,6 @@ FREMGANGSMÅTE
 1. Erstatt innholdet i GitHub-grenen Testrunner med filene i denne ZIP-en.
 2. Vent til Vercel Preview-deployen er Ready.
 3. Kjør én Nintendo Switch OLED-test.
-4. Bekreft at rapporten viser v15.5.42-test7.8-market-pipeline-scope-fix.
+4. Bekreft at rapporten viser v15.5.43-test7.9-switch-accessory-filter-fix.
 5. Kontroller at stage_trace_entries finnes og at treff ikke lenger blir avvist 100 % uten forklaring.
 6. Hvis alle treff fortsatt avvises, hent konkrete avvisningsårsaker før neste kodeendring.
