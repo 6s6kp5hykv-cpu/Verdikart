@@ -1,5 +1,5 @@
-// Kistefunn analysebackend v15.5.34 TEST 7 CANDIDATE
-// V15.5.34 TEST 7: Generalizes exact-reference web-search instructions; no valuation/filter algorithm changes.
+// Kistefunn analysebackend v15.5.34-test7.1
+// V15.5.34 TEST 7.1: Fixes NOK price parsing for spaced ranges and aligns runtime backend version reporting.
 // Based on v15.5.33-account-deletion-safe. Not approved for production.
 // V15.5.31: Expands vehicle accessory/parts rejection after adversarial local regression tests. Not deployed; requires Preview validation.
 // V15.5.28: Persists bounded successful-analysis diagnostic_detail to Supabase through diag-v3.
@@ -164,7 +164,7 @@ export default async function handler(req, res) {
         code: errorCode || "openai_request_failed",
         message: errorMessage,
         http_status: status,
-        backend_version: "v15.5.33-account-deletion-safe",
+        backend_version: "v15.5.34-test7.1",
         model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
         request_id: requestId,
         duration_ms: Math.round(performance.now() - identificationStartedAt),
@@ -188,7 +188,7 @@ export default async function handler(req, res) {
         error_param: error?.error_param || null,
         request_id: requestId,
         status,
-        version: "v15.5.33-account-deletion-safe"
+        version: "v15.5.34-test7.1"
       });
     }
 
@@ -273,56 +273,48 @@ export default async function handler(req, res) {
       if (typeof value === "number") {
         return Number.isFinite(value) ? value : null;
       }
+      if (typeof value !== "string" || !value.trim()) return null;
 
-      if (typeof value !== "string") return null;
+      // Parse each endpoint independently so Norwegian thousands separators
+      // (e.g. "1 000–1 500 kr") cannot be mistaken for a short range.
+      function parseSingleNok(raw) {
+        let s = String(raw).toLowerCase().replace(/kr/g, "").trim();
+        s = s.replace(/\s/g, "").replace(/[^\d,.-]/g, "");
+        if (!s || !/\d/.test(s)) return null;
 
-      let s = value.toLowerCase().replace(/kr/g, "").trim();
+        if (s.includes(",") && s.includes(".")) {
+          const lc = s.lastIndexOf(",");
+          const ld = s.lastIndexOf(".");
+          s = lc > ld
+            ? s.replace(/\./g, "").replace(",", ".")
+            : s.replace(/,/g, "");
+        } else if (s.includes(",")) {
+          const parts = s.split(",");
+          s = parts.length === 2 && parts[1].length <= 2
+            ? parts[0] + "." + parts[1]
+            : parts.join("");
+        } else if (s.includes(".")) {
+          const parts = s.split(".");
+          s = parts.length === 2 && parts[1].length <= 2
+            ? parts[0] + "." + parts[1]
+            : parts.join("");
+        }
 
-      const range = s.match(
-        /(\d+(?:[.,]\d+)?)\s*(?:-|–|—|til)\s*(\d+(?:[.,]\d+)?)/i
-      );
+        const n = Number(s);
+        return Number.isFinite(n) && n > 0 ? n : null;
+      }
 
-      if (range) {
-        const a = Number(range[1].replace(",", "."));
-        const b = Number(range[2].replace(",", "."));
-
-        if (Number.isFinite(a) && Number.isFinite(b)) {
+      const withoutCurrency = value.toLowerCase().replace(/kr/g, "").trim();
+      const range = withoutCurrency.match(/^\s*(.*?)\s*(?:-|–|—|\btil\b)\s*(.*?)\s*$/i);
+      if (range && range[1] && range[2]) {
+        const a = parseSingleNok(range[1]);
+        const b = parseSingleNok(range[2]);
+        if (Number.isFinite(a) && Number.isFinite(b) && a >= 0 && b >= 0) {
           return Math.round((a + b) / 2);
         }
       }
 
-      s = s
-        .replace(/\s/g, "")
-        .replace(/[^\d,.-]/g, "");
-
-      if (s.includes(",") && s.includes(".")) {
-        const lc = s.lastIndexOf(",");
-        const ld = s.lastIndexOf(".");
-
-        if (lc > ld) {
-          s = s.replace(/\./g, "").replace(",", ".");
-        } else {
-          s = s.replace(/,/g, "");
-        }
-      } else if (s.includes(",")) {
-        const parts = s.split(",");
-
-        s =
-          parts.length === 2 && parts[1].length <= 2
-            ? parts[0] + "." + parts[1]
-            : parts.join("");
-      } else if (s.includes(".")) {
-        const parts = s.split(".");
-
-        s =
-          parts.length === 2 && parts[1].length <= 2
-            ? parts[0] + "." + parts[1]
-            : parts.join("");
-      }
-
-      const n = Number(s);
-
-      return Number.isFinite(n) ? n : null;
+      return parseSingleNok(withoutCurrency);
     }
 
     function median(values) {
@@ -5515,14 +5507,14 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
 
     const marketSources = {
       ai: {
-        enabled: Number.isFinite(aiEstimated),
-        value_nok: Number.isFinite(aiEstimated)
+        enabled: Number.isFinite(aiEstimated) && aiEstimated > 0,
+        value_nok: Number.isFinite(aiEstimated) && aiEstimated > 0
           ? Math.round(aiEstimated)
           : null,
-        low_nok: Number.isFinite(aiLow)
+        low_nok: Number.isFinite(aiLow) && aiLow > 0
           ? Math.round(aiLow)
           : null,
-        high_nok: Number.isFinite(aiHigh)
+        high_nok: Number.isFinite(aiHigh) && aiHigh > 0
           ? Math.round(aiHigh)
           : null
       },
@@ -6135,7 +6127,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       code: "analysis_completed",
       message: "Analyse fullført; eBay- og markedsdiagnostikk lagret.",
       http_status: 200,
-      backend_version: "v15.5.33-account-deletion-safe",
+      backend_version: "v15.5.34-test7.1",
       model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
       request_id: timings.openai_diagnostics?.request_id || null,
       duration_ms: timings.total_backend_ms,
@@ -6159,7 +6151,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
        --------------------------------------------------------- */
 
     return res.status(200).json({
-      version: "v15.5.33-account-deletion-safe",
+      version: "v15.5.34-test7.1",
       timings,
       diagnostic_detail: diagnosticDetail,
       name:
@@ -6313,7 +6305,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
         "v15.5.7-test-hard-model-reference-gate-structured-target-identity-final-title-gate",
 
       backend_release_version:
-        "v15.5.33-account-deletion-safe",
+        "v15.5.34-test7.1",
 
       buy_opportunities:
         buy_opportunities,
@@ -6358,7 +6350,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       code: e?.error_code || "analysis_unhandled_exception",
       message: e?.message || "Ukjent feil",
       http_status: 500,
-      backend_version: "v15.5.33-account-deletion-safe",
+      backend_version: "v15.5.34-test7.1",
       model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
       request_id: e?.request_id || null,
       metadata: {
@@ -6379,7 +6371,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       error_type: e?.error_type || null,
       request_id: e?.request_id || null,
       status: 500,
-      version: "v15.5.33-account-deletion-safe"
+      version: "v15.5.34-test7.1"
     });
   }
 }
