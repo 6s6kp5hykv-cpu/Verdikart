@@ -3919,8 +3919,9 @@ export default async function handler(req, res) {
         );
 
       /*
-       * V15.5.36 – COLOR-AWARE COMPARABLES
-       * A color is a hard preference only when the target explicitly names one.
+       * V15.5.37 – FIX COLOR COMPARABLES CRITERIA SCOPE
+       * Fix: read the target color from the in-scope `built` search criteria object.
+ * A color is a hard preference only when the target explicitly names one.
        * If no target color is known, keep all otherwise-valid colors eligible.
        * If a target color is known, use exact-color listings as the primary
        * exact pool when at least two such independent references exist. When
@@ -3944,7 +3945,7 @@ export default async function handler(req, res) {
         return rules.find(([, pattern]) => pattern.test(value))?.[0] || null;
       }
 
-      const requestedMarketColor = String(criteria?.target_color || "").toLowerCase() || null;
+      const requestedMarketColor = String(built?.target_color || "").toLowerCase() || null;
       for (const listing of rawExactPool) {
         const listingText = `${listing.title || ""} ${listing._ebay_aspect_text || ""}`;
         listing._market_color = normalizeMarketColor(listingText);
