@@ -1,4 +1,4 @@
-// Kistefunn analysebackend v15.5.54-test7.21-esm-runtime-fix
+// Kistefunn analysebackend v15.5.55-test7.22-ebay-throttle-control
 // V15.5.49 TEST 7.16: Rejects console bags/cases, screen assemblies, motherboards and repair-service listings from complete-console valuation; preserves explicit complete-console bundles. Preview-only; not production-approved.\n// V15.5.48 TEST 7.15: Avoids rejecting complete guitars because titles mention pickups/bridges/necks/pickguards; treats explicitly requested pickguard color as a hard requirement. Preview-only; not production-approved.
 // V15.5.47 TEST 7.14: Makes accessory/part rejection target-aware and keeps uncertain model variants as lower-confidence candidates unless there is a clear identity conflict. Preview-only; not production-approved.
 // V15.5.46 TEST 7.13 CANDIDATE: Fixes console accessory regex escaping, rejects cooling-fan/radiator-only listings, avoids console fallback/detail lookups for explicit accessory targets, and reports bounded score rejection reasons for diagnosis. Preview-only; not production-approved.
@@ -53,7 +53,7 @@
 // - Ny markedsmotor er klargjort for FINN + eBay + AI.
 // - FINN aktiveres først når legitim API-tilgang er tilgjengelig.
 
-const BACKEND_VERSION = "v15.5.54-test7.21-esm-runtime-fix";
+const BACKEND_VERSION = "v15.5.55-test7.22-ebay-throttle-control";
 
 import { identifyWithOpenAI } from "./lib/openai.js";
 import { isCompatibleGuitarBridgeVariant } from "../lib/matching.js";
@@ -73,6 +73,28 @@ const EBAY_SEARCH_TIMEOUT_MS = 10_000;
 const EBAY_ITEM_DETAILS_TIMEOUT_MS = 10_000;
 const FRANKFURTER_TIMEOUT_MS = 8_000;
 const WEB_REFERENCE_TIMEOUT_MS = 20_000;
+const EBAY_SEARCH_MAX_CONCURRENCY = 2;
+const EBAY_DETAIL_MAX_CONCURRENCY = 3;
+const EBAY_SEARCH_MAX_429_RETRIES = 1;
+
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function mapWithConcurrency(items, limit, mapper) {
+  const list = Array.isArray(items) ? items : [];
+  const output = new Array(list.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(Math.max(1, Number(limit) || 1), list.length);
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (true) {
+      const index = nextIndex++;
+      if (index >= list.length) return;
+      output[index] = await mapper(list[index], index);
+    }
+  }));
+  return output;
+}
 
 async function fetchWithTimeout(url, options = {}, timeoutMs) {
   const controller = new AbortController();
@@ -2906,22 +2928,33 @@ export default async function handler(req, res) {
         `?q=${encodeURIComponent(query)}` +
         "&limit=50";
 
-      const r = await fetchWithTimeout(url, {
-        method: "GET",
-        headers: {
-          "Authorization":
-            `Bearer ${token}`,
-          "Accept":
-            "application/json",
-          "X-EBAY-C-MARKETPLACE-ID":
-            marketplace
-        }
-      }, EBAY_SEARCH_TIMEOUT_MS);
+      let r;
+      let d;
+      let retryCount = 0;
+      while (true) {
+        r = await fetchWithTimeout(url, {
+          method: "GET",
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "Accept": "application/json",
+            "X-EBAY-C-MARKETPLACE-ID": marketplace
+          }
+        }, EBAY_SEARCH_TIMEOUT_MS);
 
-      const d =
-        await r.json();
+        try { d = await r.json(); } catch (_) { d = {}; }
+        if (r.status !== 429 || retryCount >= EBAY_SEARCH_MAX_429_RETRIES) break;
+
+        // Begrenset retry: respekter Retry-After, men ikke vent ubegrenset i serverless-kallet.
+        const retryAfterSeconds = Number(r.headers?.get?.("retry-after"));
+        const waitMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+          ? Math.min(2000, retryAfterSeconds * 1000)
+          : 750;
+        retryCount += 1;
+        await delay(waitMs);
+      }
 
       if (!r.ok) {
+        const retryAfter = r.headers?.get?.("retry-after") || null;
         ebayDiagnosticError = {
           stage: "browse_search",
           status: r.status,
@@ -2931,7 +2964,9 @@ export default async function handler(req, res) {
             "browse_api_error",
           message:
             d?.errors?.[0]?.message ||
-            "eBay Browse API-søk feilet."
+            "eBay Browse API-søk feilet.",
+          retry_after: retryAfter,
+          retry_count: retryCount
         };
 
         return {
@@ -2947,7 +2982,9 @@ export default async function handler(req, res) {
           diagnostic: {
             stage: ebayDiagnosticError.stage,
             status: ebayDiagnosticError.status,
-            code: ebayDiagnosticError.code
+            code: ebayDiagnosticError.code,
+            retry_after: ebayDiagnosticError.retry_after || null,
+            retry_count: ebayDiagnosticError.retry_count || 0
           }
         };
       }
@@ -3570,43 +3607,35 @@ export default async function handler(req, res) {
       }
 
       const ebaySearchStartedAt = performance.now();
-      const results =
-        await Promise.all(
-          searchJobs.map(
-            async job => {
-              try {
-                return await searchEbaySingle(
-                  job.query,
-                  job.marketplace
-                );
-              } catch (error) {
-   const message =
-     error?.message ||
-     "Ukjent feil i eBay-søk.";
-
-   ebayDiagnosticError = {
-     stage: "search_exception",
-     status: error?.status ?? null,
-     code: error?.code || "search_exception",
-     message: String(message).slice(0, 300)
-   };
-
-   return {
-     enabled: false,
-     query: job.query,
-     marketplace: job.marketplace,
-     rawItems: [],
-     reason: ebayDiagnosticError.message,
-     diagnostic: {
-       stage: ebayDiagnosticError.stage,
-       status: ebayDiagnosticError.status,
-       code: ebayDiagnosticError.code
-     }
-   };
- }
-            }
-          )
-        );
+      const results = await mapWithConcurrency(
+        searchJobs,
+        EBAY_SEARCH_MAX_CONCURRENCY,
+        async job => {
+          try {
+            return await searchEbaySingle(job.query, job.marketplace);
+          } catch (error) {
+            const message = error?.message || "Ukjent feil i eBay-søk.";
+            ebayDiagnosticError = {
+              stage: "search_exception",
+              status: error?.status ?? null,
+              code: error?.code || "search_exception",
+              message: String(message).slice(0, 300)
+            };
+            return {
+              enabled: false,
+              query: job.query,
+              marketplace: job.marketplace,
+              rawItems: [],
+              reason: ebayDiagnosticError.message,
+              diagnostic: {
+                stage: ebayDiagnosticError.stage,
+                status: ebayDiagnosticError.status,
+                code: ebayDiagnosticError.code
+              }
+            };
+          }
+        }
+      );
       timings.ebay_search_ms = Math.round(
         performance.now() - ebaySearchStartedAt
       );
@@ -3622,9 +3651,10 @@ export default async function handler(req, res) {
       // never change acceptance rules or log credentials/seller information.
       ebayPipelineStageTrace = [];
       const preparedNested =
-        await Promise.all(
-          results.map(
-            async result => {
+        await mapWithConcurrency(
+          results,
+          EBAY_SEARCH_MAX_CONCURRENCY,
+          async result => {
               if (!result?.enabled) {
                 return [];
               }
@@ -3713,18 +3743,14 @@ export default async function handler(req, res) {
                       .map(x => String(x.item.itemId))
               );
 
-              const enrichedItems =
-                await Promise.all(
-                  rawItems.map(async item => {
-                    if (!detailIds.has(String(item?.itemId || ""))) {
-                      return item;
-                    }
-                    return enrichEbayItem(
-                      item,
-                      result.marketplace
-                    );
-                  })
-                );
+              const enrichedItems = await mapWithConcurrency(
+                rawItems,
+                EBAY_DETAIL_MAX_CONCURRENCY,
+                async item => {
+                  if (!detailIds.has(String(item?.itemId || ""))) return item;
+                  return enrichEbayItem(item, result.marketplace);
+                }
+              );
 
               const list = [];
 
@@ -3767,7 +3793,6 @@ export default async function handler(req, res) {
               ebayPipelineStageTrace.push(stage);
               return list;
             }
-          )
         );
       timings.ebay_item_details_ms = Math.round(
         performance.now() - ebayItemDetailsStartedAt
