@@ -1,0 +1,7 @@
+Test 7.20 local checks
+
+Scope: archive/source-level checks only. These are not live Preview or integration results.
+- Backend version header: v15.5.53-test7.20-norway-market-audit.
+- Source contains market_source_priority_audit diagnostic identifier.
+- No claim is made here that live FINN/web/eBay audit fields are populated correctly.
+- Live Preview validation remains outstanding.
