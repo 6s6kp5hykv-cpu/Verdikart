@@ -1,0 +1,20 @@
+KISTEFUNN / VERCEL DEPLOY-TEST Test ID:
+KF-VERCEL-PUSH-CHECK-2026-10-12-1645 File version: 1.0 Created:
+2026-10-12
+
+PURPOSE This file is a harmless deployment trigger test. It does not
+change application code, API routes, environment variables, or
+production settings.
+
+HOW TO USE 1. Upload this exact .txt file to the ROOT of the GitHub
+repository on the Testrunner branch. 2. Commit the new file with the
+message: test: verify Vercel Preview deployment trigger 3. Open Vercel >
+Deployments and check whether a new Preview deployment appears for the
+Testrunner branch and the new commit.
+
+EXPECTED RESULT A new commit should normally trigger a Preview
+deployment if the repository and branch are connected correctly and no
+ignored-build rule prevents it.
+
+IMPORTANT Keep this test on the Testrunner branch only. Do not merge it
+into main. Do not change production settings for this test.
