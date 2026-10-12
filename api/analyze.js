@@ -1,4 +1,4 @@
-// Kistefunn analysebackend v15.5.51-test7.18-valuation-listing-audit
+// Kistefunn analysebackend v15.5.53-test7.20-norway-market-audit
 // V15.5.49 TEST 7.16: Rejects console bags/cases, screen assemblies, motherboards and repair-service listings from complete-console valuation; preserves explicit complete-console bundles. Preview-only; not production-approved.\n// V15.5.48 TEST 7.15: Avoids rejecting complete guitars because titles mention pickups/bridges/necks/pickguards; treats explicitly requested pickguard color as a hard requirement. Preview-only; not production-approved.
 // V15.5.47 TEST 7.14: Makes accessory/part rejection target-aware and keeps uncertain model variants as lower-confidence candidates unless there is a clear identity conflict. Preview-only; not production-approved.
 // V15.5.46 TEST 7.13 CANDIDATE: Fixes console accessory regex escaping, rejects cooling-fan/radiator-only listings, avoids console fallback/detail lookups for explicit accessory targets, and reports bounded score rejection reasons for diagnosis. Preview-only; not production-approved.
@@ -5043,8 +5043,28 @@ export default async function handler(req, res) {
         exact_prices_nok:
           exactPool.map(x => Number(x.nok)).filter(Number.isFinite),
 
-        // Test 7.18: bounded listing-by-listing audit. This is diagnostic-only;
-        // it does not change matching, filtering, or valuation calculations.
+        // Test 7.19: classify package completeness from listing title only.
+        // Diagnostic-only: do not reject listings or change valuation in this test.
+        const classifyConsolePackage = (item) => {
+          const title = String(item?.title || "");
+          const t = title.toLowerCase();
+          const explicitConsoleOnly = /\b(?:console only|console[- ]only|handheld only|tablet only|console without (?:dock|joy[ -]?con)|no dock|dock not included|without dock)\b/i.test(title);
+          const explicitParts = /\b(?:for parts|parts only|broken|not working|repair only|spares or repair)\b/i.test(title);
+          const mentionsDock = /\b(?:dock|docking station)\b/i.test(title);
+          const mentionsJoycon = /\b(?:joy[ -]?con|joycon|controllers?)\b/i.test(title);
+          const mentionsPower = /\b(?:power supply|power adapter|ac adapter|charger)\b/i.test(title);
+          const explicitlyComplete = /\b(?:complete bundle|complete set|full set|boxed with dock|includes? (?:the )?dock)\b/i.test(title) && mentionsDock;
+          let package_status = "contents_unconfirmed";
+          if (explicitParts) package_status = "parts_or_repair_explicit";
+          else if (explicitConsoleOnly) package_status = "console_only_explicit";
+          else if (explicitlyComplete && mentionsJoycon && mentionsPower) package_status = "complete_contents_signaled";
+          else if (mentionsDock && mentionsJoycon) package_status = "dock_and_joycon_signaled_power_unconfirmed";
+          else if (mentionsJoycon) package_status = "joycon_signaled_dock_unconfirmed";
+          else if (mentionsDock) package_status = "dock_signaled_joycon_unconfirmed";
+          return { package_status, title_signals: { dock: mentionsDock, joycon_or_controller: mentionsJoycon, power_supply: mentionsPower, explicit_console_only: explicitConsoleOnly, explicit_parts_or_repair: explicitParts } };
+        };
+        // Test 7.18: bounded listing-by-listing audit. Test 7.19 adds package
+        // signals for audit only; matching, filtering, and valuation stay unchanged.
         valuation_listing_audit: exactPool.slice(0, 100).map(item => {
           const used = finalPoolKeys.has(item);
           const priceValue = Number(item?.price?.value);
@@ -5061,6 +5081,7 @@ export default async function handler(req, res) {
             currency: String(item?.price?.currency || item?.currency || "").slice(0, 8),
             price_nok: Number.isFinite(nokValue) ? Math.round(nokValue) : null,
             match_tier: String(item?.match_tier || item?.valuation_tier || "").slice(0, 30),
+            ...classifyConsolePackage(item),
             used_for_valuation: used,
             filter_decision: used ? "used_in_final_valuation" : "excluded_after_exact_pool"
           };
@@ -5077,6 +5098,7 @@ export default async function handler(req, res) {
           currency: String(item?.price?.currency || item?.currency || "").slice(0, 8),
           price_nok: Number.isFinite(Number(item?.nok)) ? Math.round(Number(item.nok)) : null,
           match_tier: String(item?.match_tier || item?.valuation_tier || "").slice(0, 30),
+          ...classifyConsolePackage(item),
           filter_decision: "used_in_final_valuation"
         })),
 
@@ -6715,6 +6737,33 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       market,
 
       market_sources: marketSources,
+
+      // TEST 7.20: diagnostic-only source audit; does not change source weights or valuation.
+      market_source_priority_audit: {
+        target_market: "NO",
+        priority_policy: "norwegian_references_first_when_relevant_and_available; international_fallback_when_local_evidence_is_insufficient",
+        finn: {
+          enabled: Boolean(marketSources.finn?.enabled),
+          status: marketSources.finn?.status || "not_available",
+          exact_match_count: Number(marketSources.finn?.exact_match_count || 0),
+          distinct_count: Number(marketSources.finn?.distinct_count || 0),
+          value_nok: marketSources.finn?.value_nok != null && Number.isFinite(Number(marketSources.finn?.value_nok)) ? Math.round(Number(marketSources.finn.value_nok)) : null,
+          references: Array.isArray(marketSources.finn?.references) ? marketSources.finn.references.slice(0, 12) : []
+        },
+        web_reference: {
+          enabled: Boolean(marketSources.web_reference?.enabled),
+          status: marketSources.web_reference?.status || "not_available",
+          exact_match_count: Number(marketSources.web_reference?.exact_match_count || 0),
+          distinct_count: Number(marketSources.web_reference?.distinct_count || 0),
+          references: Array.isArray(marketSources.web_reference?.references) ? marketSources.web_reference.references.slice(0, 12) : []
+        },
+        ebay: {
+          successful_marketplaces: Array.isArray(ebay?.successful_marketplaces) ? ebay.successful_marketplaces : [],
+          exact_marketplace_price_summary: ebay?.exact_marketplace_price_summary && typeof ebay.exact_marketplace_price_summary === "object" ? ebay.exact_marketplace_price_summary : {},
+          used_listing_count: Array.isArray(ebay?.valuation_used_listing_audit) ? ebay.valuation_used_listing_audit.length : 0
+        },
+        note: "Diagnostic only. This field reports source availability and evidence; it does not enforce Norwegian-first weighting yet."
+      },
 
       // V13.8: eksplisitt web-markedsgrunnlag til frontend.
       // Dette gjør at eksterne eksakte referanser kan vises selv når eBay har 0 treff.
