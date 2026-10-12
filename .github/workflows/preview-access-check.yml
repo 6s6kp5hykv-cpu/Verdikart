@@ -1,5 +1,4 @@
 name: Kistefunn Preview access check
-
 on:
   push:
     branches:
@@ -7,7 +6,6 @@ on:
     paths:
       - ".github/workflows/preview-access-check.yml"
       - "scripts/preview-access-check.sh"
-
   workflow_dispatch:
     inputs:
       preview_url:
@@ -15,19 +13,19 @@ on:
         required: true
         default: "https://verdikartmvpiphone-git-testrunner-rehtmar.vercel.app"
         type: string
-
 permissions:
   contents: read
-
+# Prevent duplicate runs of this workflow.
+concurrency:
+  group: kistefunn-preview-access-check
+  cancel-in-progress: true
 jobs:
   check-preview:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-
     steps:
       - name: Check out Testrunner
         uses: actions/checkout@v4
-
       - name: Check Preview access
         env:
           PREVIEW_URL: ${{ inputs.preview_url || 'https://verdikartmvpiphone-git-testrunner-rehtmar.vercel.app' }}
