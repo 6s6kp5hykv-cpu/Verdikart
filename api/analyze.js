@@ -1,4 +1,4 @@
-// Kistefunn analysebackend v15.5.49-test7.16-console-accessory-filter-fix
+// Kistefunn analysebackend v15.5.50-test7.17-marketplace-price-diagnostics
 // V15.5.49 TEST 7.16: Rejects console bags/cases, screen assemblies, motherboards and repair-service listings from complete-console valuation; preserves explicit complete-console bundles. Preview-only; not production-approved.\n// V15.5.48 TEST 7.15: Avoids rejecting complete guitars because titles mention pickups/bridges/necks/pickguards; treats explicitly requested pickguard color as a hard requirement. Preview-only; not production-approved.
 // V15.5.47 TEST 7.14: Makes accessory/part rejection target-aware and keeps uncertain model variants as lower-confidence candidates unless there is a clear identity conflict. Preview-only; not production-approved.
 // V15.5.46 TEST 7.13 CANDIDATE: Fixes console accessory regex escaping, rejects cooling-fan/radiator-only listings, avoids console fallback/detail lookups for explicit accessory targets, and reports bounded score rejection reasons for diagnosis. Preview-only; not production-approved.
@@ -53,7 +53,7 @@
 // - Ny markedsmotor er klargjort for FINN + eBay + AI.
 // - FINN aktiveres først når legitim API-tilgang er tilgjengelig.
 
-const BACKEND_VERSION = "v15.5.49-test7.16-console-accessory-filter-fix";
+const BACKEND_VERSION = "v15.5.50-test7.17-marketplace-price-diagnostics";
 
 import { identifyWithOpenAI } from "./lib/openai.js";
 import { isCompatibleGuitarBridgeVariant } from "../lib/matching.js";
@@ -5043,6 +5043,23 @@ export default async function handler(req, res) {
         exact_prices_nok:
           exactPool.map(x => Number(x.nok)).filter(Number.isFinite),
 
+        // Test 7.17: diagnostic-only breakdown by eBay marketplace.
+        // Values are already normalized to NOK by the existing FX path;
+        // this does not alter which listings are accepted or how valuation works.
+        exact_marketplace_price_summary: Object.fromEntries(
+          [...new Set(exactPool.map(x => String(x.marketplace || "EBAY_UNKNOWN")))].map(marketplace => {
+            const rows = exactPool.filter(x => String(x.marketplace || "EBAY_UNKNOWN") === marketplace);
+            const values = rows.map(x => Number(x.nok)).filter(v => Number.isFinite(v) && v > 0);
+            return [marketplace, {
+              count: values.length,
+              median_nok: values.length ? Math.round(median(values)) : null,
+              low_nok: values.length ? Math.round(percentile(values, 0.15)) : null,
+              high_nok: values.length ? Math.round(percentile(values, 0.85)) : null,
+              sample_prices_nok: values.slice(0, 30).map(Math.round)
+            }];
+          })
+        ),
+
         raw_exact_match_count:
           rawExactPool.length,
 
@@ -6478,6 +6495,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
         low_nok: Number.isFinite(Number(ebay?.low_nok)) ? Number(ebay.low_nok) : null,
         high_nok: Number.isFinite(Number(ebay?.high_nok)) ? Number(ebay.high_nok) : null,
         exact_prices_nok: Array.isArray(ebay?.exact_prices_nok) ? ebay.exact_prices_nok.slice(0, 100).map(Number).filter(Number.isFinite) : [],
+        exact_marketplace_price_summary: ebay?.exact_marketplace_price_summary && typeof ebay.exact_marketplace_price_summary === "object" ? ebay.exact_marketplace_price_summary : {},
         successful_marketplaces: Array.isArray(ebay?.successful_marketplaces) ? ebay.successful_marketplaces : []
       }
     };
