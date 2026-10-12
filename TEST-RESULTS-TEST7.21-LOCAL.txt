@@ -1,0 +1,6 @@
+Kistefunn Test 7.21 — v15.5.54-test7.21-esm-runtime-fix
+
+Fix: api/package.json scopes API .js files as ES modules. CommonJS handlers within that scope (diagnostics.js, _diagnostics.js, testlab-report.js) were converted to ESM imports/exports. analyze.js now imports named logDiagnostic.
+
+Local checks: archive contents and JavaScript syntax/static checks must be run before Preview. This does not claim a successful live Vercel deployment. Preview verification remains required.
+Production/main must remain untouched.
