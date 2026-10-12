@@ -1,4 +1,3 @@
-
 name: Kistefunn Preview access check
 
 on:
@@ -8,12 +7,13 @@ on:
     paths:
       - ".github/workflows/preview-access-check.yml"
       - "scripts/preview-access-check.sh"
+
   workflow_dispatch:
     inputs:
       preview_url:
         description: "Vercel Preview URL (not production)"
         required: true
-        default: "https://verdikartmvpiphone-le790hars-rehtmar.vercel.app"
+        default: "https://verdikartmvpiphone-git-testrunner-rehtmar.vercel.app"
         type: string
 
 permissions:
@@ -30,6 +30,6 @@ jobs:
 
       - name: Check Preview access
         env:
-          PREVIEW_URL: ${{ inputs.preview_url || 'https://verdikartmvpiphone-le790hars-rehtmar.vercel.app' }}
+          PREVIEW_URL: ${{ inputs.preview_url || 'https://verdikartmvpiphone-git-testrunner-rehtmar.vercel.app' }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: bash scripts/preview-access-check.sh
