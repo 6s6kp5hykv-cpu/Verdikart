@@ -1,0 +1,5 @@
+TEST 7.18 — LOCAL VALIDATION
+Candidate backend: v15.5.51-test7.18-valuation-listing-audit
+
+Scope: syntax and static assertion checks only.
+Live eBay, OpenAI, Supabase, and Vercel Preview integration are NOT verified by local checks.

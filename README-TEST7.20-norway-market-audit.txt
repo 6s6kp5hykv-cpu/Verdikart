@@ -1,5 +1,5 @@
-Kistefunn Testrunner — Test 7.20: Norwegian market-source audit
-Backend: v15.5.53-test7.20-norway-market-audit
+Kistefunn Testrunner — Test 7.21: Norwegian market-source audit
+Backend: v15.5.54-test7.20-norway-market-audit
 Base stated by candidate: Test 7.19 / v15.5.52-test7.19-package-completeness-audit
 Status: Preview-only candidate; not production-approved.
 
