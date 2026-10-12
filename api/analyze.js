@@ -50,6 +50,8 @@
 // - Ny markedsmotor er klargjort for FINN + eBay + AI.
 // - FINN aktiveres først når legitim API-tilgang er tilgjengelig.
 
+const BACKEND_VERSION = "v15.5.45-test7.12-console-accessory-gate-candidate";
+
 import { identifyWithOpenAI } from "./lib/openai.js";
 import { isCompatibleGuitarBridgeVariant } from "../lib/matching.js";
 import diagnostics from "./_diagnostics.js";
@@ -171,7 +173,7 @@ export default async function handler(req, res) {
         code: errorCode || "openai_request_failed",
         message: errorMessage,
         http_status: status,
-        backend_version: "v15.5.44-test7.10-details-cache-price-diagnostics",
+        backend_version: BACKEND_VERSION,
         model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
         request_id: requestId,
         duration_ms: Math.round(performance.now() - identificationStartedAt),
@@ -195,7 +197,7 @@ export default async function handler(req, res) {
         error_param: error?.error_param || null,
         request_id: requestId,
         status,
-        version: "v15.5.44-test7.10-details-cache-price-diagnostics"
+        version: BACKEND_VERSION
       });
     }
 
@@ -6406,7 +6408,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       code: "analysis_completed",
       message: "Analyse fullført; eBay- og markedsdiagnostikk lagret.",
       http_status: 200,
-      backend_version: "v15.5.44-test7.10-details-cache-price-diagnostics",
+      backend_version: BACKEND_VERSION,
       model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
       request_id: timings.openai_diagnostics?.request_id || null,
       duration_ms: timings.total_backend_ms,
@@ -6430,7 +6432,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
        --------------------------------------------------------- */
 
     return res.status(200).json({
-      version: "v15.5.44-test7.10-details-cache-price-diagnostics",
+      version: BACKEND_VERSION,
       timings,
       diagnostic_detail: diagnosticDetail,
       name:
@@ -6596,7 +6598,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
         "v15.5.7-test-hard-model-reference-gate-structured-target-identity-final-title-gate",
 
       backend_release_version:
-        "v15.5.44-test7.10-details-cache-price-diagnostics",
+        BACKEND_VERSION,
 
       buy_opportunities:
         buy_opportunities,
@@ -6641,7 +6643,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       code: e?.error_code || "analysis_unhandled_exception",
       message: e?.message || "Ukjent feil",
       http_status: 500,
-      backend_version: "v15.5.44-test7.10-details-cache-price-diagnostics",
+      backend_version: BACKEND_VERSION,
       model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
       request_id: e?.request_id || null,
       metadata: {
@@ -6662,7 +6664,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       error_type: e?.error_type || null,
       request_id: e?.request_id || null,
       status: 500,
-      version: "v15.5.44-test7.10-details-cache-price-diagnostics"
+      version: BACKEND_VERSION
     });
   }
 }
