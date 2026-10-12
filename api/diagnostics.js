@@ -6,7 +6,7 @@
  * POST accepts only bounded frontend telemetry, never arbitrary row fields.
  */
 
-const { logDiagnostic } = require("./_diagnostics");
+import { logDiagnostic } from "./_diagnostics.js";
 
 const DIAG_VERSION = "diag-v4";
 const MAX_BODY_BYTES = 24 * 1024;
@@ -49,7 +49,7 @@ function withinRateLimit(req, now = Date.now()) {
   return true;
 }
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");
 

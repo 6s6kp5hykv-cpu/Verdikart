@@ -3,7 +3,7 @@ KISTEFUNN DIAGNOSTICS
 Version: diag-v3
 */
 
-var crypto = require("crypto");
+import crypto from "node:crypto";
 
 var DIAG_VERSION = "diag-v3";
 
@@ -184,9 +184,4 @@ async function logDiagnostic(options) {
   }
 }
 
-module.exports = {
-  DIAG_VERSION: DIAG_VERSION,
-  makeEventId: makeEventId,
-  normalizeError: normalizeError,
-  logDiagnostic: logDiagnostic
-};
+export { DIAG_VERSION, makeEventId, normalizeError, logDiagnostic };

@@ -3,7 +3,7 @@
  * Accepts bounded TestRunner JSON reports and stores them in a dedicated table.
  * No report read endpoint; no credentials are accepted from the client.
  */
-const crypto = require('crypto');
+import crypto from 'node:crypto';
 
 const MAX_BODY_BYTES = 512 * 1024;
 const WINDOW_MS = 60 * 1000;
@@ -53,7 +53,7 @@ function allowedRate(req) {
   return true;
 }
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('X-Content-Type-Options', 'nosniff');
 
