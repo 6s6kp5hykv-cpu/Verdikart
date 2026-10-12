@@ -1,4 +1,4 @@
-// Kistefunn analysebackend v15.5.53-test7.20-norway-market-audit
+// Kistefunn analysebackend v15.5.54-test7.21-esm-runtime-fix
 // V15.5.49 TEST 7.16: Rejects console bags/cases, screen assemblies, motherboards and repair-service listings from complete-console valuation; preserves explicit complete-console bundles. Preview-only; not production-approved.\n// V15.5.48 TEST 7.15: Avoids rejecting complete guitars because titles mention pickups/bridges/necks/pickguards; treats explicitly requested pickguard color as a hard requirement. Preview-only; not production-approved.
 // V15.5.47 TEST 7.14: Makes accessory/part rejection target-aware and keeps uncertain model variants as lower-confidence candidates unless there is a clear identity conflict. Preview-only; not production-approved.
 // V15.5.46 TEST 7.13 CANDIDATE: Fixes console accessory regex escaping, rejects cooling-fan/radiator-only listings, avoids console fallback/detail lookups for explicit accessory targets, and reports bounded score rejection reasons for diagnosis. Preview-only; not production-approved.
@@ -53,13 +53,11 @@
 // - Ny markedsmotor er klargjort for FINN + eBay + AI.
 // - FINN aktiveres først når legitim API-tilgang er tilgjengelig.
 
-const BACKEND_VERSION = "v15.5.51-test7.18-valuation-listing-audit";
+const BACKEND_VERSION = "v15.5.54-test7.21-esm-runtime-fix";
 
 import { identifyWithOpenAI } from "./lib/openai.js";
 import { isCompatibleGuitarBridgeVariant } from "../lib/matching.js";
-import diagnostics from "./_diagnostics.js";
-
-const { logDiagnostic } = diagnostics;
+import { logDiagnostic } from "./_diagnostics.js";
 
 async function writeBackendDiagnostic(options) {
   try {
@@ -4989,6 +4987,27 @@ export default async function handler(req, res) {
           )
         );
 
+// Test 7.19: classify package completeness from listing title only.
+// Diagnostic-only: do not reject listings or change valuation in this test.
+const classifyConsolePackage = (item) => {
+  const title = String(item?.title || "");
+  const t = title.toLowerCase();
+  const explicitConsoleOnly = /\b(?:console only|console[- ]only|handheld only|tablet only|console without (?:dock|joy[ -]?con)|no dock|dock not included|without dock)\b/i.test(title);
+  const explicitParts = /\b(?:for parts|parts only|broken|not working|repair only|spares or repair)\b/i.test(title);
+  const mentionsDock = /\b(?:dock|docking station)\b/i.test(title);
+  const mentionsJoycon = /\b(?:joy[ -]?con|joycon|controllers?)\b/i.test(title);
+  const mentionsPower = /\b(?:power supply|power adapter|ac adapter|charger)\b/i.test(title);
+  const explicitlyComplete = /\b(?:complete bundle|complete set|full set|boxed with dock|includes? (?:the )?dock)\b/i.test(title) && mentionsDock;
+  let package_status = "contents_unconfirmed";
+  if (explicitParts) package_status = "parts_or_repair_explicit";
+  else if (explicitConsoleOnly) package_status = "console_only_explicit";
+  else if (explicitlyComplete && mentionsJoycon && mentionsPower) package_status = "complete_contents_signaled";
+  else if (mentionsDock && mentionsJoycon) package_status = "dock_and_joycon_signaled_power_unconfirmed";
+  else if (mentionsJoycon) package_status = "joycon_signaled_dock_unconfirmed";
+  else if (mentionsDock) package_status = "dock_signaled_joycon_unconfirmed";
+  return { package_status, title_signals: { dock: mentionsDock, joycon_or_controller: mentionsJoycon, power_supply: mentionsPower, explicit_console_only: explicitConsoleOnly, explicit_parts_or_repair: explicitParts } };
+};
+
       return {
         enabled: true,
         marketplaces,
@@ -5043,26 +5062,6 @@ export default async function handler(req, res) {
         exact_prices_nok:
           exactPool.map(x => Number(x.nok)).filter(Number.isFinite),
 
-        // Test 7.19: classify package completeness from listing title only.
-        // Diagnostic-only: do not reject listings or change valuation in this test.
-        const classifyConsolePackage = (item) => {
-          const title = String(item?.title || "");
-          const t = title.toLowerCase();
-          const explicitConsoleOnly = /\b(?:console only|console[- ]only|handheld only|tablet only|console without (?:dock|joy[ -]?con)|no dock|dock not included|without dock)\b/i.test(title);
-          const explicitParts = /\b(?:for parts|parts only|broken|not working|repair only|spares or repair)\b/i.test(title);
-          const mentionsDock = /\b(?:dock|docking station)\b/i.test(title);
-          const mentionsJoycon = /\b(?:joy[ -]?con|joycon|controllers?)\b/i.test(title);
-          const mentionsPower = /\b(?:power supply|power adapter|ac adapter|charger)\b/i.test(title);
-          const explicitlyComplete = /\b(?:complete bundle|complete set|full set|boxed with dock|includes? (?:the )?dock)\b/i.test(title) && mentionsDock;
-          let package_status = "contents_unconfirmed";
-          if (explicitParts) package_status = "parts_or_repair_explicit";
-          else if (explicitConsoleOnly) package_status = "console_only_explicit";
-          else if (explicitlyComplete && mentionsJoycon && mentionsPower) package_status = "complete_contents_signaled";
-          else if (mentionsDock && mentionsJoycon) package_status = "dock_and_joycon_signaled_power_unconfirmed";
-          else if (mentionsJoycon) package_status = "joycon_signaled_dock_unconfirmed";
-          else if (mentionsDock) package_status = "dock_signaled_joycon_unconfirmed";
-          return { package_status, title_signals: { dock: mentionsDock, joycon_or_controller: mentionsJoycon, power_supply: mentionsPower, explicit_console_only: explicitConsoleOnly, explicit_parts_or_repair: explicitParts } };
-        };
         // Test 7.18: bounded listing-by-listing audit. Test 7.19 adds package
         // signals for audit only; matching, filtering, and valuation stay unchanged.
         valuation_listing_audit: exactPool.slice(0, 100).map(item => {
