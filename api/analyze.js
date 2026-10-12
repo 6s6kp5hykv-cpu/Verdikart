@@ -1,4 +1,5 @@
-// Kistefunn analysebackend v15.5.45-test7.12-console-accessory-gate-candidate
+// Kistefunn analysebackend v15.5.46-test7.13-console-accessory-fender-diagnostics
+// V15.5.46 TEST 7.13 CANDIDATE: Fixes console accessory regex escaping, rejects cooling-fan/radiator-only listings, avoids console fallback/detail lookups for explicit accessory targets, and reports bounded score rejection reasons for diagnosis. Preview-only; not production-approved.
 // V15.5.45 TEST 7.12 CANDIDATE: Reject console accessory-only listings (Joy-Con-only, acrylic/protective cases, screen protectors) before relevance scoring. Requires local regression + Preview validation; not production-approved.\n// V15.5.40 TEST 7.6: Adds bounded eBay post-search pipeline counts to diagnostics only; no search, filter, valuation or UI behavior changes.
 // V15.5.38 TEST 7.3: Supports text-only identification and market search when no image is provided.
 // V15.5.36 TEST 7.1: Prioritizes explicitly requested guitar colors without requiring color when omitted.
@@ -50,7 +51,7 @@
 // - Ny markedsmotor er klargjort for FINN + eBay + AI.
 // - FINN aktiveres først når legitim API-tilgang er tilgjengelig.
 
-const BACKEND_VERSION = "v15.5.45-test7.12-console-accessory-gate-candidate";
+const BACKEND_VERSION = "v15.5.46-test7.13-console-accessory-fender-diagnostics";
 
 import { identifyWithOpenAI } from "./lib/openai.js";
 import { isCompatibleGuitarBridgeVariant } from "../lib/matching.js";
@@ -1240,7 +1241,19 @@ export default async function handler(req, res) {
        * authoritative; these are discovery queries, not relaxed acceptance rules.
        */
       const consoleFallbacks = [];
-      if (category === "console") {
+      const consoleTargetText = [
+        userDescription,
+        parsed.name,
+        parsed.item_info?.name,
+        parsed.item_info?.description,
+        brand,
+        model,
+        type
+      ].filter(Boolean).join(" ").toLowerCase();
+      const targetIsConsoleAccessory = category === "console" &&
+        /\b(?:acrylic|protective|carrying|travel|storage|hard|silicone)\s+(?:console\s+)?case\b|\bcase\s+(?:for|compatible with)\s+(?:the\s+)?nintendo\s+switch\b|\b(?:screen protector|tempered glass|screen film|replacement joy[ -]?con|controller pair|fan only|cooling fan|radiator|heatsink|lüfter|kühler)\b/i.test(consoleTargetText) &&
+        !/\b(?:complete console|console included|includes? (?:the )?console|console bundle|bundle with console|system with dock)\b/i.test(consoleTargetText);
+      if (category === "console" && !targetIsConsoleAccessory) {
         const consoleIdentity = [brand, model].filter(Boolean).join(" ").trim();
         const identityLower = consoleIdentity.toLowerCase();
         const isNintendoSwitch = /\bnintendo\b/.test(identityLower) && /\bswitch\b/.test(identityLower);
@@ -1287,6 +1300,7 @@ export default async function handler(req, res) {
         country,
         ageGroup,
         category,
+        target_is_console_accessory: targetIsConsoleAccessory,
         target_fingerboard: targetFingerboard,
         target_color: targetColor,
         target_special: targetSpecial,
@@ -1960,18 +1974,19 @@ export default async function handler(req, res) {
          * console bundles merely because they mention Joy-Con or a case.
          */
         const consoleAccessoryOnlyPatterns = [
-          /\\b(?:joy[ -]?con|controller|gamepad)s?\\b.{0,35}\\b(?:pair|set|replacement|only|controllers?)\\b/i,
-          /\\b(?:acrylic|protective|carrying|travel|storage|hard|silicone)\\s+(?:console\\s+)?case\\b/i,
-          /\\bcase\\s+(?:for|compatible with)\\s+(?:the\\s+)?nintendo\\s+switch\\b/i,
-          /\\b(?:screen protector|tempered glass|screen film)\\b/i,
-          /\\b(?:dock only|charging dock only|power adapter only|charger only)\\b/i
+          /\b(?:joy[ -]?con|controller|gamepad)s?\b.{0,35}\b(?:pair|set|replacement|only|controllers?)\b/i,
+          /\b(?:acrylic|protective|carrying|travel|storage|hard|silicone)\s+(?:console\s+)?case\b/i,
+          /\bcase\s+(?:for|compatible with)\s+(?:the\s+)?nintendo\s+switch\b/i,
+          /\b(?:screen protector|tempered glass|screen film)\b/i,
+          /\b(?:dock only|charging dock only|power adapter only|charger only)\b/i,
+          /\b(?:cooling fan|replacement fan|fan only|radiator|heatsink|heat sink|lüfter|kühler)\b/i
         ];
         const consoleIdentityWords =
-          /\\b(?:console|system|handheld|tablet|complete|bundle|with dock|inkl(?:usive)?\\s+dock|mit dock|konsoll|gerät|geraet)\\b/i;
+          /\b(?:console|system|handheld|tablet|complete|bundle|with dock|inkl(?:usive)?\s+dock|mit dock|konsoll|gerät|geraet)\b/i;
 
         const explicitAccessoryOnly =
-          /\\b(?:acrylic|protective|carrying|travel|storage|hard|silicone)\\s+(?:console\\s+)?case\\b/i.test(raw) &&
-          !/\\b(?:console included|includes? (?:the )?console|complete console|console bundle|bundle with console)\\b/i.test(raw);
+          /\b(?:acrylic|protective|carrying|travel|storage|hard|silicone)\s+(?:console\s+)?case\b/i.test(raw) &&
+          !/\b(?:console included|includes? (?:the )?console|complete console|console bundle|bundle with console)\b/i.test(raw);
 
         if (
           explicitAccessoryOnly ||
@@ -2005,6 +2020,13 @@ export default async function handler(req, res) {
           "for parts",
           "parts only",
           "fan only",
+          "cooling fan",
+          "replacement fan",
+          "radiator",
+          "heatsink",
+          "heat sink",
+          "lüfter",
+          "kühler",
           "power supply",
           "netzteil",
           "stand only",
@@ -2022,11 +2044,14 @@ export default async function handler(req, res) {
           "screen film"
         ];
 
-        if (
-          consolePartTerms.some(term =>
-            t.includes(term)
-          )
-        ) {
+        const explicitCoolingPartOnly =
+          /\b(?:cooling fan|replacement fan|fan only|radiator|heatsink|heat sink|lüfter|kühler)\b/i.test(raw) &&
+          !/\b(?:complete console|console included|includes? (?:the )?console|console bundle|bundle with console|complete system)\b/i.test(raw);
+        const controllerAccessoryOnly =
+          consolePartTerms.some(term => t.includes(term)) &&
+          !/\b(?:complete console|console included|includes? (?:the )?console|console bundle|bundle with console|complete system|console with (?:dock|controllers|controller|joy[ -]?con)|console,? (?:with )?(?:dock|controllers|controller|joy[ -]?con))\b/i.test(raw);
+
+        if (explicitCoolingPartOnly || controllerAccessoryOnly) {
           return {
             score: -100,
             accepted: false,
@@ -3573,6 +3598,7 @@ export default async function handler(req, res) {
                 score_accepted: 0,
                 score_near_match: 0,
                 score_rejected: 0,
+                score_rejection_reasons: {},
                 prepared_count: 0,
                 prepare_rejected_count: 0,
                 prepared_sample: []
@@ -3587,7 +3613,11 @@ export default async function handler(req, res) {
                 const scored = scoreListing(String(item?.title || ''), { ...built, marketplace: result.marketplace });
                 if (scored?.accepted) stage.score_accepted += 1;
                 else if (scored?.near_match) stage.score_near_match += 1;
-                else stage.score_rejected += 1;
+                else {
+                  stage.score_rejected += 1;
+                  const reason = String(scored?.reason || "unspecified").slice(0, 80);
+                  stage.score_rejection_reasons[reason] = (stage.score_rejection_reasons[reason] || 0) + 1;
+                }
               }
 
               const ranked = rawItems
@@ -3627,10 +3657,12 @@ export default async function handler(req, res) {
               // de 10 beste titlene; vi må også undersøke kandidater der
               // produksjonsåret mangler i tittelen.
               const detailIds = new Set(
-                ranked
-                  .filter(x => x.item?.itemId && x.score >= 20)
-                  .slice(0, 15)
-                  .map(x => String(x.item.itemId))
+                built.target_is_console_accessory
+                  ? []
+                  : ranked
+                      .filter(x => x.item?.itemId && x.score >= 20)
+                      .slice(0, 15)
+                      .map(x => String(x.item.itemId))
               );
 
               const enrichedItems =
