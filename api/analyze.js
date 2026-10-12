@@ -1,4 +1,5 @@
-// Kistefunn analysebackend v15.5.46-test7.13-console-accessory-fender-diagnostics
+// Kistefunn analysebackend v15.5.47-test7.14-shared-target-aware-filter
+// V15.5.47 TEST 7.14: Makes accessory/part rejection target-aware and keeps uncertain model variants as lower-confidence candidates unless there is a clear identity conflict. Preview-only; not production-approved.
 // V15.5.46 TEST 7.13 CANDIDATE: Fixes console accessory regex escaping, rejects cooling-fan/radiator-only listings, avoids console fallback/detail lookups for explicit accessory targets, and reports bounded score rejection reasons for diagnosis. Preview-only; not production-approved.
 // V15.5.45 TEST 7.12 CANDIDATE: Reject console accessory-only listings (Joy-Con-only, acrylic/protective cases, screen protectors) before relevance scoring. Requires local regression + Preview validation; not production-approved.\n// V15.5.40 TEST 7.6: Adds bounded eBay post-search pipeline counts to diagnostics only; no search, filter, valuation or UI behavior changes.
 // V15.5.38 TEST 7.3: Supports text-only identification and market search when no image is provided.
@@ -51,7 +52,7 @@
 // - Ny markedsmotor er klargjort for FINN + eBay + AI.
 // - FINN aktiveres først når legitim API-tilgang er tilgjengelig.
 
-const BACKEND_VERSION = "v15.5.46-test7.13-console-accessory-fender-diagnostics";
+const BACKEND_VERSION = "v15.5.47-test7.14-shared-target-aware-filter";
 
 import { identifyWithOpenAI } from "./lib/openai.js";
 import { isCompatibleGuitarBridgeVariant } from "../lib/matching.js";
@@ -1301,6 +1302,7 @@ export default async function handler(req, res) {
         ageGroup,
         category,
         target_is_console_accessory: targetIsConsoleAccessory,
+        target_is_accessory: targetIsConsoleAccessory || /^(?:accessory|accessories|part|parts|tilbehor|tilbehør)$/i.test(String(category || "")) || /\b(?:case|cover|screen protector|tempered glass|controller|joy[ -]?con|charger|power adapter|dock|pickup|pickguard|replacement neck|replacement body|spare part|accessory|tilbehør|deksel|lader|reservedel|del til)\b/i.test([userSpecificModel, type].filter(Boolean).join(" ")),
         target_fingerboard: targetFingerboard,
         target_color: targetColor,
         target_special: targetSpecial,
@@ -1346,6 +1348,19 @@ export default async function handler(req, res) {
       const category =
         criteria.category || "generic";
 
+      // Shared target-aware gate: accessory words describe the wrong listing
+      // only when the user is looking for the complete parent item. When the
+      // target itself is an accessory/part, those same words are positive
+      // identity clues and must not trigger the global rejection list.
+      const targetAccessoryText = [
+        criteria.user_model_text,
+        criteria.type,
+        criteria.model
+      ].filter(Boolean).join(" ").toLowerCase();
+      const targetIsAccessory = Boolean(criteria.target_is_console_accessory) ||
+        /^(?:accessory|accessories|part|parts|tilbehor|tilbehør)$/.test(category) ||
+        /\b(?:case|cover|screen protector|tempered glass|controller|joy[ -]?con|charger|power adapter|dock|pickup|pickguard|replacement neck|replacement body|spare part|accessory|tilbehør|deksel|lader|reservedel|del til)\b/i.test(targetAccessoryText);
+
       /*
        * TEST 7.1 Preview finding: a Squier Classic Vibe Stratocaster
        * target without HT/hardtail was accepting explicit HT/hardtail
@@ -1353,7 +1368,7 @@ export default async function handler(req, res) {
        * material model variant, unlike cosmetic colour differences.
        * Reject the opposite bridge type before relevance scoring.
        */
-      if (category === "guitar") {
+      if (category === "guitar" && !targetIsAccessory) {
         const targetGuitarIdentity =
           `${criteria.user_model_text || ""} ${criteria.model || ""} ${criteria.type || ""}`;
         const bridgeVariant = isCompatibleGuitarBridgeVariant(
@@ -1465,9 +1480,7 @@ export default async function handler(req, res) {
       ];
 
       if (
-        accessoryTerms.some(term =>
-          t.includes(term)
-        )
+        !targetIsAccessory && accessoryTerms.some(term => t.includes(term))
       ) {
         return {
           score: -100,
@@ -1484,7 +1497,7 @@ export default async function handler(req, res) {
          GITAR – KOMPLETT GITAR VS. DELER
          ------------------------------------------------------- */
 
-      if (category === "guitar") {
+      if (category === "guitar" && !targetIsAccessory) {
         // En markedsreferanse for gitar må være en faktisk komplett gitar.
         // eBay kan ellers tolke "Fender Stratocaster 1995" som relevante
         // treff selv om annonsen gjelder en arm, kropp, hals eller annen del.
@@ -1966,7 +1979,7 @@ export default async function handler(req, res) {
          KONSOLL
          ------------------------------------------------------- */
 
-      if (category === "console") {
+      if (category === "console" && !targetIsAccessory) {
         /*
          * TEST 7.12 candidate — reject console accessories before relevance scoring.
          * Search diagnostics showed Joy-Con-only and acrylic-case-only listings
@@ -2573,7 +2586,7 @@ export default async function handler(req, res) {
          som gripebrett og spesial/anniversary-modell skal ikke
          havne i puljen for "eksakte" sammenligninger.
       */
-      if (category === "guitar") {
+      if (category === "guitar" && !targetIsAccessory) {
         const listingFingerboard =
           /\b(rosewood|palisander)\b/.test(t)
             ? "rosewood"
@@ -2650,6 +2663,7 @@ export default async function handler(req, res) {
       */
       if (
         category === "guitar" &&
+        !targetIsAccessory &&
         /\bfender\b/i.test(String(brand || "")) &&
         /\bstratocaster\b/i.test(String(model || "")) &&
         !targetDrivenFenderVariantAllowed(
@@ -3098,7 +3112,11 @@ export default async function handler(req, res) {
       for (const [listingRx, targetRx] of families) {
         const listingHas = listingRx.test(listing);
         const targetHas = targetRx.test(target);
-        if (listingHas !== targetHas) return false;
+        // A variant may be hard-rejected only when the target explicitly
+        // names a different variant. A generic "Fender Stratocaster" target
+        // must not reject every listing that happens to name a sub-series;
+        // let the normal relevance score keep these as candidates instead.
+        if (targetHas && !listingHas) return false;
       }
       return true;
     }
