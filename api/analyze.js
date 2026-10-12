@@ -1,5 +1,5 @@
-// Kistefunn analysebackend v15.5.48-test7.15-guitar-variant-tolerant-filter
-// V15.5.48 TEST 7.15: Avoids rejecting complete guitars because titles mention pickups/bridges/necks/pickguards; treats explicitly requested pickguard color as a hard requirement. Preview-only; not production-approved.
+// Kistefunn analysebackend v15.5.49-test7.16-console-accessory-filter-fix
+// V15.5.49 TEST 7.16: Rejects console bags/cases, screen assemblies, motherboards and repair-service listings from complete-console valuation; preserves explicit complete-console bundles. Preview-only; not production-approved.\n// V15.5.48 TEST 7.15: Avoids rejecting complete guitars because titles mention pickups/bridges/necks/pickguards; treats explicitly requested pickguard color as a hard requirement. Preview-only; not production-approved.
 // V15.5.47 TEST 7.14: Makes accessory/part rejection target-aware and keeps uncertain model variants as lower-confidence candidates unless there is a clear identity conflict. Preview-only; not production-approved.
 // V15.5.46 TEST 7.13 CANDIDATE: Fixes console accessory regex escaping, rejects cooling-fan/radiator-only listings, avoids console fallback/detail lookups for explicit accessory targets, and reports bounded score rejection reasons for diagnosis. Preview-only; not production-approved.
 // V15.5.45 TEST 7.12 CANDIDATE: Reject console accessory-only listings (Joy-Con-only, acrylic/protective cases, screen protectors) before relevance scoring. Requires local regression + Preview validation; not production-approved.\n// V15.5.40 TEST 7.6: Adds bounded eBay post-search pipeline counts to diagnostics only; no search, filter, valuation or UI behavior changes.
@@ -53,7 +53,7 @@
 // - Ny markedsmotor er klargjort for FINN + eBay + AI.
 // - FINN aktiveres først når legitim API-tilgang er tilgjengelig.
 
-const BACKEND_VERSION = "v15.5.48-test7.15-guitar-variant-tolerant-filter";
+const BACKEND_VERSION = "v15.5.49-test7.16-console-accessory-filter-fix";
 
 import { identifyWithOpenAI } from "./lib/openai.js";
 import { isCompatibleGuitarBridgeVariant } from "../lib/matching.js";
@@ -1999,24 +1999,22 @@ export default async function handler(req, res) {
           /\b(?:joy[ -]?con|controller|gamepad)s?\b.{0,35}\b(?:pair|set|replacement|only|controllers?)\b/i,
           /\b(?:acrylic|protective|carrying|travel|storage|hard|silicone)\s+(?:console\s+)?case\b/i,
           /\bcase\s+(?:for|compatible with)\s+(?:the\s+)?nintendo\s+switch\b/i,
+          /\b(?:transporttasche|tragetasche|reisetasche|schutztasche|tasche für switch|switch tasche|carrying bag|travel bag|storage bag|console bag)\b/i,
           /\b(?:screen protector|tempered glass|screen film)\b/i,
           /\b(?:dock only|charging dock only|power adapter only|charger only)\b/i,
-          /\b(?:cooling fan|replacement fan|fan only|radiator|heatsink|heat sink|lüfter|kühler)\b/i
+          /\b(?:cooling fan|replacement fan|fan only|radiator|heatsink|heat sink|lüfter|kühler)\b/i,
+          /\b(?:replacement )?(?:oled )?screen (?:assembly|module|replacement)\b/i,
+          /\b(?:oled )?(?:screen )?assembly\b.{0,35}\b(?:battery|display|replacement|tested)\b/i,
+          /\b(?:motherboard|mainboard|logic board|circuit board)\b/i,
+          /\b(?:micro[- ]soldering|soldering) (?:service|repair)|\b(?:repair|mail[- ]in) service\b/i
         ];
         const consoleIdentityWords =
           /\b(?:console|system|handheld|tablet|complete|bundle|with dock|inkl(?:usive)?\s+dock|mit dock|konsoll|gerät|geraet)\b/i;
 
-        const explicitAccessoryOnly =
-          /\b(?:acrylic|protective|carrying|travel|storage|hard|silicone)\s+(?:console\s+)?case\b/i.test(raw) &&
-          !/\b(?:console included|includes? (?:the )?console|complete console|console bundle|bundle with console)\b/i.test(raw);
+        const hasConsoleAccessoryPattern = consoleAccessoryOnlyPatterns.some(pattern => pattern.test(raw));
+        const explicitAccessoryOnly = hasConsoleAccessoryPattern && !consoleIdentityWords.test(raw);
 
-        if (
-          explicitAccessoryOnly ||
-          (
-            consoleAccessoryOnlyPatterns.some(pattern => pattern.test(raw)) &&
-            !consoleIdentityWords.test(raw)
-          )
-        ) {
+        if (explicitAccessoryOnly) {
           return {
             score: -100,
             accepted: false,
