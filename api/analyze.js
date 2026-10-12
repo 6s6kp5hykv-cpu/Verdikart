@@ -6313,8 +6313,15 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       },
       ebay_search: {
         requested_query_strings: Array.isArray(ebay?.discovery_queries) ? ebay.discovery_queries.length : 0,
+        // Distinguish successful HTTP searches from queries that yielded usable exact matches.
         successful_query_strings: Array.isArray(ebay?.successful_queries) ? ebay.successful_queries.length : 0,
         successful_query_string_values: Array.isArray(ebay?.successful_queries) ? ebay.successful_queries.slice(0, 8) : [],
+        successful_http_query_strings: Array.isArray(ebay?.search_trace)
+          ? ebay.search_trace.filter(x => Number(x?.http_status) === 200).length
+          : 0,
+        successful_http_query_values: Array.isArray(ebay?.search_trace)
+          ? ebay.search_trace.filter(x => Number(x?.http_status) === 200).slice(0, 8).map(x => String(x?.query || '').slice(0, 120))
+          : [],
         raw_total: Array.isArray(ebay?.search_trace) ? ebay.search_trace.reduce((sum, x) => sum + (Number(x.raw_count) || 0), 0) : 0,
         trace_entries: Array.isArray(ebay?.search_trace) ? ebay.search_trace.length : 0,
         trace: Array.isArray(ebay?.search_trace) ? ebay.search_trace.slice(0, 12) : []
@@ -6394,6 +6401,18 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
         )
           ? finalEstimated
           : null,
+
+      // Explicitly label estimates that are not supported by accepted market references.
+      valuation_basis: String(market?.basis || "Ukjent prisgrunnlag"),
+      market_reference_count: ["ebay", "web_reference", "finn"].reduce(
+        (sum, key) => sum + Math.max(0, Number(marketSources?.[key]?.exact_match_count || 0)),
+        0
+      ),
+      market_data_status: ["ebay", "web_reference", "finn"].some(key =>
+        marketSources?.[key]?.enabled &&
+        Number(marketSources?.[key]?.exact_match_count || 0) > 0 &&
+        isValidMarketPrice(marketSources?.[key]?.value_nok)
+      ) ? "market_supported" : "ai_estimate_only",
 
       low_value_nok:
         Number.isFinite(
