@@ -1,3 +1,4 @@
+
 name: Kistefunn Preview access check
 
 on:
@@ -15,10 +16,13 @@ permissions:
 jobs:
   check-preview:
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 10
 
     steps:
-      - name: Check protected Preview without running analysis
+      - name: Check out Testrunner
+        uses: actions/checkout@v4
+
+      - name: Check Preview access
         env:
           PREVIEW_URL: ${{ inputs.preview_url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
