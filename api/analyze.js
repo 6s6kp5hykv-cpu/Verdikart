@@ -1,5 +1,5 @@
-// Kistefunn analysebackend v15.5.44-test7.10-details-cache-price-diagnostics
-// V15.5.40 TEST 7.6: Adds bounded eBay post-search pipeline counts to diagnostics only; no search, filter, valuation or UI behavior changes.
+// Kistefunn analysebackend v15.5.45-test7.12-console-accessory-gate-candidate
+// V15.5.45 TEST 7.12 CANDIDATE: Reject console accessory-only listings (Joy-Con-only, acrylic/protective cases, screen protectors) before relevance scoring. Requires local regression + Preview validation; not production-approved.\n// V15.5.40 TEST 7.6: Adds bounded eBay post-search pipeline counts to diagnostics only; no search, filter, valuation or UI behavior changes.
 // V15.5.38 TEST 7.3: Supports text-only identification and market search when no image is provided.
 // V15.5.36 TEST 7.1: Prioritizes explicitly requested guitar colors without requiring color when omitted.
 // V15.5.34 TEST 7.1: Fixes NOK price parsing for spaced ranges and aligns runtime backend version reporting.
@@ -1951,6 +1951,43 @@ export default async function handler(req, res) {
          ------------------------------------------------------- */
 
       if (category === "console") {
+        /*
+         * TEST 7.12 candidate — reject console accessories before relevance scoring.
+         * Search diagnostics showed Joy-Con-only and acrylic-case-only listings
+         * being scored as exact Switch OLED comparables. Do not reject normal
+         * console bundles merely because they mention Joy-Con or a case.
+         */
+        const consoleAccessoryOnlyPatterns = [
+          /\\b(?:joy[ -]?con|controller|gamepad)s?\\b.{0,35}\\b(?:pair|set|replacement|only|controllers?)\\b/i,
+          /\\b(?:acrylic|protective|carrying|travel|storage|hard|silicone)\\s+(?:console\\s+)?case\\b/i,
+          /\\bcase\\s+(?:for|compatible with)\\s+(?:the\\s+)?nintendo\\s+switch\\b/i,
+          /\\b(?:screen protector|tempered glass|screen film)\\b/i,
+          /\\b(?:dock only|charging dock only|power adapter only|charger only)\\b/i
+        ];
+        const consoleIdentityWords =
+          /\\b(?:console|system|handheld|tablet|complete|bundle|with dock|inkl(?:usive)?\\s+dock|mit dock|konsoll|gerät|geraet)\\b/i;
+
+        const explicitAccessoryOnly =
+          /\\b(?:acrylic|protective|carrying|travel|storage|hard|silicone)\\s+(?:console\\s+)?case\\b/i.test(raw) &&
+          !/\\b(?:console included|includes? (?:the )?console|complete console|console bundle|bundle with console)\\b/i.test(raw);
+
+        if (
+          explicitAccessoryOnly ||
+          (
+            consoleAccessoryOnlyPatterns.some(pattern => pattern.test(raw)) &&
+            !consoleIdentityWords.test(raw)
+          )
+        ) {
+          return {
+            score: -100,
+            accepted: false,
+            near_match: false,
+            year_match: year ? "missing" : "not_required",
+            reason: "konsolltilbehør – ikke komplett konsoll",
+            variant_match: "rejected_console_accessory_only"
+          };
+        }
+
         const consolePartTerms = [
           "disc drive",
           "disc-drive",
@@ -1971,7 +2008,16 @@ export default async function handler(req, res) {
           "stand only",
           "vertical stand",
           "faceplate",
-          "cover only"
+          "cover only",
+          "joy-con pair",
+          "joycon pair",
+          "joy-con controllers",
+          "joycon controllers",
+          "acrylic case",
+          "protective case",
+          "screen protector",
+          "tempered glass",
+          "screen film"
         ];
 
         if (
