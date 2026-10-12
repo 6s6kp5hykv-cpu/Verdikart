@@ -4,9 +4,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const source = fs.readFileSync(path.join(here, '..', 'api', 'analyze.js'), 'utf8');
-assert.match(source, /const BACKEND_VERSION = "v15\.5\.46-test7\.13-console-accessory-fender-diagnostics"/);
+assert.match(source, /const BACKEND_VERSION = "v15\.5\.47-test7\.14-shared-target-aware-filter"/);
 assert.match(source, /score_rejection_reasons: \{\}/);
 assert.match(source, /built\.target_is_console_accessory\s*\?\s*\[\]/);
+assert.match(source, /const targetIsAccessory = Boolean\(criteria\.target_is_console_accessory\)/);
+assert.match(source, /!targetIsAccessory && accessoryTerms\.some/);
+assert.match(source, /category === \"console\" && !targetIsAccessory/);
+assert.match(source, /category === \"guitar\" && !targetIsAccessory/);
 const accessoryPatterns = [
   /\b(?:joy[ -]?con|controller|gamepad)s?\b.{0,35}\b(?:pair|set|replacement|only|controllers?)\b/i,
   /\b(?:acrylic|protective|carrying|travel|storage|hard|silicone)\s+(?:console\s+)?case\b/i,
