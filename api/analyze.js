@@ -1,4 +1,4 @@
-// Kistefunn analysebackend v15.5.55-test7.22-ebay-throttle-control
+// Kistefunn analysebackend v15.5.56-test7.23-ebay-error-diagnostics
 // V15.5.49 TEST 7.16: Rejects console bags/cases, screen assemblies, motherboards and repair-service listings from complete-console valuation; preserves explicit complete-console bundles. Preview-only; not production-approved.\n// V15.5.48 TEST 7.15: Avoids rejecting complete guitars because titles mention pickups/bridges/necks/pickguards; treats explicitly requested pickguard color as a hard requirement. Preview-only; not production-approved.
 // V15.5.47 TEST 7.14: Makes accessory/part rejection target-aware and keeps uncertain model variants as lower-confidence candidates unless there is a clear identity conflict. Preview-only; not production-approved.
 // V15.5.46 TEST 7.13 CANDIDATE: Fixes console accessory regex escaping, rejects cooling-fan/radiator-only listings, avoids console fallback/detail lookups for explicit accessory targets, and reports bounded score rejection reasons for diagnosis. Preview-only; not production-approved.
@@ -53,7 +53,7 @@
 // - Ny markedsmotor er klargjort for FINN + eBay + AI.
 // - FINN aktiveres først når legitim API-tilgang er tilgjengelig.
 
-const BACKEND_VERSION = "v15.5.55-test7.22-ebay-throttle-control";
+const BACKEND_VERSION = "v15.5.56-test7.23-ebay-error-diagnostics";
 
 import { identifyWithOpenAI } from "./lib/openai.js";
 import { isCompatibleGuitarBridgeVariant } from "../lib/matching.js";
@@ -2955,6 +2955,31 @@ export default async function handler(req, res) {
 
       if (!r.ok) {
         const retryAfter = r.headers?.get?.("retry-after") || null;
+        // Bounded, non-secret response diagnostics for distinguishing API throttling,
+        // entitlement and request errors. Never log Authorization or access tokens.
+        const responseHeaders = {};
+        for (const headerName of [
+          "content-type", "retry-after", "x-ebay-c-request-id",
+          "x-ebay-request-id", "x-ebay-correlation-id", "x-ebay-svc-trace-id",
+          "x-ratelimit-limit", "x-ratelimit-remaining", "x-ratelimit-reset"
+        ]) {
+          const headerValue = r.headers?.get?.(headerName);
+          if (headerValue) responseHeaders[headerName] = String(headerValue).slice(0, 200);
+        }
+        const apiErrors = Array.isArray(d?.errors)
+          ? d.errors.slice(0, 3).map(error => ({
+              errorId: error?.errorId ?? null,
+              domain: error?.domain ?? null,
+              category: error?.category ?? null,
+              message: typeof error?.message === "string" ? error.message.slice(0, 500) : null,
+              longMessage: typeof error?.longMessage === "string" ? error.longMessage.slice(0, 700) : null,
+              inputRefIds: Array.isArray(error?.inputRefIds) ? error.inputRefIds.slice(0, 5) : undefined,
+              parameters: Array.isArray(error?.parameters) ? error.parameters.slice(0, 5).map(p => ({
+                name: typeof p?.name === "string" ? p.name.slice(0, 100) : null,
+                value: typeof p?.value === "string" ? p.value.slice(0, 200) : null
+              })) : undefined
+            }))
+          : [];
         ebayDiagnosticError = {
           stage: "browse_search",
           status: r.status,
@@ -2966,7 +2991,9 @@ export default async function handler(req, res) {
             d?.errors?.[0]?.message ||
             "eBay Browse API-søk feilet.",
           retry_after: retryAfter,
-          retry_count: retryCount
+          retry_count: retryCount,
+          response_headers: responseHeaders,
+          api_errors: apiErrors
         };
 
         return {
@@ -2984,7 +3011,9 @@ export default async function handler(req, res) {
             status: ebayDiagnosticError.status,
             code: ebayDiagnosticError.code,
             retry_after: ebayDiagnosticError.retry_after || null,
-            retry_count: ebayDiagnosticError.retry_count || 0
+            retry_count: ebayDiagnosticError.retry_count || 0,
+            response_headers: ebayDiagnosticError.response_headers,
+            api_errors: ebayDiagnosticError.api_errors
           }
         };
       }
