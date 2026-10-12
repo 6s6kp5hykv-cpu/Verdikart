@@ -1,4 +1,5 @@
-// Kistefunn analysebackend v15.5.47-test7.14-shared-target-aware-filter
+// Kistefunn analysebackend v15.5.48-test7.15-guitar-variant-tolerant-filter
+// V15.5.48 TEST 7.15: Avoids rejecting complete guitars because titles mention pickups/bridges/necks/pickguards; treats explicitly requested pickguard color as a hard requirement. Preview-only; not production-approved.
 // V15.5.47 TEST 7.14: Makes accessory/part rejection target-aware and keeps uncertain model variants as lower-confidence candidates unless there is a clear identity conflict. Preview-only; not production-approved.
 // V15.5.46 TEST 7.13 CANDIDATE: Fixes console accessory regex escaping, rejects cooling-fan/radiator-only listings, avoids console fallback/detail lookups for explicit accessory targets, and reports bounded score rejection reasons for diagnosis. Preview-only; not production-approved.
 // V15.5.45 TEST 7.12 CANDIDATE: Reject console accessory-only listings (Joy-Con-only, acrylic/protective cases, screen protectors) before relevance scoring. Requires local regression + Preview validation; not production-approved.\n// V15.5.40 TEST 7.6: Adds bounded eBay post-search pipeline counts to diagnostics only; no search, filter, valuation or UI behavior changes.
@@ -52,7 +53,7 @@
 // - Ny markedsmotor er klargjort for FINN + eBay + AI.
 // - FINN aktiveres først når legitim API-tilgang er tilgjengelig.
 
-const BACKEND_VERSION = "v15.5.47-test7.14-shared-target-aware-filter";
+const BACKEND_VERSION = "v15.5.48-test7.15-guitar-variant-tolerant-filter";
 
 import { identifyWithOpenAI } from "./lib/openai.js";
 import { isCompatibleGuitarBridgeVariant } from "../lib/matching.js";
@@ -1479,8 +1480,16 @@ export default async function handler(req, res) {
         "decal only"
       ];
 
+      // Guitar listing titles routinely mention pickup configuration, bridge,
+      // neck and pickguard as features of a COMPLETE guitar. These words alone
+      // must not trigger the generic accessory gate; standalone-part patterns
+      // below still reject titles such as "pickguard only" or "replacement neck".
+      const applicableAccessoryTerms = category === "guitar"
+        ? accessoryTerms.filter(term => !["pick", "pickup", "pickguard", "bridge", "neck"].includes(term))
+        : accessoryTerms;
+
       if (
-        !targetIsAccessory && accessoryTerms.some(term => t.includes(term))
+        !targetIsAccessory && applicableAccessoryTerms.some(term => t.includes(term))
       ) {
         return {
           score: -100,
@@ -2634,6 +2643,31 @@ export default async function handler(req, res) {
           sunburst: /\b(sunburst|sun burst|3[- ]tone sunburst|3ts)\b/,
           olympic_white: /\bolympic white\b/
         };
+
+        // Cosmetic details are flexible unless the user explicitly asked for
+        // that detail. A named pickguard color in the user's text is a hard
+        // constraint; do not silently accept another pickguard color.
+        const explicitTargetText = String(criteria.user_model_text || "").toLowerCase();
+        const targetNamesPickguard = /\b(pickguard|pick guard|plekterbrett)\b/i.test(explicitTargetText);
+        const explicitPickguardColor = targetNamesPickguard
+          ? (Object.entries(colorPatterns).find(([, pattern]) => pattern.test(explicitTargetText))?.[0] || null)
+          : null;
+        if (explicitPickguardColor) {
+          const listingPickguardMatch = t.match(/\b(black|svart|sort|white|hvit|red|rød|blue|blå)\b[^,;]{0,30}\b(pickguard|pick guard|plekterbrett)\b|\b(pickguard|pick guard|plekterbrett)\b[^,;]{0,30}\b(black|svart|sort|white|hvit|red|rød|blue|blå)\b/i);
+          if (listingPickguardMatch) {
+            const listingPickguardColor = Object.entries(colorPatterns)
+              .find(([, pattern]) => pattern.test(listingPickguardMatch[0]))?.[0] || null;
+            if (listingPickguardColor && listingPickguardColor !== explicitPickguardColor) {
+              return {
+                score: -100,
+                accepted: false,
+                near_match: false,
+                year_match: year ? "missing" : "not_required",
+                reason: "eksplisitt plekterbrettfarge stemmer ikke"
+              };
+            }
+          }
+        }
 
         if (criteria.target_color) {
           const listingColor = Object.entries(colorPatterns)
