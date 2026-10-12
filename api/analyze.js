@@ -1,4 +1,4 @@
-// Kistefunn analysebackend v15.5.50-test7.17-marketplace-price-diagnostics
+// Kistefunn analysebackend v15.5.51-test7.18-valuation-listing-audit
 // V15.5.49 TEST 7.16: Rejects console bags/cases, screen assemblies, motherboards and repair-service listings from complete-console valuation; preserves explicit complete-console bundles. Preview-only; not production-approved.\n// V15.5.48 TEST 7.15: Avoids rejecting complete guitars because titles mention pickups/bridges/necks/pickguards; treats explicitly requested pickguard color as a hard requirement. Preview-only; not production-approved.
 // V15.5.47 TEST 7.14: Makes accessory/part rejection target-aware and keeps uncertain model variants as lower-confidence candidates unless there is a clear identity conflict. Preview-only; not production-approved.
 // V15.5.46 TEST 7.13 CANDIDATE: Fixes console accessory regex escaping, rejects cooling-fan/radiator-only listings, avoids console fallback/detail lookups for explicit accessory targets, and reports bounded score rejection reasons for diagnosis. Preview-only; not production-approved.
@@ -53,7 +53,7 @@
 // - Ny markedsmotor er klargjort for FINN + eBay + AI.
 // - FINN aktiveres først når legitim API-tilgang er tilgjengelig.
 
-const BACKEND_VERSION = "v15.5.50-test7.17-marketplace-price-diagnostics";
+const BACKEND_VERSION = "v15.5.51-test7.18-valuation-listing-audit";
 
 import { identifyWithOpenAI } from "./lib/openai.js";
 import { isCompatibleGuitarBridgeVariant } from "../lib/matching.js";
@@ -5043,6 +5043,43 @@ export default async function handler(req, res) {
         exact_prices_nok:
           exactPool.map(x => Number(x.nok)).filter(Number.isFinite),
 
+        // Test 7.18: bounded listing-by-listing audit. This is diagnostic-only;
+        // it does not change matching, filtering, or valuation calculations.
+        valuation_listing_audit: exactPool.slice(0, 100).map(item => {
+          const used = finalPoolKeys.has(item);
+          const priceValue = Number(item?.price?.value);
+          const nokValue = Number(item?.nok);
+          return {
+            title: String(item?.title || "").slice(0, 240),
+            url: /^https?:\/\//i.test(String(item?.url || item?.itemWebUrl || ""))
+              ? String(item?.url || item?.itemWebUrl || "").slice(0, 1000)
+              : "",
+            item_id: String(item?.itemId || item?.legacyItemId || "").slice(0, 100),
+            marketplace: String(item?.marketplace || "EBAY_UNKNOWN").slice(0, 20),
+            query: String(item?.query || "").slice(0, 160),
+            original_price: Number.isFinite(priceValue) ? priceValue : null,
+            currency: String(item?.price?.currency || item?.currency || "").slice(0, 8),
+            price_nok: Number.isFinite(nokValue) ? Math.round(nokValue) : null,
+            match_tier: String(item?.match_tier || item?.valuation_tier || "").slice(0, 30),
+            used_for_valuation: used,
+            filter_decision: used ? "used_in_final_valuation" : "excluded_after_exact_pool"
+          };
+        }),
+        valuation_used_listing_audit: finalPool.slice(0, 100).map(item => ({
+          title: String(item?.title || "").slice(0, 240),
+          url: /^https?:\/\//i.test(String(item?.url || item?.itemWebUrl || ""))
+            ? String(item?.url || item?.itemWebUrl || "").slice(0, 1000)
+            : "",
+          item_id: String(item?.itemId || item?.legacyItemId || "").slice(0, 100),
+          marketplace: String(item?.marketplace || "EBAY_UNKNOWN").slice(0, 20),
+          query: String(item?.query || "").slice(0, 160),
+          original_price: Number.isFinite(Number(item?.price?.value)) ? Number(item.price.value) : null,
+          currency: String(item?.price?.currency || item?.currency || "").slice(0, 8),
+          price_nok: Number.isFinite(Number(item?.nok)) ? Math.round(Number(item.nok)) : null,
+          match_tier: String(item?.match_tier || item?.valuation_tier || "").slice(0, 30),
+          filter_decision: "used_in_final_valuation"
+        })),
+
         // Test 7.17: diagnostic-only breakdown by eBay marketplace.
         // Values are already normalized to NOK by the existing FX path;
         // this does not alter which listings are accepted or how valuation works.
@@ -6495,6 +6532,8 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
         low_nok: Number.isFinite(Number(ebay?.low_nok)) ? Number(ebay.low_nok) : null,
         high_nok: Number.isFinite(Number(ebay?.high_nok)) ? Number(ebay.high_nok) : null,
         exact_prices_nok: Array.isArray(ebay?.exact_prices_nok) ? ebay.exact_prices_nok.slice(0, 100).map(Number).filter(Number.isFinite) : [],
+        valuation_listing_audit: Array.isArray(ebay?.valuation_listing_audit) ? ebay.valuation_listing_audit.slice(0, 100) : [],
+        valuation_used_listing_audit: Array.isArray(ebay?.valuation_used_listing_audit) ? ebay.valuation_used_listing_audit.slice(0, 100) : [],
         exact_marketplace_price_summary: ebay?.exact_marketplace_price_summary && typeof ebay.exact_marketplace_price_summary === "object" ? ebay.exact_marketplace_price_summary : {},
         successful_marketplaces: Array.isArray(ebay?.successful_marketplaces) ? ebay.successful_marketplaces : []
       }
