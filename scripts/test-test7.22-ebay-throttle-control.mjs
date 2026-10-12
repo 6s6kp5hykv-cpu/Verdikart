@@ -1,0 +1,16 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+const root = new URL('../api/', import.meta.url);
+const src = fs.readFileSync(new URL('analyze.js', root), 'utf8');
+assert.match(src, /v15\.5\.55-test7\.22-ebay-throttle-control/);
+assert.match(src, /const EBAY_SEARCH_MAX_CONCURRENCY = 2/);
+assert.match(src, /const EBAY_DETAIL_MAX_CONCURRENCY = 3/);
+assert.match(src, /const EBAY_SEARCH_MAX_429_RETRIES = 1/);
+assert.match(src, /await mapWithConcurrency\(\s*searchJobs,\s*EBAY_SEARCH_MAX_CONCURRENCY/);
+assert.match(src, /await mapWithConcurrency\(\s*results,\s*EBAY_SEARCH_MAX_CONCURRENCY/);
+assert.match(src, /await mapWithConcurrency\(\s*rawItems,\s*EBAY_DETAIL_MAX_CONCURRENCY/);
+assert.match(src, /r\.status !== 429/);
+assert.match(src, /retry-after/);
+assert.match(src, /retry_count: ebayDiagnosticError\.retry_count/);
+assert.match(src, /retry_after: ebayDiagnosticError\.retry_after/);
+console.log('Test 7.22 eBay throttle-control static checks passed');
