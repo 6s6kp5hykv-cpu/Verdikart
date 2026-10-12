@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 const source = fs.readFileSync(new URL("../api/analyze.js", import.meta.url), "utf8");
-assert.match(source, /v15\.5\.49-test7\.16-console-accessory-filter-fix/);
+assert.match(source, /v15\.5\.(?:49-test7\.16-console-accessory-filter-fix|51-test7\.18-valuation-listing-audit)/);
 const patterns = [
   /(?:transporttasche|tragetasche|reisetasche|schutztasche|tasche für switch|switch tasche|carrying bag|travel bag|storage bag|console bag)/i,
   /(?:replacement )?(?:oled )?screen (?:assembly|module|replacement)/i,

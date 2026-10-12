@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import assert from 'node:assert/strict';
 
 const source = fs.readFileSync(new URL('../api/analyze.js', import.meta.url), 'utf8');
-assert.match(source, /v15\.5\.50-test7\.17-marketplace-price-diagnostics/);
+assert.match(source, /v15\.5\.(?:50-test7\.17-marketplace-price-diagnostics|51-test7\.18-valuation-listing-audit)/);
 assert.match(source, /exact_marketplace_price_summary: Object\.fromEntries/);
 assert.match(source, /sample_prices_nok: values\.slice\(0, 30\)\.map\(Math\.round\)/);
 assert.match(source, /exact_marketplace_price_summary: ebay\?\.exact_marketplace_price_summary/);

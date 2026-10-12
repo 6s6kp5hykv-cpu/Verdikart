@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const source = fs.readFileSync(path.join(here, '..', 'api', 'analyze.js'), 'utf8');
-assert.match(source, /const BACKEND_VERSION = "v15\.5\.48-test7\.15-guitar-variant-tolerant-filter"/);
+assert.match(source, /const BACKEND_VERSION = "v15\.5\.49-test7\.16-console-accessory-filter-fix"/);
 assert.match(source, /score_rejection_reasons: \{\}/);
 assert.match(source, /built\.target_is_console_accessory\s*\?\s*\[\]/);
 assert.match(source, /const targetIsAccessory = Boolean\(criteria\.target_is_console_accessory\)/);
