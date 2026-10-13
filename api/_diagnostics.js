@@ -18,7 +18,7 @@ function safeMetadata(value, depth) {
   if (value === null || value === undefined) return null;
   if (depth > 6) return "[truncated-depth]";
 
-  var blocked = /key|token|secret|password|authorization|cookie|image|base64|dataurl/i;
+  var blocked = /key|token|secret|password|authorization|cookie|image|base64|dataurl|request.?body|prompt|user.?email|session/i;
   if (typeof value === "string") return value.slice(0, 500);
   if (typeof value === "number" || typeof value === "boolean") return value;
   if (Array.isArray(value)) {
@@ -39,8 +39,106 @@ function safeMetadata(value, depth) {
   return out;
 }
 
+function sanitizeDiagnosticMetadata(value) { return safeMetadata(value); }
+function sanitizeEbaySearchTrace(trace) {
+  if (!Array.isArray(trace)) return null;
+  return trace.slice(0, 12).map(function (entry) {
+    entry = entry && typeof entry === "object" ? entry : {};
+    var parsedStatus = Number(entry.http_status);
+    var status = Number.isInteger(parsedStatus) && parsedStatus >= 100 && parsedStatus <= 599 ? parsedStatus : null;
+    var rawCount = entry.raw_hit_count ?? entry.raw_count;
+    var parsedCount = rawCount === null || rawCount === undefined || rawCount === "" ? NaN : Number(rawCount);
+    var count = Number.isInteger(parsedCount) && parsedCount >= 0 ? Math.min(parsedCount, 1000000) : null;
+    var result = "unknown_result";
+    var code = "UNKNOWN";
+    if (status !== null && status >= 200 && status < 300) {
+      if (count > 0) { result = "hits_received"; code = "NONE"; }
+      else if (count === 0) { result = "zero_results"; code = "NO_RESULTS"; }
+    } else if (status === 408 || status === 504) {
+      result = "timeout"; code = "TIMEOUT";
+    } else if (status !== null && status >= 400 && status < 500) {
+      result = "request_rejected"; code = "HTTP_CLIENT_ERROR";
+    } else if (status !== null && status >= 500) {
+      result = "upstream_failure"; code = "HTTP_SERVER_ERROR";
+    } else if (status === null) {
+      result = "request_failed"; code = "REQUEST_FAILED";
+    }
+    var source = String(entry.source || entry.marketplace || "").trim().toLowerCase() === "ebay" ? "ebay" : "other";
+    return { source: source, http_status: status, raw_hit_count: count, error_code: code, error_result: result };
+  });
+}
+function sanitizeAnalysisDiagnosticDetail(value) {
+  var safe = safeMetadata(value);
+  if (!safe || typeof safe !== "object" || Array.isArray(safe)) return safe;
+  var search = value && value.ebay_search;
+  if (search && typeof search === "object") {
+    safe.ebay_search = {
+      search_status: ["unknown", "not_run", "no_trace_recorded", "search_errors", "zero_raw_hits", "raw_hits_received"].includes(search.search_status) ? search.search_status : "unknown",
+      raw_total: Number.isFinite(Number(search.raw_total)) ? Number(search.raw_total) : null,
+      trace_entries: Number.isFinite(Number(search.trace_entries)) ? Number(search.trace_entries) : null,
+      trace: sanitizeEbaySearchTrace(search.trace)
+    };
+  }
+  return safe;
+}
+function sanitizeAnalysisEbayReport(value) {
+  var safe = safeMetadata(value);
+  if (!safe || typeof safe !== "object" || Array.isArray(safe)) return safe;
+  if (value && Object.prototype.hasOwnProperty.call(value, "search_trace")) safe.search_trace = sanitizeEbaySearchTrace(value.search_trace);
+  for (var field of ["valuation_listing_audit", "valuation_used_listing_audit"]) {
+    if (!Array.isArray(value[field])) continue;
+    safe[field] = value[field].slice(0, 30).map(function (item) {
+      item = item && typeof item === "object" ? item : {};
+      var price = Number(item.price_nok);
+      return {
+        item_id: String(item.item_id || item.itemId || "").slice(0, 80) || null,
+        price_nok: Number.isFinite(price) ? price : null,
+        used_for_valuation: Boolean(item.used_for_valuation)
+      };
+    });
+  }
+  return safe;
+}
 function makeEventId() {
   return "KF-" + crypto.randomBytes(4).toString("hex").toUpperCase();
+}
+
+function classifyEbaySearchStatus(searchTrace, discoveryQueries) {
+  if (!Array.isArray(searchTrace)) return "unknown";
+  if (searchTrace.length === 0) return Array.isArray(discoveryQueries) && discoveryQueries.length > 0 ? "no_trace_recorded" : "not_run";
+  if (searchTrace.some(item => Number(item?.http_status) === 200 && Number(item?.raw_count) > 0)) return "raw_hits_received";
+  if (searchTrace.some(item => Number(item?.http_status) === 200)) return "zero_raw_hits";
+  return "search_errors";
+}
+function buildAnalysisDiagnosticReport(input) {
+  input = input && typeof input === "object" ? input : {};
+  var report = {
+    schema_version: 1,
+    analysis_request_id: cleanText(input.analysis_request_id, 36),
+    runtime: {
+      backend_version: cleanText(input.backend_version || "unknown", 80),
+      commit_sha: cleanText(input.commit_sha || "unknown", 40),
+      vercel_env: cleanText(input.vercel_env || "unknown", 20),
+      vercel_url: cleanText(input.vercel_url || "unknown", 200),
+      deployment_id: cleanText(input.deployment_id || "unknown", 100)
+    },
+    diagnostic_detail: sanitizeAnalysisDiagnosticDetail(input.diagnostic_detail),
+    valuation: safeMetadata(input.valuation),
+    ebay: sanitizeAnalysisEbayReport(input.ebay)
+  };
+  var serialized = JSON.stringify(report);
+  if (serialized.length > 90000) {
+    if (report.ebay && Array.isArray(report.ebay.valuation_listing_audit)) report.ebay.valuation_listing_audit = report.ebay.valuation_listing_audit.slice(0, 30);
+    if (report.ebay && Array.isArray(report.ebay.valuation_used_listing_audit)) report.ebay.valuation_used_listing_audit = report.ebay.valuation_used_listing_audit.slice(0, 30);
+    if (report.diagnostic_detail && report.diagnostic_detail.ebay_search && Array.isArray(report.diagnostic_detail.ebay_search.trace)) report.diagnostic_detail.ebay_search.trace = report.diagnostic_detail.ebay_search.trace.slice(0, 8);
+    serialized = JSON.stringify(report);
+  }
+  if (serialized.length > 90000) report = {
+    schema_version: 1, analysis_request_id: report.analysis_request_id, runtime: report.runtime,
+    diagnostic_detail: { omitted: "report_exceeded_size_limit" }, valuation: report.valuation,
+    ebay: { omitted: "report_exceeded_size_limit" }
+  };
+  return report;
 }
 
 function normalizeError(error) {
@@ -149,15 +247,10 @@ async function logDiagnostic(options) {
     );
 
     if (!response.ok) {
-      var responseText = await response.text().catch(function () {
-        return "";
-      });
-
       console.error(
         "[KISTEFUNN_DIAGNOSTICS_WRITE_FAILED]",
         event_id,
-        response.status,
-        responseText.slice(0, 500)
+        Number.isInteger(response.status) ? response.status : "unknown_status"
       );
 
       return {
@@ -173,8 +266,7 @@ async function logDiagnostic(options) {
   } catch (error) {
     console.error(
       "[KISTEFUNN_DIAGNOSTICS_EXCEPTION]",
-      event_id,
-      error && error.message ? error.message : String(error)
+      event_id
     );
 
     return {
@@ -184,4 +276,4 @@ async function logDiagnostic(options) {
   }
 }
 
-export { DIAG_VERSION, makeEventId, normalizeError, logDiagnostic };
+export { DIAG_VERSION, makeEventId, normalizeError, logDiagnostic, buildAnalysisDiagnosticReport, sanitizeDiagnosticMetadata, sanitizeEbaySearchTrace, classifyEbaySearchStatus };

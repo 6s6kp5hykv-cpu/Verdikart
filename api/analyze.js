@@ -133,17 +133,19 @@ export function isMarketCandidateEligible(source, qualityWeight) {
     qualityWeight > 0;
 }
 
+import crypto from "node:crypto";
 import { identifyWithOpenAI } from "./lib/openai.js";
 import { isCompatibleGuitarBridgeVariant } from "../lib/matching.js";
-import { logDiagnostic } from "./_diagnostics.js";
+import { logDiagnostic, buildAnalysisDiagnosticReport, sanitizeEbaySearchTrace, classifyEbaySearchStatus } from "./_diagnostics.js";
 
 async function writeBackendDiagnostic(options) {
   try {
-    await Promise.race([
+    const result = await Promise.race([
       logDiagnostic(options),
-      new Promise(resolve => setTimeout(resolve, 3000))
+      new Promise(resolve => setTimeout(() => resolve({ ok: false, timeout: true }), 3000))
     ]);
-  } catch (_) {}
+    return Boolean(result?.ok);
+  } catch (_) { return false; }
 }
 
 const EBAY_OAUTH_TIMEOUT_MS = 10_000;
@@ -203,6 +205,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
+  const analysisRequestId = crypto.randomUUID();
   try {
     // V14.25: Intern tidsmåling. Kun måling – ingen endring av markeds-/filterlogikk.
     const backendStartedAt = performance.now();
@@ -241,10 +244,10 @@ export default async function handler(req, res) {
     const hasImage = typeof image === "string" && image.startsWith("data:image/");
 
     if (image && !hasImage) {
-      return res.status(400).json({ error: "Ugyldig bildeformat" });
+      return res.status(400).json({ error: "Ugyldig bildeformat", analysis_request_id: analysisRequestId, version: BACKEND_VERSION });
     }
     if (!hasImage && !userDescription) {
-      return res.status(400).json({ error: "Skriv en beskrivelse eller legg til et bilde." });
+      return res.status(400).json({ error: "Skriv en beskrivelse eller legg til et bilde.", analysis_request_id: analysisRequestId, version: BACKEND_VERSION });
     }
 
     /* ---------------------------------------------------------
@@ -281,6 +284,7 @@ export default async function handler(req, res) {
         metadata: {
           source: "backend",
           diagnostic_version: "diag-v4",
+          analysis_request_id: analysisRequestId,
           error_code: errorCode,
           error_type: errorType,
           error_param: error?.error_param || null,
@@ -297,6 +301,7 @@ export default async function handler(req, res) {
         error_type: errorType,
         error_param: error?.error_param || null,
         request_id: requestId,
+        analysis_request_id: analysisRequestId,
         status,
         version: BACKEND_VERSION
       });
@@ -6743,8 +6748,9 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
         successful_http_query_values: Array.isArray(ebay?.search_trace)
           ? ebay.search_trace.filter(x => Number(x?.http_status) === 200).slice(0, 8).map(x => String(x?.query || '').slice(0, 120))
           : [],
-        raw_total: Array.isArray(ebay?.search_trace) ? ebay.search_trace.reduce((sum, x) => sum + (Number(x.raw_count) || 0), 0) : 0,
-        trace_entries: Array.isArray(ebay?.search_trace) ? ebay.search_trace.length : 0,
+        raw_total: Array.isArray(ebay?.search_trace) ? ebay.search_trace.reduce((sum, x) => sum + (Number(x.raw_count) || 0), 0) : null,
+        search_status: classifyEbaySearchStatus(ebay?.search_trace, ebay?.discovery_queries),
+        trace_entries: Array.isArray(ebay?.search_trace) ? ebay.search_trace.length : null,
         trace: Array.isArray(ebay?.search_trace) ? ebay.search_trace.slice(0, 12) : []
       },
       ebay_market_pipeline: {
@@ -6816,7 +6822,85 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
 
     // Persist a bounded summary of successful runs. The response still returns
     // diagnostic_detail to the frontend; this adds a durable server-side trace.
-    await writeBackendDiagnostic({
+    const commitSha = /^[0-9a-f]{40}$/i.test(String(process.env.VERCEL_GIT_COMMIT_SHA || ""))
+      ? String(process.env.VERCEL_GIT_COMMIT_SHA).toLowerCase()
+      : "unknown";
+    const vercelEnv = ["production", "preview", "development"].includes(String(process.env.VERCEL_ENV || ""))
+      ? String(process.env.VERCEL_ENV)
+      : "unknown";
+    const vercelUrl = /^[a-z0-9.-]+$/i.test(String(process.env.VERCEL_URL || ""))
+      ? String(process.env.VERCEL_URL).slice(0, 200)
+      : "unknown";
+    const deploymentId = /^dpl_[a-z0-9]+$/i.test(String(process.env.VERCEL_DEPLOYMENT_ID || ""))
+      ? String(process.env.VERCEL_DEPLOYMENT_ID).slice(0, 100)
+      : "unknown";
+    const safeListing = item => ({
+      item_id: String(item?.item_id || item?.itemId || "").slice(0, 80) || null,
+      title: String(item?.title || "").replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/ig, "[email]").replace(/(?:\+?\d[\d ()-]{7,}\d)/g, "[phone]").slice(0, 180) || null,
+      price_nok: Number.isFinite(Number(item?.price_nok)) ? Number(item.price_nok) : null,
+      used_for_valuation: Boolean(item?.used_for_valuation),
+      reason: String(item?.filter_decision || item?.reason || "").slice(0, 80) || null
+    });
+    const persistedReport = buildAnalysisDiagnosticReport({
+      analysis_request_id: analysisRequestId,
+      backend_version: BACKEND_VERSION,
+      commit_sha: commitSha,
+      vercel_env: vercelEnv,
+      vercel_url: vercelUrl,
+      deployment_id: deploymentId,
+      diagnostic_detail: {
+        ebay_search: {
+          search_status: diagnosticDetail.ebay_search.search_status,
+          raw_total: diagnosticDetail.ebay_search.raw_total,
+          trace_entries: diagnosticDetail.ebay_search.trace_entries,
+          trace: sanitizeEbaySearchTrace(diagnosticDetail.ebay_search.trace)
+        },
+        ebay_market_pipeline: {
+          valuation_consistency: diagnosticDetail.ebay_market_pipeline.valuation_consistency,
+          stage_trace_entries: diagnosticDetail.ebay_market_pipeline.stage_trace_entries,
+          total_candidates_after_processing: diagnosticDetail.ebay_market_pipeline.total_candidates_after_processing,
+          raw_exact_match_count: diagnosticDetail.ebay_market_pipeline.raw_exact_match_count,
+          balanced_exact_match_count: diagnosticDetail.ebay_market_pipeline.balanced_exact_match_count,
+          exact_match_count: diagnosticDetail.ebay_market_pipeline.exact_match_count,
+          valuation_excluded_count: diagnosticDetail.ebay_market_pipeline.valuation_excluded_count,
+          sample_size_used_for_valuation: diagnosticDetail.ebay_market_pipeline.sample_size_used_for_valuation,
+          distinct_valuation_count: diagnosticDetail.ebay_market_pipeline.distinct_valuation_count,
+          median_nok: diagnosticDetail.ebay_market_pipeline.median_nok,
+          exact_median_nok: diagnosticDetail.ebay_market_pipeline.exact_median_nok,
+          low_nok: diagnosticDetail.ebay_market_pipeline.low_nok,
+          high_nok: diagnosticDetail.ebay_market_pipeline.high_nok
+        },
+        switch_package_gate: ebay?.switch_package_gate || null
+      },
+      valuation: {
+        median_nok: market?.estimated_nok ?? null,
+        market_value_nok: market?.estimated_nok ?? null,
+        low_nok: market?.low_nok ?? null,
+        high_nok: market?.high_nok ?? null,
+        exact_median_nok: ebay?.exact_median_nok ?? null,
+        market_reference_count: market?.market_reference_count ?? null,
+        market_data_status: Number(market?.market_reference_count || 0) > 0 ? "market_supported" : "ai_estimate_only",
+        valuation_basis: market?.basis || "unknown",
+        source_weights: market?.source_weights || [],
+        sample_size: ebay?.sample_size ?? null,
+        distinct_valuation_count: ebay?.distinct_valuation_count ?? null
+      },
+      ebay: {
+        enabled: ebay?.enabled ?? null,
+        raw_total: diagnosticDetail.ebay_search.raw_total,
+        search_trace: sanitizeEbaySearchTrace(diagnosticDetail.ebay_search.trace),
+        switch_package_gate: ebay?.switch_package_gate || null,
+        valuation_listing_audit: (ebay?.valuation_listing_audit || []).slice(0, 100).map(safeListing),
+        valuation_used_listing_audit: (ebay?.valuation_used_listing_audit || []).slice(0, 100).map(safeListing),
+        sample_size: ebay?.sample_size ?? null,
+        distinct_valuation_count: ebay?.distinct_valuation_count ?? null,
+        median_nok: ebay?.median_nok ?? null,
+        exact_median_nok: ebay?.exact_median_nok ?? null,
+        low_nok: ebay?.low_nok ?? null,
+        high_nok: ebay?.high_nok ?? null
+      }
+    });
+    const diagnosticsPersisted = await writeBackendDiagnostic({
       level: "info",
       stage: "analysis_completed",
       code: "analysis_completed",
@@ -6828,8 +6912,10 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       duration_ms: timings.total_backend_ms,
       metadata: {
         source: "backend",
-        diagnostic_version: "diag-v4",
-        diagnostic_detail: diagnosticDetail,
+        diagnostic_version: "diag-v5",
+        analysis_request_id: analysisRequestId,
+        analysis_report: persistedReport,
+        diagnostic_detail: persistedReport.diagnostic_detail,
         timings: {
           openai_identification_ms: timings.openai_identification_ms,
           ebay_oauth_ms: timings.ebay_oauth_ms,
@@ -6847,6 +6933,9 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
 
     return res.status(200).json({
       version: BACKEND_VERSION,
+      analysis_request_id: analysisRequestId,
+      diagnostics_persisted: diagnosticsPersisted,
+      runtime_identity: { commit_sha: commitSha, vercel_env: vercelEnv, vercel_url: vercelUrl, deployment_id: deploymentId },
       timings,
       diagnostic_detail: diagnosticDetail,
       name:
@@ -7085,6 +7174,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       metadata: {
         source: "backend",
         diagnostic_version: "diag-v4",
+        analysis_request_id: analysisRequestId,
         error_code: e?.error_code || null,
         error_type: e?.error_type || null,
         error_param: e?.error_param || null,
@@ -7099,6 +7189,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       error_code: e?.error_code || null,
       error_type: e?.error_type || null,
       request_id: e?.request_id || null,
+      analysis_request_id: analysisRequestId,
       status: 500,
       version: BACKEND_VERSION
     });
