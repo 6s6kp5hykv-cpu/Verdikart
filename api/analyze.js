@@ -1,4 +1,4 @@
-// Kistefunn analysebackend v15.5.62-test7.29-nintendo-search-fix
+// Kistefunn analysebackend v15.5.63-test7.32-ebay-detail-diagnostics
 // Test 7.25: Separates Switch OLED package completeness from model identity; excludes console-only/parts/unconfirmed package titles from valuation pool. Preview-only; not production-approved.
 // V15.5.49 TEST 7.16: Rejects console bags/cases, screen assemblies, motherboards and repair-service listings from complete-console valuation; preserves explicit complete-console bundles. Preview-only; not production-approved.\n// V15.5.48 TEST 7.15: Avoids rejecting complete guitars because titles mention pickups/bridges/necks/pickguards; treats explicitly requested pickguard color as a hard requirement. Preview-only; not production-approved.
 // V15.5.47 TEST 7.14: Makes accessory/part rejection target-aware and keeps uncertain model variants as lower-confidence candidates unless there is a clear identity conflict. Preview-only; not production-approved.
@@ -54,7 +54,7 @@
 // - Ny markedsmotor er klargjort for FINN + eBay + AI.
 // - FINN aktiveres først når legitim API-tilgang er tilgjengelig.
 
-const BACKEND_VERSION = "v15.5.62-test7.29-nintendo-search-fix";
+const BACKEND_VERSION = "v15.5.63-test7.32-ebay-detail-diagnostics";
 
 export function isNintendoSwitchOledTarget(target) {
   const text = typeof target === "string"
@@ -151,6 +151,146 @@ export function buildNintendoPackageCandidateDiagnostics(listings, limit = 30) {
       }
     };
   });
+}
+
+export function preserveEbayDetailData(item, preparedListing) {
+  return {
+    ...preparedListing,
+    _ebay_detail_loaded: item?._ebay_detail_loaded === true,
+    _ebay_aspects: item?._ebay_aspects && typeof item._ebay_aspects === "object" && !Array.isArray(item._ebay_aspects)
+      ? item._ebay_aspects
+      : {}
+  };
+}
+
+export function createEbayDetailDiagnostics() {
+  const data = {
+    eligible: 0, attempted: 0, succeeded: 0, failed: 0, skipped: 0,
+    aspects_returned: 0, aspects_empty: 0, cache_reused: 0,
+    skipped_reasons: { missing_item_id: 0, missing_token: 0, not_selected: 0 },
+    failure_reasons: { http_error: 0, request_exception: 0, invalid_json: 0 }
+  };
+  return {
+    addEligible(count) { data.eligible += Math.max(0, Number(count) || 0); },
+    skip(reason, count = 1) {
+      if (!Object.prototype.hasOwnProperty.call(data.skipped_reasons, reason)) return;
+      data.skipped += count;
+      data.skipped_reasons[reason] += count;
+    },
+    cacheReuse() { data.cache_reused += 1; },
+    attempted() { data.attempted += 1; },
+    outcome(succeeded, aspectsReturned = false, failureReason = "request_exception") {
+      if (!succeeded) {
+        data.failed += 1;
+        if (Object.prototype.hasOwnProperty.call(data.failure_reasons, failureReason)) data.failure_reasons[failureReason] += 1;
+        return;
+      }
+      data.succeeded += 1;
+      if (aspectsReturned) data.aspects_returned += 1;
+      else data.aspects_empty += 1;
+    },
+    snapshot() { return JSON.parse(JSON.stringify(data)); }
+  };
+}
+
+// Same predicates and cap as the existing inline selector; this only records
+// how each per-search candidate observation was handled.
+export function selectEbayDetailIds(ranked, limit, diagnostics, disabled = false) {
+  const eligible = (Array.isArray(ranked) ? ranked : []).filter(x => Number(x?.score) >= 20);
+  diagnostics?.addEligible(eligible.length);
+  const withId = eligible.filter(x => x?.item?.itemId);
+  const missingIdCount = eligible.length - withId.length;
+  if (missingIdCount) diagnostics?.skip("missing_item_id", missingIdCount);
+  if (disabled) {
+    if (withId.length) diagnostics?.skip("not_selected", withId.length);
+    return new Set();
+  }
+  const selected = withId.slice(0, limit);
+  const selectedIds = new Set(selected.map(x => String(x.item.itemId)));
+  const notSelectedCount = withId.filter(x => !selectedIds.has(String(x.item.itemId))).length;
+  if (notSelectedCount) diagnostics?.skip("not_selected", notSelectedCount);
+  return selectedIds;
+}
+
+export function createEbayItemDetailEnricher({ getToken, fetchDetails, diagnostics, cache = new Map(), onAttempt, onFailure, onSuccess, onFinish }) {
+  const emptyDetails = () => ({ _ebay_detail_loaded: false, _ebay_aspects: {}, _ebay_aspect_text: "", _ebay_description: "" });
+  return async function enrichEbayItem(item, marketplace) {
+    const itemId = String(item?.itemId || "").trim();
+    if (!itemId) {
+      diagnostics?.skip("missing_item_id");
+      return item;
+    }
+    const cacheKey = `${String(marketplace || "").toUpperCase()}|${itemId}`;
+    if (cache.has(cacheKey)) {
+      diagnostics?.cacheReuse();
+      return { ...item, ...(await cache.get(cacheKey)) };
+    }
+    const pending = (async () => {
+      const token = await getToken();
+      if (!token) {
+        diagnostics?.skip("missing_token");
+        return emptyDetails();
+      }
+      const detailStartedAt = performance.now();
+      diagnostics?.attempted();
+      onAttempt?.({ itemId, marketplace });
+      try {
+        const response = await fetchDetails(itemId, marketplace, token);
+        if (!response?.ok) {
+          const elapsed = Math.round(performance.now() - detailStartedAt);
+          diagnostics?.outcome(false, false, "http_error");
+          onFailure?.({ itemId, marketplace, status: response?.status ?? null, error: null, elapsed });
+          return emptyDetails();
+        }
+        let detail;
+        try {
+          detail = await response.json();
+        } catch (error) {
+          const elapsed = Math.round(performance.now() - detailStartedAt);
+          diagnostics?.outcome(false, false, "invalid_json");
+          onFailure?.({ itemId, marketplace, status: response?.status ?? null, error, elapsed });
+          return emptyDetails();
+        }
+        const aspects = [
+          ...(Array.isArray(detail?.localizedAspects) ? detail.localizedAspects : []),
+          ...(Array.isArray(detail?.inferredLocalizedAspects) ? detail.inferredLocalizedAspects : [])
+        ];
+        const aspectText = [];
+        const aspectMap = {};
+        for (const aspect of aspects) {
+          const name = String(aspect?.name || "").trim();
+          const valueRaw = aspect?.value;
+          const values = (Array.isArray(valueRaw) ? valueRaw : [valueRaw]).map(v => String(v ?? "").trim()).filter(Boolean);
+          if (!name || !values.length) continue;
+          const key = name.toLowerCase();
+          if (!aspectMap[key]) aspectMap[key] = [];
+          aspectMap[key].push(...values);
+          if (/year|manufactured|production|fretboard|fingerboard|\bboard\b|color|colour|finish|model|series|country|region|brand|type|body color|body colour/i.test(name)) {
+            aspectText.push(`${name}: ${values.join(", ")}`);
+          }
+        }
+        const enriched = {
+          _ebay_detail_loaded: true,
+          _ebay_aspects: aspectMap,
+          _ebay_aspect_text: aspectText.join(" | "),
+          _ebay_description: String(detail?.description || detail?.shortDescription || "")
+        };
+        const elapsed = Math.round(performance.now() - detailStartedAt);
+        diagnostics?.outcome(true, Object.keys(aspectMap).length > 0);
+        onSuccess?.({ itemId, marketplace, elapsed });
+        return enriched;
+      } catch (error) {
+        const elapsed = Math.round(performance.now() - detailStartedAt);
+        diagnostics?.outcome(false, false, "request_exception");
+        onFailure?.({ itemId, marketplace, status: null, error, elapsed });
+        return emptyDetails();
+      } finally {
+        onFinish?.({ elapsed: Math.round(performance.now() - detailStartedAt) });
+      }
+    })();
+    cache.set(cacheKey, pending);
+    return { ...item, ...(await pending) };
+  };
 }
 
 export function countMarketReferences(contributingMarketCandidates) {
@@ -3163,152 +3303,33 @@ export default async function handler(req, res) {
     // Same item may appear in several overlapping queries; cache only the
     // enrichment fields so each listing retains its own query/market context.
     const ebayItemDetailsCache = new Map();
-    let ebayItemDetailsCacheHits = 0;
-
-    async function enrichEbayItem(item, marketplace) {
-      const itemId = String(item?.itemId || "").trim();
-      if (!itemId) return item;
-      const cacheKey = `${String(marketplace || "").toUpperCase()}|${itemId}`;
-      if (ebayItemDetailsCache.has(cacheKey)) {
-        ebayItemDetailsCacheHits += 1;
-        const cached = await ebayItemDetailsCache.get(cacheKey);
-        return {
-          ...item,
-          ...(cached || {})
-        };
-      }
-      const pending = enrichEbayItemUncached(item, marketplace).then(enriched => ({
-        _ebay_detail_loaded: enriched?._ebay_detail_loaded === true,
-        _ebay_aspects: enriched?._ebay_aspects || {},
-        _ebay_aspect_text: enriched?._ebay_aspect_text || "",
-        _ebay_description: enriched?._ebay_description || ""
-      }));
-      ebayItemDetailsCache.set(cacheKey, pending);
-      const cached = await pending;
-      return { ...item, ...cached };
-    }
-
-    async function enrichEbayItemUncached(item, marketplace) {
-      const itemId = String(item?.itemId || "").trim();
-
-      if (!itemId) return item;
-
-      const token = await getEbayToken();
-      if (!token) return item;
-
-      const detailStartedAt = performance.now();
-      let detailTraceRecorded = false;
-      timings.ebay_item_details_calls += 1;
-
-      try {
-        const url =
-          "https://api.ebay.com/buy/browse/v1/item/" +
-          encodeURIComponent(itemId);
-
-        const r = await fetchWithTimeout(url, {
-          method: "GET",
-          headers: {
-            "Authorization": `Bearer ${token}`,
-            "Accept": "application/json",
-            "X-EBAY-C-MARKETPLACE-ID": marketplace
-          }
-        }, EBAY_ITEM_DETAILS_TIMEOUT_MS);
-
-        if (!r.ok) {
-          timings.ebay_item_details_failed += 1;
-          timings.ebay_item_details_trace.push({
-            item_id: itemId,
-            marketplace,
-            ok: false,
-            status: r.status,
-            ms: Math.round(performance.now() - detailStartedAt)
-          });
-          detailTraceRecorded = true;
-          return item;
-        }
-
-        const detail = await r.json();
-
-        // Browse item-details kan inneholde strukturerte aspekter som
-        // ikke følger med i item_summary. Disse er spesielt viktige for
-        // år, farge, gripebrett og modellvariant. eBay dokumenterer at
-        // getItem kan brukes for komplette item-detaljer/aspekter.
-        const aspects = [
-          ...(Array.isArray(detail?.localizedAspects)
-            ? detail.localizedAspects
-            : []),
-          ...(Array.isArray(detail?.inferredLocalizedAspects)
-            ? detail.inferredLocalizedAspects
-            : [])
-        ];
-
-        const aspectText = [];
-        const aspectMap = {};
-
-        for (const aspect of aspects) {
-          const name = String(aspect?.name || "").trim();
-          const valueRaw = aspect?.value;
-          const values = Array.isArray(valueRaw)
-            ? valueRaw
-            : [valueRaw];
-
-          const cleanValues = values
-            .map(v => String(v ?? "").trim())
-            .filter(Boolean);
-
-          if (!name || !cleanValues.length) continue;
-
-          const key = name.toLowerCase();
-          if (!aspectMap[key]) aspectMap[key] = [];
-          aspectMap[key].push(...cleanValues);
-
-          // Bare, selektiv aspekttekst. Vi tar ikke med alle aspekter
-          // fordi f.eks. "Pickup" ellers kan bli feiltolket som en del.
-          if (
-            /year|manufactured|production|fretboard|fingerboard|\bboard\b|color|colour|finish|model|series|country|region|brand|type|body color|body colour/i.test(name)
-          ) {
-            aspectText.push(`${name}: ${cleanValues.join(", ")}`);
-          }
-        }
-
-        const enriched = {
-          ...item,
-          _ebay_detail_loaded: true,
-          _ebay_aspects: aspectMap,
-          _ebay_aspect_text: aspectText.join(" | "),
-          _ebay_description: String(detail?.description || detail?.shortDescription || "")
-        };
-
-        return enriched;
-      } catch (error) {
+    const ebayDetailDiagnostics = createEbayDetailDiagnostics();
+    const enrichEbayItem = createEbayItemDetailEnricher({
+      getToken: getEbayToken,
+      cache: ebayItemDetailsCache,
+      diagnostics: ebayDetailDiagnostics,
+      fetchDetails: (itemId, marketplace, token) => fetchWithTimeout(
+        "https://api.ebay.com/buy/browse/v1/item/" + encodeURIComponent(itemId),
+        { method: "GET", headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json", "X-EBAY-C-MARKETPLACE-ID": marketplace } },
+        EBAY_ITEM_DETAILS_TIMEOUT_MS
+      ),
+      onAttempt: () => { timings.ebay_item_details_calls += 1; },
+      onFailure: ({ itemId, marketplace, status, error, elapsed }) => {
         timings.ebay_item_details_failed += 1;
         timings.ebay_item_details_trace.push({
-          item_id: itemId,
-          marketplace,
-          ok: false,
-          status: null,
-          error: String(error?.message || "item-details fetch failed").slice(0, 160),
-          ms: Math.round(performance.now() - detailStartedAt)
+          item_id: itemId, marketplace, ok: false, status,
+          ...(error ? { error: String(error?.message || "item-details fetch failed").slice(0, 160) } : {}),
+          ms: elapsed
         });
-        detailTraceRecorded = true;
-        return item;
-      } finally {
-        const elapsed = Math.round(performance.now() - detailStartedAt);
+      },
+      onSuccess: ({ itemId, marketplace, elapsed }) => {
+        timings.ebay_item_details_trace.push({ item_id: itemId, marketplace, ok: true, ms: elapsed });
+      },
+      onFinish: ({ elapsed }) => {
         timings.ebay_item_details_total_call_ms += elapsed;
-        timings.ebay_item_details_slowest_ms = Math.max(
-          timings.ebay_item_details_slowest_ms,
-          elapsed
-        );
-        if (!detailTraceRecorded) {
-          timings.ebay_item_details_trace.push({
-            item_id: itemId,
-            marketplace,
-            ok: true,
-            ms: elapsed
-          });
-        }
+        timings.ebay_item_details_slowest_ms = Math.max(timings.ebay_item_details_slowest_ms, elapsed);
       }
-    }
+    });
 
     function targetDrivenFenderVariantAllowed(targetText, listingText) {
       const target = String(targetText || "").toLowerCase();
@@ -3624,7 +3645,7 @@ export default async function handler(req, res) {
         return null;
       }
 
-      return {
+      return preserveEbayDetailData(item, {
         title,
         price: {
           value: originalPrice,
@@ -3654,7 +3675,7 @@ export default async function handler(req, res) {
           matchTier,
         valuation_tier:
           valuationTier
-      };
+      });
     }
 
     /* ---------------------------------------------------------
@@ -3893,13 +3914,8 @@ export default async function handler(req, res) {
               // V10.7: hent detaljer bredere enn før. Vi trenger ikke bare
               // de 10 beste titlene; vi må også undersøke kandidater der
               // produksjonsåret mangler i tittelen.
-              const detailIds = new Set(
-                built.target_is_console_accessory
-                  ? []
-                  : ranked
-                      .filter(x => x.item?.itemId && x.score >= 20)
-                      .slice(0, 15)
-                      .map(x => String(x.item.itemId))
+              const detailIds = selectEbayDetailIds(
+                ranked, 15, ebayDetailDiagnostics, Boolean(built.target_is_console_accessory)
               );
 
               const enrichedItems = await mapWithConcurrency(
@@ -6756,7 +6772,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       performance.now() - backendStartedAt
     );
 
-    timings.ebay_item_details_cache_hits = Number(ebayItemDetailsCacheHits || 0);
+    timings.ebay_item_details_cache_hits = ebayDetailDiagnostics.snapshot().cache_reused;
     const ebayItemDetailsTrace = Array.isArray(timings.ebay_item_details_trace)
       ? timings.ebay_item_details_trace.slice(0, 50)
       : [];
@@ -6783,6 +6799,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
         total_call_ms: Number(timings.ebay_item_details_total_call_ms || 0),
         slowest_ms: Number(timings.ebay_item_details_slowest_ms || 0),
         failed: Number(timings.ebay_item_details_failed || 0),
+        outcome_counts: ebayDetailDiagnostics.snapshot(),
         trace: ebayItemDetailsTrace
       },
       ebay_search: {
@@ -6918,6 +6935,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
           low_nok: diagnosticDetail.ebay_market_pipeline.low_nok,
           high_nok: diagnosticDetail.ebay_market_pipeline.high_nok
         },
+        ebay_item_details: diagnosticDetail.ebay_item_details.outcome_counts,
         switch_package_gate: ebay?.switch_package_gate || null
       },
       valuation: {

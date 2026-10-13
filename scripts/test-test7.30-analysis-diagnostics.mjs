@@ -95,7 +95,7 @@ try {
     valuation: { market_value_nok: 3100, median_nok: 3050, low_nok: 2500, high_nok: 3700, market_reference_count: 4, market_data_status: "market_supported", valuation_basis: "Nintendo package", source_weights: [{ source: "ebay", percent: 100 }] },
     ebay: { switch_package_gate: { enabled: true, before_count: 8, after_count: 4, excluded_count: 4, excluded_reasons: { package_contents_unconfirmed: 4 }, candidate_diagnostics: [
       { candidate_number: 1, filter_reason: "package_contents_unconfirmed", title_signals: { console: true, dock: true, joycon_or_controller: true, power_supply: true, explicit_complete: false }, detail_aspects_present: true, aspect_signals: { dock: true, joycon_or_controller: null, power_supply: false }, title: "Buyer jan.person@example.test secret-value", arbitrary_vendor_field: "private-value", url: "https://seller.example.test/private", seller_email: "jan.person@example.test" }
-    ] }, sample_size: 4, distinct_valuation_count: 4, search_trace: hostileTrace, valuation_used_listing_audit: [{ title: "Buyer jan.person@example.test secret-value Nintendo Switch OLED", item_id: "123", price_nok: 3100, used_for_valuation: true }], api_token: "must-not-persist", cookie: "must-not-persist" }
+    ] }, sample_size: 4, distinct_valuation_count: 4, search_trace: hostileTrace, valuation_used_listing_audit: [{ title: "Buyer jan.person@example.test secret-value Nintendo Switch OLED", item_id: "private-item-id", price_nok: 3100, used_for_valuation: true }], api_token: "must-not-persist", cookie: "must-not-persist" }
   });
   assert.equal(report.analysis_request_id, UUID);
   assert.equal(report.runtime.deployment_id, "dpl_test123");
@@ -111,14 +111,14 @@ try {
   assert.deepEqual(report.diagnostic_detail.ebay_search.trace, expectedSafeTrace);
   assert.deepEqual(report.ebay.search_trace, expectedSafeTrace);
   assert.equal(report.ebay.valuation_used_listing_audit[0].title, undefined, "listing titles are excluded from the stored report");
-  assert.equal(report.ebay.valuation_used_listing_audit[0].item_id, "123");
+  assert.equal(report.ebay.valuation_used_listing_audit[0].item_id, undefined, "item IDs are excluded from persisted listing audits");
   assert.equal(report.diagnostic_detail.ebay_search.requested_query_strings, undefined);
   assert.equal(report.diagnostic_detail.ebay_search.successful_query_strings, undefined);
   assert.ok(JSON.stringify(report).length <= 90000, "bounded report stays under 90 KB");
   const oversized = buildAnalysisDiagnosticReport({ analysis_request_id: UUID, ebay: { valuation_listing_audit: Array.from({ length: 500 }, (_, i) => ({ item_id: String(i), title: "x".repeat(5000) })) } });
   assert.ok(JSON.stringify(oversized).length <= 90000, "oversized audit remains capped at 90 KB");
   assert.ok(oversized.ebay.valuation_listing_audit.length <= 30, "large listing arrays are capped");
-  assert.doesNotMatch(JSON.stringify(report), /private search|private request|private successful|secret-value|jan\.person@example\.test|\+47 900|private-value|raw_response|seller\.example\.test|arbitrary_vendor_field/i, "trace and candidate values, titles, URLs, seller data and unapproved fields never enter report");
+  assert.doesNotMatch(JSON.stringify(report), /private search|private request|private successful|secret-value|jan\.person@example\.test|\+47 900|private-value|raw_response|seller\.example\.test|arbitrary_vendor_field|private-item-id/i, "trace and candidate values, titles, URLs, seller data, item IDs and unapproved fields never enter report");
 
   calls = [];
   const noId = await invoke({ id: null });

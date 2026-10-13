@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import assert from 'node:assert/strict';
 const root = new URL('../api/', import.meta.url);
 const src = fs.readFileSync(new URL('analyze.js', root), 'utf8');
-assert.match(src, /v15\.5\.55-test7\.22-ebay-throttle-control/);
+// Keep the historical throttle invariants active against the current backend.
+assert.match(src, /v15\.5\.63-test7\.32-ebay-detail-diagnostics/);
 assert.match(src, /const EBAY_SEARCH_MAX_CONCURRENCY = 2/);
 assert.match(src, /const EBAY_DETAIL_MAX_CONCURRENCY = 3/);
 assert.match(src, /const EBAY_SEARCH_MAX_429_RETRIES = 1/);

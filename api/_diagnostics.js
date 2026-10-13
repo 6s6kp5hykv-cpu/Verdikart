@@ -18,7 +18,7 @@ function safeMetadata(value, depth) {
   if (value === null || value === undefined) return null;
   if (depth > 6) return "[truncated-depth]";
 
-  var blocked = /key|token|secret|password|authorization|cookie|image|base64|dataurl|request.?body|prompt|user.?email|session/i;
+  var blocked = /key|token|secret|password|authorization|cookie|image|base64|dataurl|request.?body|prompt|user.?email|session|_ebay_aspects|_ebay_detail_loaded/i;
   if (typeof value === "string") return value.slice(0, 500);
   if (typeof value === "number" || typeof value === "boolean") return value;
   if (Array.isArray(value)) {
@@ -39,7 +39,14 @@ function safeMetadata(value, depth) {
   return out;
 }
 
-function sanitizeDiagnosticMetadata(value) { return safeMetadata(value); }
+function sanitizeDiagnosticMetadata(value) {
+  if (value && typeof value === "object" && !Array.isArray(value) &&
+      Object.prototype.hasOwnProperty.call(value, "analysis_request_id") &&
+      Object.prototype.hasOwnProperty.call(value, "ebay")) {
+    return sanitizePersistedAnalysisReport(value);
+  }
+  return safeMetadata(value);
+}
 function sanitizeSwitchPackageGate(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   var reasons = ["parts_or_repair", "other_console_variant", "accessory_or_non_console", "console_only_explicit", "complete_contents_signaled", "package_contents_unconfirmed"];
@@ -72,6 +79,28 @@ function sanitizeSwitchPackageGate(value) {
     excluded_reasons: excluded,
     candidate_diagnostics: candidates
   };
+}
+function sanitizeEbayItemDetailDiagnostics(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  var fields = ["eligible", "attempted", "succeeded", "failed", "skipped", "aspects_returned", "aspects_empty", "cache_reused"];
+  function count(n) {
+    if (n === null || n === undefined || n === "") return null;
+    var x = Number(n);
+    return Number.isInteger(x) && x >= 0 ? Math.min(x, 1000000) : null;
+  }
+  var safe = {};
+  fields.forEach(function (field) { safe[field] = count(value[field]); });
+  var allowedReasons = ["missing_item_id", "missing_token", "not_selected"];
+  safe.skipped_reasons = {};
+  if (value.skipped_reasons && typeof value.skipped_reasons === "object" && !Array.isArray(value.skipped_reasons)) {
+    allowedReasons.forEach(function (reason) { safe.skipped_reasons[reason] = count(value.skipped_reasons[reason]); });
+  }
+  var allowedFailures = ["http_error", "request_exception", "invalid_json"];
+  safe.failure_reasons = {};
+  if (value.failure_reasons && typeof value.failure_reasons === "object" && !Array.isArray(value.failure_reasons)) {
+    allowedFailures.forEach(function (reason) { safe.failure_reasons[reason] = count(value.failure_reasons[reason]); });
+  }
+  return safe;
 }
 function sanitizeEbaySearchTrace(trace) {
   if (!Array.isArray(trace)) return null;
@@ -116,6 +145,9 @@ function sanitizeAnalysisDiagnosticDetail(value) {
   if (value && Object.prototype.hasOwnProperty.call(value, "switch_package_gate")) {
     safe.switch_package_gate = sanitizeSwitchPackageGate(value.switch_package_gate);
   }
+  if (value && Object.prototype.hasOwnProperty.call(value, "ebay_item_details")) {
+    safe.ebay_item_details = sanitizeEbayItemDetailDiagnostics(value.ebay_item_details);
+  }
   return safe;
 }
 function sanitizeAnalysisEbayReport(value) {
@@ -129,7 +161,6 @@ function sanitizeAnalysisEbayReport(value) {
       item = item && typeof item === "object" ? item : {};
       var price = Number(item.price_nok);
       return {
-        item_id: String(item.item_id || item.itemId || "").slice(0, 80) || null,
         price_nok: Number.isFinite(price) ? price : null,
         used_for_valuation: Boolean(item.used_for_valuation)
       };
@@ -337,4 +368,4 @@ async function logDiagnostic(options) {
   }
 }
 
-export { DIAG_VERSION, makeEventId, normalizeError, logDiagnostic, buildAnalysisDiagnosticReport, sanitizeDiagnosticMetadata, sanitizeEbaySearchTrace, classifyEbaySearchStatus, sanitizeSwitchPackageGate };
+export { DIAG_VERSION, makeEventId, normalizeError, logDiagnostic, buildAnalysisDiagnosticReport, sanitizeDiagnosticMetadata, sanitizeEbaySearchTrace, classifyEbaySearchStatus, sanitizeSwitchPackageGate, sanitizeEbayItemDetailDiagnostics };

@@ -8,7 +8,7 @@ import {
 } from "../api/analyze.js";
 
 const backend = fs.readFileSync(new URL("../api/analyze.js", import.meta.url), "utf8");
-assert.match(backend, /v15\.5\.62-test7\.29-nintendo-search-fix/);
+assert.match(backend, /v15\.5\.63-test7\.32-ebay-detail-diagnostics/);
 
 const switchTarget = { brand: "Nintendo", model: "Switch OLED", type: "game console" };
 assert.equal(isNintendoSwitchOledTarget(switchTarget), true);
