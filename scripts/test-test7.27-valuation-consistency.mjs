@@ -1,0 +1,10 @@
+import fs from "node:fs";
+import assert from "node:assert/strict";
+const source = fs.readFileSync(new URL("../api/analyze.js", import.meta.url), "utf8");
+assert.match(source, /v15\.5\.60-test7\.27-valuation-consistency-diagnostics/);
+assert.match(source, /valuation_consistency:/);
+assert.match(source, /audit_sample_size_matches: sampleSize === auditCount/);
+assert.match(source, /no_approved_valuation_pool/);
+assert.match(source, /has_market_value: hasMarketValue/);
+assert.match(source, /used_audit_count: auditCount/);
+console.log("Test 7.27 valuation consistency source assertions: PASS (6 checks)");
