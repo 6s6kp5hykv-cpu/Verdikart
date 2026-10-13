@@ -1,4 +1,4 @@
-// Kistefunn analysebackend v15.5.59-test7.26-fail-closed-package-valuation-gate
+// Kistefunn analysebackend v15.5.60-test7.27-valuation-consistency-diagnostics
 // Test 7.25: Separates Switch OLED package completeness from model identity; excludes console-only/parts/unconfirmed package titles from valuation pool. Preview-only; not production-approved.
 // V15.5.49 TEST 7.16: Rejects console bags/cases, screen assemblies, motherboards and repair-service listings from complete-console valuation; preserves explicit complete-console bundles. Preview-only; not production-approved.\n// V15.5.48 TEST 7.15: Avoids rejecting complete guitars because titles mention pickups/bridges/necks/pickguards; treats explicitly requested pickguard color as a hard requirement. Preview-only; not production-approved.
 // V15.5.47 TEST 7.14: Makes accessory/part rejection target-aware and keeps uncertain model variants as lower-confidence candidates unless there is a clear identity conflict. Preview-only; not production-approved.
@@ -54,7 +54,7 @@
 // - Ny markedsmotor er klargjort for FINN + eBay + AI.
 // - FINN aktiveres først når legitim API-tilgang er tilgjengelig.
 
-const BACKEND_VERSION = "v15.5.59-test7.26-fail-closed-package-valuation-gate";
+const BACKEND_VERSION = "v15.5.60-test7.27-valuation-consistency-diagnostics";
 
 import { identifyWithOpenAI } from "./lib/openai.js";
 import { isCompatibleGuitarBridgeVariant } from "../lib/matching.js";
@@ -6680,6 +6680,44 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
         trace: Array.isArray(ebay?.search_trace) ? ebay.search_trace.slice(0, 12) : []
       },
       ebay_market_pipeline: {
+        // Test 7.27: explicitly compare the actual valuation pool with its audit.
+        // This is diagnostic-only and does not alter matching or price selection.
+        valuation_consistency: (() => {
+          const usedAudit = Array.isArray(ebay?.valuation_used_listing_audit)
+            ? ebay.valuation_used_listing_audit
+            : [];
+          const auditCount = usedAudit.length;
+          const sampleSize = Number.isFinite(Number(ebay?.sample_size))
+            ? Number(ebay.sample_size)
+            : null;
+          const distinctCount = Number.isFinite(Number(ebay?.distinct_valuation_count))
+            ? Number(ebay.distinct_valuation_count)
+            : null;
+          const valuationMedian = Number.isFinite(Number(ebay?.median_nok)) && Number(ebay.median_nok) > 0
+            ? Number(ebay.median_nok)
+            : null;
+          const valuationLow = Number.isFinite(Number(ebay?.low_nok)) && Number(ebay.low_nok) > 0
+            ? Number(ebay.low_nok)
+            : null;
+          const valuationHigh = Number.isFinite(Number(ebay?.high_nok)) && Number(ebay.high_nok) > 0
+            ? Number(ebay.high_nok)
+            : null;
+          const hasMarketValue = valuationMedian !== null &&
+            (sampleSize || 0) > 0 && auditCount > 0;
+          return {
+            sample_size: sampleSize,
+            used_audit_count: auditCount,
+            distinct_valuation_count: distinctCount,
+            audit_sample_size_matches: sampleSize === auditCount,
+            has_market_value: hasMarketValue,
+            median_nok: hasMarketValue ? Math.round(valuationMedian) : null,
+            low_nok: hasMarketValue ? (valuationLow === null ? null : Math.round(valuationLow)) : null,
+            high_nok: hasMarketValue ? (valuationHigh === null ? null : Math.round(valuationHigh)) : null,
+            consistency_status: hasMarketValue && sampleSize === auditCount
+              ? "consistent"
+              : (hasMarketValue ? "count_mismatch" : "no_approved_valuation_pool")
+          };
+        })(),
         stage_trace_entries: ebayPipelineStageTrace.length,
         stage_trace: ebayPipelineStageTrace.slice(0, 12),
         total_candidates_after_processing: Number.isFinite(Number(ebay?.total_candidates)) ? Number(ebay.total_candidates) : null,
