@@ -1,4 +1,4 @@
-// Kistefunn analysebackend v15.5.58-test7.25-switch-package-valuation-gate
+// Kistefunn analysebackend v15.5.59-test7.26-fail-closed-package-valuation-gate
 // Test 7.25: Separates Switch OLED package completeness from model identity; excludes console-only/parts/unconfirmed package titles from valuation pool. Preview-only; not production-approved.
 // V15.5.49 TEST 7.16: Rejects console bags/cases, screen assemblies, motherboards and repair-service listings from complete-console valuation; preserves explicit complete-console bundles. Preview-only; not production-approved.\n// V15.5.48 TEST 7.15: Avoids rejecting complete guitars because titles mention pickups/bridges/necks/pickguards; treats explicitly requested pickguard color as a hard requirement. Preview-only; not production-approved.
 // V15.5.47 TEST 7.14: Makes accessory/part rejection target-aware and keeps uncertain model variants as lower-confidence candidates unless there is a clear identity conflict. Preview-only; not production-approved.
@@ -54,7 +54,7 @@
 // - Ny markedsmotor er klargjort for FINN + eBay + AI.
 // - FINN aktiveres først når legitim API-tilgang er tilgjengelig.
 
-const BACKEND_VERSION = "v15.5.58-test7.25-switch-package-valuation-gate";
+const BACKEND_VERSION = "v15.5.59-test7.26-fail-closed-package-valuation-gate";
 
 import { identifyWithOpenAI } from "./lib/openai.js";
 import { isCompatibleGuitarBridgeVariant } from "../lib/matching.js";
@@ -6065,8 +6065,17 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       ebay: {
         // V15.5.18: An empty successful search is not a price source.
         // Use raw numeric values so Number(null) cannot silently become 0.
+        // TEST 7.26: If the Switch OLED package gate ran, eBay is a valid
+        // valuation source only when the post-gate final sample has enough
+        // references. Search/exact-pool counts alone must never bypass it.
         enabled: Boolean(ebay?.enabled) &&
-          Number.isFinite(ebay?.median_nok) && ebay.median_nok > 0,
+          Number.isFinite(ebay?.median_nok) && ebay.median_nok > 0 &&
+          (!ebay?.switch_package_gate?.enabled || (
+            Number(ebay?.sample_size || 0) >= 3 &&
+            Number(ebay?.distinct_valuation_count || 0) >= 3 &&
+            Array.isArray(ebay?.valuation_used_listing_audit) &&
+            ebay.valuation_used_listing_audit.length >= 3
+          )),
         value_nok: Number.isFinite(ebay?.median_nok) && ebay.median_nok > 0
           ? Math.round(ebay.median_nok)
           : null,
