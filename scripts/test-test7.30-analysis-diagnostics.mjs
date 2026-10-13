@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 import adminDiagnostics from "../api/admin-diagnostics.js";
-import { buildAnalysisDiagnosticReport, classifyEbaySearchStatus, logDiagnostic } from "../api/_diagnostics.js";
+import { buildAnalysisDiagnosticReport, classifyEbaySearchStatus, logDiagnostic, sanitizeDiagnosticMetadata } from "../api/_diagnostics.js";
 import { buildNintendoPackageCandidateDiagnostics } from "../api/analyze.js";
 
 const UUID = "7f0b4c8a-6df1-4c7b-9a51-f9df7ce12a10";
@@ -220,6 +220,38 @@ try {
 
   const invalidId = await invoke({ id: "not-a-uuid" });
   assert.equal(invalidId.statusCode, 400);
+
+  // Exercise the production report builder -> diagnostics storage sanitizer ->
+  // authenticated admin reader chain. The generic metadata recursion alone
+  // adds one wrapper level and used to turn these booleans into truncated-depth.
+  const chainCandidates = buildNintendoPackageCandidateDiagnostics([
+    { title: "Nintendo Switch OLED complete set with dock, Joy-Con and charger" }
+  ]);
+  const chainReport = buildAnalysisDiagnosticReport({
+    analysis_request_id: UUID,
+    ebay: { switch_package_gate: { enabled: true, before_count: 1, after_count: 1, excluded_count: 0, excluded_reasons: {}, candidate_diagnostics: chainCandidates } }
+  });
+  const expectedTitleSignals = { console: true, dock: true, joycon_or_controller: true, power_supply: true, explicit_complete: true };
+  const genericWrapped = sanitizeDiagnosticMetadata({ analysis_report: chainReport });
+  assert.equal(genericWrapped.analysis_report.ebay.switch_package_gate.candidate_diagnostics[0].title_signals.console, "[truncated-depth]", "reproduces depth truncation from generic metadata wrapper");
+  let storedDiagnosticRow = null;
+  const fetchBeforePersistProbe = globalThis.fetch;
+  globalThis.fetch = async (_url, options) => {
+    storedDiagnosticRow = JSON.parse(options.body);
+    return response(201, null);
+  };
+  const persisted = await logDiagnostic({ stage: "analysis_completed", code: "analysis_completed", metadata: { analysis_request_id: UUID, analysis_report: chainReport } });
+  globalThis.fetch = fetchBeforePersistProbe;
+  assert.equal(persisted.ok, true);
+  const storedSignals = storedDiagnosticRow.metadata.analysis_report.ebay.switch_package_gate.candidate_diagnostics[0].title_signals;
+  assert.deepEqual(storedSignals, expectedTitleSignals, "storage preserves all five title signals as booleans");
+  dbRows = [{ event_id: "KF-CHAIN", stage: "analysis_completed", code: "analysis_completed", backend_version: "test-version", created_at: "2026-10-13T10:00:00Z", metadata: storedDiagnosticRow.metadata }];
+  dbStatus = 200;
+  calls = [];
+  const chainRead = await invoke();
+  assert.equal(chainRead.statusCode, 200);
+  assert.deepEqual(chainRead.body.report.report.ebay.switch_package_gate.candidate_diagnostics[0].title_signals, expectedTitleSignals, "admin response preserves booleans after stored-report sanitization");
+
   const analyzeSource = await readFile(new URL("../api/analyze.js", import.meta.url), "utf8");
   assert.match(analyzeSource, /diagnostic_detail:\s*persistedReport\.diagnostic_detail/, "stored diagnostic detail uses the sanitized report projection");
   for (const file of ["../index.html", "../diagnostics.html"]) {

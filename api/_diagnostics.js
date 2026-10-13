@@ -113,6 +113,9 @@ function sanitizeAnalysisDiagnosticDetail(value) {
       trace: sanitizeEbaySearchTrace(search.trace)
     };
   }
+  if (value && Object.prototype.hasOwnProperty.call(value, "switch_package_gate")) {
+    safe.switch_package_gate = sanitizeSwitchPackageGate(value.switch_package_gate);
+  }
   return safe;
 }
 function sanitizeAnalysisEbayReport(value) {
@@ -131,6 +134,29 @@ function sanitizeAnalysisEbayReport(value) {
         used_for_valuation: Boolean(item.used_for_valuation)
       };
     });
+  }
+  return safe;
+}
+function sanitizePersistedAnalysisReport(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  var runtime = value.runtime && typeof value.runtime === "object" ? value.runtime : {};
+  return buildAnalysisDiagnosticReport({
+    analysis_request_id: value.analysis_request_id,
+    backend_version: runtime.backend_version,
+    commit_sha: runtime.commit_sha,
+    vercel_env: runtime.vercel_env,
+    vercel_url: runtime.vercel_url,
+    deployment_id: runtime.deployment_id,
+    diagnostic_detail: value.diagnostic_detail,
+    valuation: value.valuation,
+    ebay: value.ebay
+  });
+}
+function sanitizeLogMetadata(value) {
+  var safe = safeMetadata(value);
+  if (!safe || typeof safe !== "object" || Array.isArray(safe)) return safe;
+  if (value && Object.prototype.hasOwnProperty.call(value, "analysis_report")) {
+    safe.analysis_report = sanitizePersistedAnalysisReport(value.analysis_report);
   }
   return safe;
 }
@@ -263,7 +289,7 @@ async function logDiagnostic(options) {
     duration_ms: Number.isFinite(Number(duration_ms))
       ? Number(duration_ms)
       : null,
-    metadata: safeMetadata(metadata)
+    metadata: sanitizeLogMetadata(metadata)
   };
 
   try {
