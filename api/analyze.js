@@ -1,4 +1,4 @@
-// Kistefunn analysebackend v15.5.56-test7.23-ebay-error-diagnostics
+// Kistefunn analysebackend v15.5.57-test7.24-ebay-trace-propagation
 // V15.5.49 TEST 7.16: Rejects console bags/cases, screen assemblies, motherboards and repair-service listings from complete-console valuation; preserves explicit complete-console bundles. Preview-only; not production-approved.\n// V15.5.48 TEST 7.15: Avoids rejecting complete guitars because titles mention pickups/bridges/necks/pickguards; treats explicitly requested pickguard color as a hard requirement. Preview-only; not production-approved.
 // V15.5.47 TEST 7.14: Makes accessory/part rejection target-aware and keeps uncertain model variants as lower-confidence candidates unless there is a clear identity conflict. Preview-only; not production-approved.
 // V15.5.46 TEST 7.13 CANDIDATE: Fixes console accessory regex escaping, rejects cooling-fan/radiator-only listings, avoids console fallback/detail lookups for explicit accessory targets, and reports bounded score rejection reasons for diagnosis. Preview-only; not production-approved.
@@ -53,7 +53,7 @@
 // - Ny markedsmotor er klargjort for FINN + eBay + AI.
 // - FINN aktiveres først når legitim API-tilgang er tilgjengelig.
 
-const BACKEND_VERSION = "v15.5.56-test7.23-ebay-error-diagnostics";
+const BACKEND_VERSION = "v15.5.57-test7.24-ebay-trace-propagation";
 
 import { identifyWithOpenAI } from "./lib/openai.js";
 import { isCompatibleGuitarBridgeVariant } from "../lib/matching.js";
@@ -5074,16 +5074,51 @@ const classifyConsolePackage = (item) => {
         discovery_queries:
           searchQueries,
         // V15.5.23: bounded diagnostic trace; excludes listing titles, seller data and credentials.
-        search_trace: results.slice(0, 12).map(result => ({
-          marketplace: String(result?.marketplace || "").slice(0, 20),
-          query: String(result?.query || "").slice(0, 120),
-          enabled: Boolean(result?.enabled),
-          http_status: Number.isFinite(Number(result?.http_status)) ? Number(result.http_status) : (Number.isFinite(Number(result?.diagnostic?.status)) ? Number(result.diagnostic.status) : null),
-          raw_count: Array.isArray(result?.rawItems) ? result.rawItems.length : 0,
-          total_results: Number.isFinite(Number(result?.total_results)) ? Number(result.total_results) : null,
-          error_stage: result?.diagnostic?.stage || null,
-          error_code: result?.diagnostic?.code || null
-        })),
+        search_trace: results.slice(0, 12).map(result => {
+          const diagnostic = result?.diagnostic || {};
+          // Test 7.24: propagate bounded HTTP failure details into the report trace.
+          // Never include Authorization headers, tokens, client secrets or raw request headers.
+          const safeHeaders = {};
+          for (const name of [
+            "content-type", "retry-after", "x-ebay-c-request-id",
+            "x-ebay-request-id", "x-ebay-correlation-id", "x-ebay-svc-trace-id",
+            "x-ratelimit-limit", "x-ratelimit-remaining", "x-ratelimit-reset"
+          ]) {
+            const value = diagnostic?.response_headers?.[name];
+            if (typeof value === "string" || typeof value === "number") {
+              safeHeaders[name] = String(value).slice(0, 200);
+            }
+          }
+          const safeApiErrors = Array.isArray(diagnostic?.api_errors)
+            ? diagnostic.api_errors.slice(0, 3).map(error => ({
+                errorId: error?.errorId ?? null,
+                domain: typeof error?.domain === "string" ? error.domain.slice(0, 100) : null,
+                category: typeof error?.category === "string" ? error.category.slice(0, 100) : null,
+                message: typeof error?.message === "string" ? error.message.slice(0, 500) : null,
+                longMessage: typeof error?.longMessage === "string" ? error.longMessage.slice(0, 700) : null,
+                inputRefIds: Array.isArray(error?.inputRefIds) ? error.inputRefIds.slice(0, 5) : undefined,
+                parameters: Array.isArray(error?.parameters) ? error.parameters.slice(0, 5).map(parameter => ({
+                  name: typeof parameter?.name === "string" ? parameter.name.slice(0, 100) : null,
+                  value: typeof parameter?.value === "string" ? parameter.value.slice(0, 200) : null
+                })) : undefined
+              }))
+            : [];
+          return {
+            marketplace: String(result?.marketplace || "").slice(0, 20),
+            query: String(result?.query || "").slice(0, 120),
+            enabled: Boolean(result?.enabled),
+            http_status: Number.isFinite(Number(result?.http_status)) ? Number(result.http_status) : (Number.isFinite(Number(diagnostic?.status)) ? Number(diagnostic.status) : null),
+            raw_count: Array.isArray(result?.rawItems) ? result.rawItems.length : 0,
+            total_results: Number.isFinite(Number(result?.total_results)) ? Number(result.total_results) : null,
+            error_stage: diagnostic?.stage || null,
+            error_code: diagnostic?.code || null,
+            error_message: typeof result?.reason === "string" ? result.reason.slice(0, 500) : null,
+            retry_count: Number.isFinite(Number(diagnostic?.retry_count)) ? Number(diagnostic.retry_count) : 0,
+            retry_after: diagnostic?.retry_after == null ? null : String(diagnostic.retry_after).slice(0, 100),
+            response_headers: safeHeaders,
+            api_errors: safeApiErrors
+          };
+        }),
         successful_queries:
           successfulQueries,
         near_match_queries:
