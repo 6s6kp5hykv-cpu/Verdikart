@@ -93,6 +93,12 @@ Faktiske Test 7.30.5-kontroller:
 - PASS: `node scripts/test-test7.29-nintendo-search-fix.mjs` — 21 klassifiseringstilfeller; historisk testfil uendret.
 - PASS: `git diff --check` — kun LF/CRLF-varsler, ingen whitespace-feil.
 - Ingen analyse, eksterne API-kall, Supabase-/Vercel-tilgang, commit, push eller deploy ble utført.
+
+## Test 7.30.9 – «Hent rapport» UI-feilhåndtering
+
+Kodegjennomgang viste at ugyldig UUID allerede ble avvist synlig før `fetch`, og at 404/409/andre ikke-OK-svar gikk til en synlig `catch`-melding med knappeoppretting. En 403 var et konkret unntak: UI-et skjulte adminpanelet stille. Frontend viser nå en generell administratoradgangsfeil i status og panelinnhold i stedet.
+
+Test 7.30-regresjonstesten kjører nå den faktiske inline-handleren med DOM-/nettverksmocks og kontrollerer ugyldig UUID uten nettverkskall, synlige 403/404/409/502-feil, knappens gjenoppretting, same-origin `/api/admin-diagnostics`-sti og Bearer-token-header uten å vise tokenet. Dette bekrefter lokal kodeoppførsel, ikke Preview-deploymenten. Dersom Preview fortsatt ikke viser ugyldig-ID-feilen, observer i nettleseren om `adminStatus` endres til «Skriv inn en gyldig analyse-ID.» og om en forespørsel vises i Network. Uten en forespørsel skal API-status ikke være relevant; med forespørsel registreres URL-sti/status (ikke Authorization-headerens verdi). Ingen token skal kopieres eller deles.
 ## Test 7.30.3 – Vercel Preview configuration
 
 Vercel access check: no Vercel project/deployment tools or authorized Vercel connection were available in this session. No remote environment listing was attempted; no external API was called.

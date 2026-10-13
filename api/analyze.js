@@ -106,6 +106,53 @@ export function filterNintendoSwitchOledListings(listings) {
   return { included: included.map(row => row.item), excluded };
 }
 
+// Privacy-limited observation only: these values never participate in eligibility.
+export function buildNintendoPackageCandidateDiagnostics(listings, limit = 30) {
+  const allowedAspectKeys = {
+    dock: ["items included", "included items", "included accessories", "accessories included", "package contents", "contents", "what's included", "whats included", "lieferumfang", "umfang", "im lieferumfang enthalten", "inkludierter lieferumfang", "medfølger", "medfolger", "inkludert utstyr", "pakkeinnhold"],
+    joycon_or_controller: ["items included", "included items", "included accessories", "accessories included", "package contents", "contents", "what's included", "whats included", "lieferumfang", "umfang", "im lieferumfang enthalten", "inkludierter lieferumfang", "medfølger", "medfolger", "inkludert utstyr", "pakkeinnhold"],
+    power_supply: ["items included", "included items", "included accessories", "accessories included", "package contents", "contents", "what's included", "whats included", "lieferumfang", "umfang", "im lieferumfang enthalten", "inkludierter lieferumfang", "medfølger", "medfolger", "inkludert utstyr", "pakkeinnhold"]
+  };
+  const equipPatterns = {
+    dock: /\b(?:dock|docking station|dockstation|dokkingstasjon)\b/i,
+    joycon_or_controller: /\b(?:joy[ -]?con(?:s)?|controller(?:s)?|kontroller(?:e)?|gamepad)\b/i,
+    power_supply: /\b(?:charger|power supply|power adapter|ac adapter|netzteil|ladegeraet|stromadapter|lader|nettadapter|strømadapter)\b/i
+  };
+  const negative = /\b(?:not included|not supplied|not included|excluded|without|ohne|nicht enthalten|nicht dabei|fehlt|kein(?:e|en)?|ikke inkludert|følger ikke med|folger nicht mit|mangler|uten)\b/i;
+  const positive = /\b(?:included|supplied|with|inklusive|enthalten|dabei|medfølger|medfolger|inkludert|følger med|folger mit)\b/i;
+  function normalizeKey(s) { return String(s).normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim(); }
+  function aspectSignal(aspects, equipment) {
+    if (!aspects || typeof aspects !== "object" || Array.isArray(aspects)) return null;
+    const allowed = allowedAspectKeys[equipment].map(normalizeKey);
+    const text = Object.entries(aspects).filter(([key]) => allowed.includes(normalizeKey(key)))
+      .flatMap(([, values]) => Array.isArray(values) ? values : [values]).filter(v => typeof v === "string").join(" ").slice(0, 1200);
+    if (!text) return null;
+    const equipmentPattern = equipPatterns[equipment];
+    const matching = text.split(/[;,|]/).filter(value => equipmentPattern.test(value));
+    if (!matching.length) return null;
+    if (matching.some(value => negative.test(value))) return false;
+    if (matching.some(value => positive.test(value) || equipmentPattern.test(value))) return true;
+    return null;
+  }
+  const source = Array.isArray(listings) ? listings : [];
+  const max = Math.max(0, Math.min(30, Number.isInteger(limit) ? limit : 30));
+  return source.slice(0, max).map((item, index) => {
+    const classification = classifyNintendoSwitchOledListing(item);
+    const aspects = item?._ebay_aspects;
+    return {
+      candidate_number: index + 1,
+      filter_reason: classification.reason,
+      title_signals: classification.title_signals,
+      detail_aspects_present: Boolean(aspects && typeof aspects === "object" && !Array.isArray(aspects) && Object.keys(aspects).length),
+      aspect_signals: {
+        dock: aspectSignal(aspects, "dock"),
+        joycon_or_controller: aspectSignal(aspects, "joycon_or_controller"),
+        power_supply: aspectSignal(aspects, "power_supply")
+      }
+    };
+  });
+}
+
 export function countMarketReferences(contributingMarketCandidates) {
   return contributingMarketCandidates.reduce((sum, candidate) => {
     const count = Number(candidate?.reference_count);
@@ -4816,6 +4863,7 @@ export default async function handler(req, res) {
       };
       if (switchPackageTarget) {
         const beforePackageGate = valuationPool.length;
+        switchPackageGateDiagnostics.candidate_diagnostics = buildNintendoPackageCandidateDiagnostics(valuationPool, 30);
         const packageResult = filterNintendoSwitchOledListings(valuationPool);
         valuationPool = packageResult.included;
         switchPackageGateDiagnostics.excluded_count = packageResult.excluded.length;

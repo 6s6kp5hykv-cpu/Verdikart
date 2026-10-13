@@ -40,6 +40,39 @@ function safeMetadata(value, depth) {
 }
 
 function sanitizeDiagnosticMetadata(value) { return safeMetadata(value); }
+function sanitizeSwitchPackageGate(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  var reasons = ["parts_or_repair", "other_console_variant", "accessory_or_non_console", "console_only_explicit", "complete_contents_signaled", "package_contents_unconfirmed"];
+  var candidates = Array.isArray(value.candidate_diagnostics) ? value.candidate_diagnostics.slice(0, 30).map(function (candidate, index) {
+    candidate = candidate && typeof candidate === "object" ? candidate : {};
+    var title = candidate.title_signals && typeof candidate.title_signals === "object" ? candidate.title_signals : {};
+    var aspects = candidate.aspect_signals && typeof candidate.aspect_signals === "object" ? candidate.aspect_signals : {};
+    function tri(value) { return value === true ? true : value === false ? false : null; }
+    return {
+      candidate_number: Number.isInteger(Number(candidate.candidate_number)) && Number(candidate.candidate_number) > 0 ? Math.min(Number(candidate.candidate_number), 1000000) : index + 1,
+      filter_reason: reasons.includes(candidate.filter_reason) ? candidate.filter_reason : "unknown",
+      title_signals: {
+        console: Boolean(title.console), dock: Boolean(title.dock), joycon_or_controller: Boolean(title.joycon_or_controller),
+        power_supply: Boolean(title.power_supply), explicit_complete: Boolean(title.explicit_complete)
+      },
+      detail_aspects_present: candidate.detail_aspects_present === true,
+      confirmed_equipment: {
+        dock: tri(aspects.dock), joycon_or_controller: tri(aspects.joycon_or_controller), power_supply: tri(aspects.power_supply)
+      }
+    };
+  }) : [];
+  function count(n) { var x = Number(n); return Number.isInteger(x) && x >= 0 ? Math.min(x, 1000000) : 0; }
+  var excluded = {};
+  if (value.excluded_reasons && typeof value.excluded_reasons === "object") reasons.forEach(function (reason) {
+    if (Number(value.excluded_reasons[reason]) > 0) excluded[reason] = count(value.excluded_reasons[reason]);
+  });
+  return {
+    enabled: value.enabled === true,
+    before_count: count(value.before_count), after_count: count(value.after_count), excluded_count: count(value.excluded_count),
+    excluded_reasons: excluded,
+    candidate_diagnostics: candidates
+  };
+}
 function sanitizeEbaySearchTrace(trace) {
   if (!Array.isArray(trace)) return null;
   return trace.slice(0, 12).map(function (entry) {
@@ -63,7 +96,8 @@ function sanitizeEbaySearchTrace(trace) {
     } else if (status === null) {
       result = "request_failed"; code = "REQUEST_FAILED";
     }
-    var source = String(entry.source || entry.marketplace || "").trim().toLowerCase() === "ebay" ? "ebay" : "other";
+    var sourceValues = [entry.source, entry.marketplace].map(function (v) { return String(v || "").trim().toUpperCase(); });
+    var source = sourceValues.some(function (v) { return v === "EBAY" || ["EBAY_DE", "EBAY_GB", "EBAY_US"].includes(v); }) ? "ebay" : "other";
     return { source: source, http_status: status, raw_hit_count: count, error_code: code, error_result: result };
   });
 }
@@ -85,6 +119,7 @@ function sanitizeAnalysisEbayReport(value) {
   var safe = safeMetadata(value);
   if (!safe || typeof safe !== "object" || Array.isArray(safe)) return safe;
   if (value && Object.prototype.hasOwnProperty.call(value, "search_trace")) safe.search_trace = sanitizeEbaySearchTrace(value.search_trace);
+  if (value && Object.prototype.hasOwnProperty.call(value, "switch_package_gate")) safe.switch_package_gate = sanitizeSwitchPackageGate(value.switch_package_gate);
   for (var field of ["valuation_listing_audit", "valuation_used_listing_audit"]) {
     if (!Array.isArray(value[field])) continue;
     safe[field] = value[field].slice(0, 30).map(function (item) {
@@ -276,4 +311,4 @@ async function logDiagnostic(options) {
   }
 }
 
-export { DIAG_VERSION, makeEventId, normalizeError, logDiagnostic, buildAnalysisDiagnosticReport, sanitizeDiagnosticMetadata, sanitizeEbaySearchTrace, classifyEbaySearchStatus };
+export { DIAG_VERSION, makeEventId, normalizeError, logDiagnostic, buildAnalysisDiagnosticReport, sanitizeDiagnosticMetadata, sanitizeEbaySearchTrace, classifyEbaySearchStatus, sanitizeSwitchPackageGate };

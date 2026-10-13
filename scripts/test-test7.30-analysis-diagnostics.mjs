@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 import adminDiagnostics from "../api/admin-diagnostics.js";
 import { buildAnalysisDiagnosticReport, classifyEbaySearchStatus, logDiagnostic } from "../api/_diagnostics.js";
+import { buildNintendoPackageCandidateDiagnostics } from "../api/analyze.js";
 
 const UUID = "7f0b4c8a-6df1-4c7b-9a51-f9df7ce12a10";
 const originalFetch = globalThis.fetch;
@@ -49,6 +50,26 @@ try {
   assert.equal(classifyEbaySearchStatus([{ http_status: 200, raw_count: 5 }], ["query"]), "raw_hits_received");
   const missingCountTrace = buildAnalysisDiagnosticReport({ analysis_request_id: UUID, ebay: { search_trace: [{ marketplace: "ebay", http_status: 200 }] } });
   assert.deepEqual(missingCountTrace.ebay.search_trace, [{ source: "ebay", http_status: 200, raw_hit_count: null, error_code: "UNKNOWN", error_result: "unknown_result" }], "missing hit count must not be reported as a real zero");
+  const marketplaceTrace = buildAnalysisDiagnosticReport({ ebay: { search_trace: [
+    { marketplace: "EBAY_DE", http_status: 200, raw_count: 1 }, { marketplace: "EBAY_GB", http_status: 200, raw_count: 1 },
+    { marketplace: "EBAY_US", http_status: 200, raw_count: 1 }, { source: "other", marketplace: "EBAY_DE", http_status: 200, raw_count: 1 },
+    { marketplace: "EBAY_XY", http_status: 200, raw_count: 1, arbitrary: "synthetic-token" },
+    { marketplace: "untrusted-source jan.person@example.test", http_status: 200, raw_count: 1 }
+  ] } });
+  assert.deepEqual(marketplaceTrace.ebay.search_trace.map(entry => entry.source), ["ebay", "ebay", "ebay", "ebay", "other", "other"], "active eBay marketplaces classify as eBay; unknown source is safely generalized");
+  assert.doesNotMatch(JSON.stringify(marketplaceTrace), /synthetic-token|jan\.person@example\.test|untrusted-source/i);
+
+  const candidateDiagnostics = buildNintendoPackageCandidateDiagnostics([
+    { title: "Nintendo Switch OLED console with dock, Joy-Con and charger", _ebay_aspects: { "Items Included": ["Dock", "Joy-Con controllers", "AC adapter"], arbitrary_vendor_field: "secret=synthetic-token jan.person@example.test" }, token: "must-not-escape", url: "https://seller.example.test/private" },
+    { title: "Nintendo Switch OLED console", _ebay_aspects: {} }
+  ]);
+  assert.equal(candidateDiagnostics[0].filter_reason, "package_contents_unconfirmed", "diagnostic signals do not change classifier decisions");
+  assert.deepEqual(candidateDiagnostics[0].aspect_signals, { dock: true, joycon_or_controller: true, power_supply: true });
+  assert.deepEqual(candidateDiagnostics[1].aspect_signals, { dock: null, joycon_or_controller: null, power_supply: null }, "absent aspects stay unknown");
+  assert.equal(candidateDiagnostics[0].detail_aspects_present, true);
+  assert.equal(candidateDiagnostics[0].candidate_number, 1);
+  assert.equal(candidateDiagnostics.length, 2);
+  assert.equal(buildNintendoPackageCandidateDiagnostics(Array.from({ length: 40 }, () => ({ title: "Nintendo Switch OLED" }))).length, 30, "per-candidate diagnostics are capped");
 
   const attackValues = {
     query: "private search Nintendo Switch OLED",
@@ -72,12 +93,21 @@ try {
     commit_sha: "unknown", vercel_env: "preview", vercel_url: "preview.example.test", deployment_id: "dpl_test123",
     diagnostic_detail: { ebay_search: { search_status: "search_errors", raw_total: 7, trace_entries: 1, requested_query_strings: ["private request search"], successful_query_strings: ["private successful search"], trace: hostileTrace } },
     valuation: { market_value_nok: 3100, median_nok: 3050, low_nok: 2500, high_nok: 3700, market_reference_count: 4, market_data_status: "market_supported", valuation_basis: "Nintendo package", source_weights: [{ source: "ebay", percent: 100 }] },
-    ebay: { switch_package_gate: { enabled: true, before_count: 8, after_count: 4, excluded_count: 4, excluded_reasons: { package_contents_unconfirmed: 4 } }, sample_size: 4, distinct_valuation_count: 4, search_trace: hostileTrace, valuation_used_listing_audit: [{ title: "Buyer jan.person@example.test secret-value Nintendo Switch OLED", item_id: "123", price_nok: 3100, used_for_valuation: true }], api_token: "must-not-persist", cookie: "must-not-persist" }
+    ebay: { switch_package_gate: { enabled: true, before_count: 8, after_count: 4, excluded_count: 4, excluded_reasons: { package_contents_unconfirmed: 4 }, candidate_diagnostics: [
+      { candidate_number: 1, filter_reason: "package_contents_unconfirmed", title_signals: { console: true, dock: true, joycon_or_controller: true, power_supply: true, explicit_complete: false }, detail_aspects_present: true, aspect_signals: { dock: true, joycon_or_controller: null, power_supply: false }, title: "Buyer jan.person@example.test secret-value", arbitrary_vendor_field: "private-value", url: "https://seller.example.test/private", seller_email: "jan.person@example.test" }
+    ] }, sample_size: 4, distinct_valuation_count: 4, search_trace: hostileTrace, valuation_used_listing_audit: [{ title: "Buyer jan.person@example.test secret-value Nintendo Switch OLED", item_id: "123", price_nok: 3100, used_for_valuation: true }], api_token: "must-not-persist", cookie: "must-not-persist" }
   });
   assert.equal(report.analysis_request_id, UUID);
   assert.equal(report.runtime.deployment_id, "dpl_test123");
   assert.equal(report.valuation.market_reference_count, 4);
   assert.equal(report.ebay.switch_package_gate.after_count, 4);
+  assert.deepEqual(report.ebay.switch_package_gate.candidate_diagnostics[0], {
+    candidate_number: 1,
+    filter_reason: "package_contents_unconfirmed",
+    title_signals: { console: true, dock: true, joycon_or_controller: true, power_supply: true, explicit_complete: false },
+    detail_aspects_present: true,
+    confirmed_equipment: { dock: true, joycon_or_controller: null, power_supply: false }
+  }, "candidate report is a strict field allowlist with tri-state aspect signals");
   assert.deepEqual(report.diagnostic_detail.ebay_search.trace, expectedSafeTrace);
   assert.deepEqual(report.ebay.search_trace, expectedSafeTrace);
   assert.equal(report.ebay.valuation_used_listing_audit[0].title, undefined, "listing titles are excluded from the stored report");
@@ -88,7 +118,7 @@ try {
   const oversized = buildAnalysisDiagnosticReport({ analysis_request_id: UUID, ebay: { valuation_listing_audit: Array.from({ length: 500 }, (_, i) => ({ item_id: String(i), title: "x".repeat(5000) })) } });
   assert.ok(JSON.stringify(oversized).length <= 90000, "oversized audit remains capped at 90 KB");
   assert.ok(oversized.ebay.valuation_listing_audit.length <= 30, "large listing arrays are capped");
-  assert.doesNotMatch(JSON.stringify(report), /private search|private request|private successful|secret-value|jan\.person@example\.test|\+47 900|private-value|raw_response/i, "trace values and unapproved fields never enter report");
+  assert.doesNotMatch(JSON.stringify(report), /private search|private request|private successful|secret-value|jan\.person@example\.test|\+47 900|private-value|raw_response|seller\.example\.test|arbitrary_vendor_field/i, "trace and candidate values, titles, URLs, seller data and unapproved fields never enter report");
 
   calls = [];
   const noId = await invoke({ id: null });
@@ -198,8 +228,57 @@ try {
     assert.match(html, /Analyse-ID|analysisRequestIdDisplay/, file + " must expose ID entry/result display");
     const scriptRe = /<script\b[^>]*>([\s\S]*?)<\/script>/gi;
     for (const match of html.matchAll(scriptRe)) if (match[1].trim()) new vm.Script(match[1], { filename: file });
+    if (file === "../index.html") {
+      const start = html.indexOf("async function loadAdminDiagnostics(){");
+      const end = html.indexOf("}function updateAuthUI()", start);
+      assert.ok(start >= 0 && end > start, "account diagnostics handler is present in the page script");
+      const handlerSource = html.slice(start, end + 1);
+      async function invokeUi({ id, status = 200, payload = { ok: true, report: { backend_version: "test-version", report: { analysis_request_id: UUID } } } }) {
+        const statusNode = { textContent: "" };
+        const button = { disabled: false };
+        const output = { innerHTML: "" };
+        const panelClasses = new Set();
+        const panel = { classList: { add: value => panelClasses.add(value), remove: value => panelClasses.delete(value) } };
+        const input = { value: id };
+        const calls = [];
+        const context = {
+          document: { getElementById: key => ({ adminPanel: panel, adminStatus: statusNode, adminRefreshButton: button, adminDiagnostics: output, adminAnalysisId: input })[key] || null },
+          currentUser: { id: "synthetic-admin" },
+          supabaseClient: { auth: { getSession: async () => ({ data: { session: { access_token: "synthetic-ui-token" } }, error: null }) } },
+          fetch: async (url, options) => {
+            calls.push({ url, options });
+            return { status, ok: status >= 200 && status < 300, text: async () => JSON.stringify(payload) };
+          },
+          esc: value => String(value).replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch])
+        };
+        vm.createContext(context);
+        await vm.runInContext(handlerSource + "\nloadAdminDiagnostics()", context);
+        return { statusNode, button, output, panelClasses, calls };
+      }
+
+      const invalidUi = await invokeUi({ id: "not-a-uuid" });
+      assert.equal(invalidUi.statusNode.textContent, "Skriv inn en gyldig analyse-ID.");
+      assert.equal(invalidUi.calls.length, 0, "invalid UUID is reported before a network request");
+      const deniedUi = await invokeUi({ id: UUID, status: 403, payload: { error: "Admin access required." } });
+      assert.match(deniedUi.statusNode.textContent, /Administratoradgang kreves/);
+      assert.match(deniedUi.output.innerHTML, /Kontoen har ikke tilgang/);
+      assert.equal(deniedUi.panelClasses.has("hidden"), false, "403 displays an explanation instead of silently hiding the panel");
+      for (const [status, message] of [[404, "No diagnostic report found"], [409, "Multiple reports found"], [502, "Could not read the requested diagnostic report"]]) {
+        const failedUi = await invokeUi({ id: UUID, status, payload: { error: message } });
+        assert.equal(failedUi.statusNode.textContent, "Kunne ikke hente rapport.", `${status} has visible status feedback`);
+        assert.ok(failedUi.output.innerHTML.includes(message), `${status} provider/API error is visible in the panel`);
+        assert.equal(failedUi.button.disabled, false, `${status} restores the button`);
+        assert.equal(failedUi.calls.length, 1);
+      }
+      const successUi = await invokeUi({ id: UUID });
+      assert.match(successUi.calls[0].url, new RegExp("^/api/admin-diagnostics\\?analysis_request_id=" + UUID));
+      assert.equal(successUi.calls[0].options.headers.Authorization, "Bearer synthetic-ui-token");
+      assert.equal(successUi.calls[0].options.cache, "no-store");
+      assert.match(successUi.statusNode.textContent, /Rapport hentet/);
+      assert.equal(successUi.button.disabled, false);
+    }
   }
-  console.log("PASS Test 7.30: trace allowlist/value redaction, bounded report, safe error logs/responses, auth, exact ID query, no history fallback.");
+  console.log("PASS Test 7.30: diagnostics/report security, safe error logs, exact ID lookup, UI validation/errors, API path/token, no history fallback.");
 } finally {
   console.error = originalConsoleError;
   globalThis.fetch = originalFetch;
