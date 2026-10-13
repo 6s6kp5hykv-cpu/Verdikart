@@ -1,4 +1,5 @@
-// Kistefunn analysebackend v15.5.57-test7.24-ebay-trace-propagation
+// Kistefunn analysebackend v15.5.58-test7.25-switch-package-valuation-gate
+// Test 7.25: Separates Switch OLED package completeness from model identity; excludes console-only/parts/unconfirmed package titles from valuation pool. Preview-only; not production-approved.
 // V15.5.49 TEST 7.16: Rejects console bags/cases, screen assemblies, motherboards and repair-service listings from complete-console valuation; preserves explicit complete-console bundles. Preview-only; not production-approved.\n// V15.5.48 TEST 7.15: Avoids rejecting complete guitars because titles mention pickups/bridges/necks/pickguards; treats explicitly requested pickguard color as a hard requirement. Preview-only; not production-approved.
 // V15.5.47 TEST 7.14: Makes accessory/part rejection target-aware and keeps uncertain model variants as lower-confidence candidates unless there is a clear identity conflict. Preview-only; not production-approved.
 // V15.5.46 TEST 7.13 CANDIDATE: Fixes console accessory regex escaping, rejects cooling-fan/radiator-only listings, avoids console fallback/detail lookups for explicit accessory targets, and reports bounded score rejection reasons for diagnosis. Preview-only; not production-approved.
@@ -53,7 +54,7 @@
 // - Ny markedsmotor er klargjort for FINN + eBay + AI.
 // - FINN aktiveres først når legitim API-tilgang er tilgjengelig.
 
-const BACKEND_VERSION = "v15.5.57-test7.24-ebay-trace-propagation";
+const BACKEND_VERSION = "v15.5.58-test7.25-switch-package-valuation-gate";
 
 import { identifyWithOpenAI } from "./lib/openai.js";
 import { isCompatibleGuitarBridgeVariant } from "../lib/matching.js";
@@ -4660,6 +4661,31 @@ export default async function handler(req, res) {
           )
         );
 
+      // TEST 7.25: package completeness is a separate valuation gate for Switch OLED.
+      // It does not alter identity matching or the displayed exact-match pool.
+      const switchPackageTarget =
+        /\bnintendo\b/i.test(builtQueryText) &&
+        /\bswitch\b/i.test(builtQueryText) &&
+        /\boled\b/i.test(builtQueryText) &&
+        !/\b(?:dock|joy[ -]?con|controller|charger|power supply|case|screen protector|replacement part|console only|tablet only|handheld only)\b/i.test(builtQueryText);
+
+      const classifySwitchPackageForValuation = (item) => {
+        const title = String(item?.title || "");
+        const t = title.toLowerCase();
+        const explicitParts = /\b(?:for parts|parts only|broken|not working|repair only|spares or repair)\b/i.test(title);
+        const explicitConsoleOnly = /\b(?:console only|console[- ]only|handheld only|tablet only|console without (?:the )?(?:dock|joy[ -]?con)|no dock|dock not included|without dock|tablet only)\b/i.test(title);
+        const dock = /\b(?:dock|docking station)\b/i.test(title) && !/\b(?:no dock|dock not included|without dock)\b/i.test(title);
+        const joycon = /\b(?:joy[ -]?con|joycon|controllers?)\b/i.test(title);
+        const power = /\b(?:power supply|power adapter|ac adapter|charger|charging adapter)\b/i.test(title);
+        const completeBundle = /\b(?:complete bundle|complete set|full set|all accessories included|includes? (?:the )?dock)\b/i.test(title);
+        if (explicitParts || explicitConsoleOnly) return { eligible: false, reason: explicitParts ? "parts_or_repair" : "console_only_explicit" };
+        // Only accept a title as complete when the bundle signal and key components are present.
+        if (dock && joycon && power && (completeBundle || /\b(?:console|system|bundle|set)\b/i.test(t))) {
+          return { eligible: true, reason: "complete_contents_signaled" };
+        }
+        return { eligible: false, reason: "package_contents_unconfirmed" };
+      };
+
       const finalExactPool = sanitizedExactPool;
 
       /*
@@ -4715,6 +4741,27 @@ export default async function handler(req, res) {
           ...exactPool,
           ...sameModelPool
         ];
+      }
+
+      const switchPackageGateDiagnostics = {
+        enabled: Boolean(switchPackageTarget),
+        excluded_count: 0,
+        excluded_reasons: {}
+      };
+      if (switchPackageTarget) {
+        const beforePackageGate = valuationPool.length;
+        valuationPool = valuationPool.filter(item => {
+          const result = classifySwitchPackageForValuation(item);
+          if (!result.eligible) {
+            switchPackageGateDiagnostics.excluded_count += 1;
+            switchPackageGateDiagnostics.excluded_reasons[result.reason] =
+              (switchPackageGateDiagnostics.excluded_reasons[result.reason] || 0) + 1;
+            return false;
+          }
+          return true;
+        });
+        switchPackageGateDiagnostics.before_count = beforePackageGate;
+        switchPackageGateDiagnostics.after_count = valuationPool.length;
       }
 
       const filteredPool =
@@ -5144,6 +5191,9 @@ const classifyConsolePackage = (item) => {
 
         sample_size:
           finalPool.length,
+
+        // Test 7.25: package gate diagnostics; bounded counters only.
+        switch_package_gate: switchPackageGateDiagnostics,
 
         exact_match_count:
           exactPool.length,
