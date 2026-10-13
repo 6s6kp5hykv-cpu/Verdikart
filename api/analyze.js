@@ -1,4 +1,4 @@
-// Kistefunn analysebackend v15.5.60-test7.27-valuation-consistency-diagnostics
+// Kistefunn analysebackend v15.5.61-test7.28-market-reference-count-fix
 // Test 7.25: Separates Switch OLED package completeness from model identity; excludes console-only/parts/unconfirmed package titles from valuation pool. Preview-only; not production-approved.
 // V15.5.49 TEST 7.16: Rejects console bags/cases, screen assemblies, motherboards and repair-service listings from complete-console valuation; preserves explicit complete-console bundles. Preview-only; not production-approved.\n// V15.5.48 TEST 7.15: Avoids rejecting complete guitars because titles mention pickups/bridges/necks/pickguards; treats explicitly requested pickguard color as a hard requirement. Preview-only; not production-approved.
 // V15.5.47 TEST 7.14: Makes accessory/part rejection target-aware and keeps uncertain model variants as lower-confidence candidates unless there is a clear identity conflict. Preview-only; not production-approved.
@@ -54,7 +54,27 @@
 // - Ny markedsmotor er klargjort for FINN + eBay + AI.
 // - FINN aktiveres først når legitim API-tilgang er tilgjengelig.
 
-const BACKEND_VERSION = "v15.5.60-test7.27-valuation-consistency-diagnostics";
+const BACKEND_VERSION = "v15.5.61-test7.28-market-reference-count-fix";
+
+export function countMarketReferences(contributingMarketCandidates) {
+  return contributingMarketCandidates.reduce((sum, candidate) => {
+    const count = Number(candidate?.reference_count);
+    return sum + (Number.isFinite(count) ? Math.max(0, count) : 0);
+  }, 0);
+}
+
+export function hasApprovedEbayValuationReferences(source) {
+  const count = Number(source?.valuation_reference_count);
+  return Number.isFinite(count) && count > 0;
+}
+
+export function isMarketCandidateEligible(source, qualityWeight) {
+  return Boolean(source?.enabled) &&
+    Number.isFinite(source.value_nok) &&
+    source.value_nok > 0 &&
+    Number.isFinite(qualityWeight) &&
+    qualityWeight > 0;
+}
 
 import { identifyWithOpenAI } from "./lib/openai.js";
 import { isCompatibleGuitarBridgeVariant } from "../lib/matching.js";
@@ -6087,7 +6107,8 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
           : null,
         exact_match_count: Number(ebay?.exact_match_count || 0),
         same_model_match_count: Number(ebay?.same_model_match_count || 0),
-        distinct_count: Number(ebay?.distinct_valuation_count || 0)
+        distinct_count: Number(ebay?.distinct_valuation_count || 0),
+        valuation_reference_count: Number(ebay?.sample_size || 0)
       },
 
       web_reference: {
@@ -6157,6 +6178,9 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       if (!source?.enabled || !Number.isFinite(source.value_nok) || source.value_nok <= 0) {
         return 0;
       }
+
+      // Only listings surviving into finalPool are approved valuation evidence.
+      if (!hasApprovedEbayValuationReferences(source)) return 0;
 
       const exact = Math.max(0, source.exact_match_count || 0);
       const sameModel = Math.max(0, source.same_model_match_count || 0);
@@ -6259,16 +6283,13 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
 
       const ebayQuality = calculateEbayQuality(sources.ebay);
 
-      if (
-        sources.ebay?.enabled &&
-        Number.isFinite(sources.ebay.value_nok) &&
-        ebayQuality > 0
-      ) {
+      if (isMarketCandidateEligible(sources.ebay, ebayQuality)) {
         candidates.push({
           source: "ebay",
           value: sources.ebay.value_nok,
           low: sources.ebay.low_nok,
           high: sources.ebay.high_nok,
+          reference_count: sources.ebay.valuation_reference_count,
           quality_weight: ebayQuality
         });
       }
@@ -6276,31 +6297,29 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       const webReferenceQuality =
         calculateWebReferenceQuality(sources.web_reference);
 
-      if (
-        sources.web_reference?.enabled &&
-        Number.isFinite(sources.web_reference.value_nok) &&
-        webReferenceQuality > 0
-      ) {
+      if (isMarketCandidateEligible(sources.web_reference, webReferenceQuality)) {
         candidates.push({
           source: "web_reference",
           value: sources.web_reference.value_nok,
           low: sources.web_reference.low_nok,
           high: sources.web_reference.high_nok,
+          reference_count: sources.web_reference.valuation_reference_count,
           quality_weight: webReferenceQuality
         });
       }
 
+      const finnQuality = 0.80;
       if (
-        sources.finn?.enabled &&
-        Number.isFinite(sources.finn.value_nok) &&
-        sources.finn.value_nok > 0
+        isMarketCandidateEligible(sources.finn, finnQuality) &&
+        Number(sources.finn.exact_match_count || 0) > 0
       ) {
         candidates.push({
           source: "finn",
           value: sources.finn.value_nok,
           low: sources.finn.low_nok,
           high: sources.finn.high_nok,
-          quality_weight: 0.80
+          reference_count: sources.finn.exact_match_count,
+          quality_weight: finnQuality
         });
       }
 
@@ -6310,6 +6329,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
           low_nok: null,
           high_nok: null,
           source_weights: [],
+          market_reference_count: 0,
           confidence: "lav",
           basis: "Ingen brukbare markedsdata"
         };
@@ -6509,6 +6529,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
             ? Math.round(high)
             : null,
         source_weights: sourceWeights,
+        market_reference_count: countMarketReferences(marketCandidates),
         confidence,
         basis: names.length
           ? `AI + ${names.join(" + ")}`
@@ -6798,15 +6819,10 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
 
       // Explicitly label estimates that are not supported by accepted market references.
       valuation_basis: String(market?.basis || "Ukjent prisgrunnlag"),
-      market_reference_count: ["ebay", "web_reference", "finn"].reduce(
-        (sum, key) => sum + Math.max(0, Number(marketSources?.[key]?.exact_match_count || 0)),
-        0
-      ),
-      market_data_status: ["ebay", "web_reference", "finn"].some(key =>
-        marketSources?.[key]?.enabled &&
-        Number(marketSources?.[key]?.exact_match_count || 0) > 0 &&
-        isValidMarketPrice(marketSources?.[key]?.value_nok)
-      ) ? "market_supported" : "ai_estimate_only",
+      market_reference_count: Number(market?.market_reference_count || 0),
+      market_data_status: Number(market?.market_reference_count || 0) > 0
+        ? "market_supported"
+        : "ai_estimate_only",
 
       low_value_nok:
         Number.isFinite(
