@@ -1,4 +1,4 @@
-// Kistefunn analysebackend v15.5.61-test7.28-market-reference-count-fix
+// Kistefunn analysebackend v15.5.62-test7.29-nintendo-search-fix
 // Test 7.25: Separates Switch OLED package completeness from model identity; excludes console-only/parts/unconfirmed package titles from valuation pool. Preview-only; not production-approved.
 // V15.5.49 TEST 7.16: Rejects console bags/cases, screen assemblies, motherboards and repair-service listings from complete-console valuation; preserves explicit complete-console bundles. Preview-only; not production-approved.\n// V15.5.48 TEST 7.15: Avoids rejecting complete guitars because titles mention pickups/bridges/necks/pickguards; treats explicitly requested pickguard color as a hard requirement. Preview-only; not production-approved.
 // V15.5.47 TEST 7.14: Makes accessory/part rejection target-aware and keeps uncertain model variants as lower-confidence candidates unless there is a clear identity conflict. Preview-only; not production-approved.
@@ -54,7 +54,57 @@
 // - Ny markedsmotor er klargjort for FINN + eBay + AI.
 // - FINN aktiveres først når legitim API-tilgang er tilgjengelig.
 
-const BACKEND_VERSION = "v15.5.61-test7.28-market-reference-count-fix";
+const BACKEND_VERSION = "v15.5.62-test7.29-nintendo-search-fix";
+
+export function isNintendoSwitchOledTarget(target) {
+  const text = typeof target === "string"
+    ? target
+    : [target?.brand, target?.model, target?.type, target?.manufacturer]
+        .filter(Boolean).join(" ");
+  const normalized = String(text || "").toLowerCase();
+  const explicitAccessoryType = typeof target !== "string" &&
+    /\b(?:accessory|controller|gamepad|dock|charger|screen protector|replacement part|tablet)\b/i.test(String(target?.type || ""));
+  const accessoryOnlyTarget = explicitAccessoryType || /\b(?:joy[ -]?con(?:s)?(?: controller)?|controller(?: pair)?|dock(?:ing station)?|charger|power adapter|screen protector|case|replacement part)\s+(?:only|for|compatible with)\b|\b(?:joy[ -]?con|dock|charger|controller)\s+only\b/i.test(normalized);
+  return !accessoryOnlyTarget && /\bnintendo\b/.test(normalized) &&
+    /\bswitch\b/.test(normalized) && /\boled\b/.test(normalized) &&
+    !/\b(?:lite|switch 2)\b/.test(normalized);
+}
+
+export function classifyNintendoSwitchOledListing(item) {
+  const title = String(item?.title || "");
+  const t = title.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
+  const hasConsole = /\b(?:nintendo\s+)?switch\s*oled\b|\b(?:oled[- ]?)?(?:console|konsole|konsoll|system)\b/i.test(t);
+  const otherVariant = /\bnintendo\s+switch\s*(?:lite|2)\b|\bswitch\s*(?:lite|2)\b/i.test(t);
+  const parts = /\b(?:for parts|parts only|broken|not working|repair only|spares or repair|defekt|defektware|kaputt|bastlerware|ersatzteile|ersatzteilspender|reparatur|teiletraeger|ikke funger|ikke funker|ødelagt|reparasjon|reservedeler|rep.objekt)\b/i.test(t);
+  const consoleOnly = /\b(?:console only|console[- ]only|handheld only|tablet only|console without (?:the )?(?:dock|joy[ -]?con)|no dock|dock not included|without dock|ohne dock|ohne joy[ -]?con|ohne zubehor|ohne netzteil|nur konsole|nur tablet|nur handheld|konsoll uten|kun konsoll|kun nettbrett|uten dock|uten joy[ -]?con|uten lader)\b/i.test(t);
+  const accessoryOnly = /\b(?:dock(?:ing station)?|joy[ -]?con(?:s)?|controller(?: pair)?|gamepad|charger|power adapter|ac adapter|netzteil|ladekabel|lader|ladegeraet|ladestation|case|tasche|schutzhulle|screen protector|displayfolie|ersatzteil|replacement part)\s+(?:only|for|compatible with|fuer|fur|til)\b/i.test(t) ||
+    /^\s*(?:dock(?:ing station)?|joy[ -]?con(?:s)?|controller(?: pair)?|gamepad|charger|power adapter|ac adapter|netzteil|ladekabel|lader|ladegeraet|ladestation|case|tasche|schutzhulle|screen protector|displayfolie|ersatzteil|replacement part)\b/i.test(t);
+  const hasDock = /\b(?:dock|docking station|dockstation|dockningsstasjon|dokkingstasjon)\b/i.test(t) && !/\b(?:no dock|dock not included|without dock|ohne dock|dock (?:nicht enthalten|fehlt|nicht dabei)|kein dock|uten dock|mangler dock|dock (?:ikke inkludert|følger ikke med|folger ikke med|medfolges nicht))\b/i.test(t);
+  const hasJoycon = /\b(?:joy[ -]?con(?:s)?|controller(?:s)?|kontroller(?:e)?|gamepad|joy-cons?)\b/i.test(t) && !/\b(?:no joy[ -]?con|joy[ -]?con not included|ohne joy[ -]?con|joy[ -]?cons? (?:fehlen|nicht enthalten|nicht dabei)|kein[e]? joy[ -]?cons?|uten joy[ -]?con|mangler joy[ -]?con|joy[ -]?con (?:ikke inkludert|følger ikke med|folger ikke med|medfolges nicht))\b/i.test(t);
+  const hasPower = /\b(?:power supply|power adapter|ac adapter|charger|charging adapter|netzteil|ladegeraet|ladekabel|lader|ladeadapter|stromadapter|stromversorgung)\b/i.test(t) && !/\b(?:no charger|charger not included|ohne netzteil|ohne ladegeraet|kein netzteil|netzteil (?:nicht enthalten|fehlt|nicht dabei)|uten lader|mangler (?:lader|nettadapter|strømadapter)|lader (?:ikke inkludert|følger ikke med|folger nicht mit|medfolges nicht))\b/i.test(t);
+  const explicitComplete = /\b(?:complete bundle|complete set|full set|all accessories included|everything included|complete package|komplett(?:es)?\s+(?:set|paket|bundle|pakke|sett)|komplett(?:paket|set|bundle|pakke|sett)|vollstaendig(?:es)?\s+(?:set|paket|bundle)|vollstandig(?:es)?\s+(?:set|paket|bundle)|alles dabei|alt tilbehoer(?:\s+er)?\s+(?:inkludert|med)|alt tilbehør(?:\s+er)?\s+(?:inkludert|med)|komplett mit|komplett med|komplett utstyr|alt folger med|alt følger med)\b/i.test(t);
+  let reason = "package_contents_unconfirmed";
+  if (parts) reason = "parts_or_repair";
+  else if (otherVariant) reason = "other_console_variant";
+  else if (accessoryOnly || !hasConsole) reason = "accessory_or_non_console";
+  else if (consoleOnly) reason = "console_only_explicit";
+  else if (explicitComplete && hasDock && hasJoycon && hasPower) reason = "complete_contents_signaled";
+  return {
+    eligible: reason === "complete_contents_signaled",
+    reason,
+    title_signals: { console: hasConsole, dock: hasDock, joycon_or_controller: hasJoycon, power_supply: hasPower, explicit_complete: explicitComplete }
+  };
+}
+
+export function filterNintendoSwitchOledListings(listings) {
+  const included = [];
+  const excluded = [];
+  for (const item of Array.isArray(listings) ? listings : []) {
+    const classification = classifyNintendoSwitchOledListing(item);
+    (classification.eligible ? included : excluded).push({ item, reason: classification.reason });
+  }
+  return { included: included.map(row => row.item), excluded };
+}
 
 export function countMarketReferences(contributingMarketCandidates) {
   return contributingMarketCandidates.reduce((sum, candidate) => {
@@ -66,6 +116,13 @@ export function countMarketReferences(contributingMarketCandidates) {
 export function hasApprovedEbayValuationReferences(source) {
   const count = Number(source?.valuation_reference_count);
   return Number.isFinite(count) && count > 0;
+}
+
+export function hasSufficientNintendoMarketPool(source) {
+  return Number(source?.sample_size || 0) >= 3 &&
+    Number(source?.distinct_valuation_count || 0) >= 3 &&
+    Array.isArray(source?.valuation_used_listing_audit) &&
+    source.valuation_used_listing_audit.length >= 3;
 }
 
 export function isMarketCandidateEligible(source, qualityWeight) {
@@ -4681,30 +4738,14 @@ export default async function handler(req, res) {
           )
         );
 
-      // TEST 7.25: package completeness is a separate valuation gate for Switch OLED.
-      // It does not alter identity matching or the displayed exact-match pool.
-      const switchPackageTarget =
-        /\bnintendo\b/i.test(builtQueryText) &&
-        /\bswitch\b/i.test(builtQueryText) &&
-        /\boled\b/i.test(builtQueryText) &&
-        !/\b(?:dock|joy[ -]?con|controller|charger|power supply|case|screen protector|replacement part|console only|tablet only|handheld only)\b/i.test(builtQueryText);
-
-      const classifySwitchPackageForValuation = (item) => {
-        const title = String(item?.title || "");
-        const t = title.toLowerCase();
-        const explicitParts = /\b(?:for parts|parts only|broken|not working|repair only|spares or repair)\b/i.test(title);
-        const explicitConsoleOnly = /\b(?:console only|console[- ]only|handheld only|tablet only|console without (?:the )?(?:dock|joy[ -]?con)|no dock|dock not included|without dock|tablet only)\b/i.test(title);
-        const dock = /\b(?:dock|docking station)\b/i.test(title) && !/\b(?:no dock|dock not included|without dock)\b/i.test(title);
-        const joycon = /\b(?:joy[ -]?con|joycon|controllers?)\b/i.test(title);
-        const power = /\b(?:power supply|power adapter|ac adapter|charger|charging adapter)\b/i.test(title);
-        const completeBundle = /\b(?:complete bundle|complete set|full set|all accessories included|includes? (?:the )?dock)\b/i.test(title);
-        if (explicitParts || explicitConsoleOnly) return { eligible: false, reason: explicitParts ? "parts_or_repair" : "console_only_explicit" };
-        // Only accept a title as complete when the bundle signal and key components are present.
-        if (dock && joycon && power && (completeBundle || /\b(?:console|system|bundle|set)\b/i.test(t))) {
-          return { eligible: true, reason: "complete_contents_signaled" };
-        }
-        return { eligible: false, reason: "package_contents_unconfirmed" };
-      };
+      // Test 7.29: determine the product from structured target identity, never
+      // from discovery-query wording (which may mention included accessories).
+      const switchPackageTarget = isNintendoSwitchOledTarget({
+        brand: built.brand,
+        model: built.model,
+        type: built.type,
+        manufacturer: built.manufacturer
+      });
 
       const finalExactPool = sanitizedExactPool;
 
@@ -4770,16 +4811,13 @@ export default async function handler(req, res) {
       };
       if (switchPackageTarget) {
         const beforePackageGate = valuationPool.length;
-        valuationPool = valuationPool.filter(item => {
-          const result = classifySwitchPackageForValuation(item);
-          if (!result.eligible) {
-            switchPackageGateDiagnostics.excluded_count += 1;
-            switchPackageGateDiagnostics.excluded_reasons[result.reason] =
-              (switchPackageGateDiagnostics.excluded_reasons[result.reason] || 0) + 1;
-            return false;
-          }
-          return true;
-        });
+        const packageResult = filterNintendoSwitchOledListings(valuationPool);
+        valuationPool = packageResult.included;
+        switchPackageGateDiagnostics.excluded_count = packageResult.excluded.length;
+        for (const row of packageResult.excluded) {
+          switchPackageGateDiagnostics.excluded_reasons[row.reason] =
+            (switchPackageGateDiagnostics.excluded_reasons[row.reason] || 0) + 1;
+        }
         switchPackageGateDiagnostics.before_count = beforePackageGate;
         switchPackageGateDiagnostics.after_count = valuationPool.length;
       }
@@ -4827,8 +4865,14 @@ export default async function handler(req, res) {
           )
           .slice(0, 8);
 
+      // For Switch OLED, all value-driving exact statistics must come from
+      // listings which survived package completeness and final outlier filters.
+      const valuationExactPool = switchPackageTarget
+        ? finalPool.filter(item => item.match_tier === "exact")
+        : exactPool;
+
       const exactPrices =
-        exactPool
+        valuationExactPool
           .map(
             x => Number(x.nok)
           )
@@ -4864,7 +4908,9 @@ export default async function handler(req, res) {
 
       let marketMedian = null;
 
-      if (
+      if (switchPackageTarget && Number.isFinite(median(prices))) {
+        marketMedian = Math.round(median(prices));
+      } else if (
         built.year &&
         Number.isFinite(exactMedian)
       ) {
@@ -4904,7 +4950,7 @@ export default async function handler(req, res) {
           : (Number.isFinite(marketMedian) ? marketMedian : null);
 
       const exactPositiveItems =
-        exactPool
+        valuationExactPool
           .map(item => ({
             item,
             price: Number(item.nok)
@@ -5108,25 +5154,29 @@ export default async function handler(req, res) {
           )
         );
 
-// Test 7.19: classify package completeness from listing title only.
-// Diagnostic-only: do not reject listings or change valuation in this test.
+// Keep the existing audit shape, but use the production classifier so the
+// valuation gate and listing audit cannot disagree about package contents.
 const classifyConsolePackage = (item) => {
-  const title = String(item?.title || "");
-  const t = title.toLowerCase();
-  const explicitConsoleOnly = /\b(?:console only|console[- ]only|handheld only|tablet only|console without (?:dock|joy[ -]?con)|no dock|dock not included|without dock)\b/i.test(title);
-  const explicitParts = /\b(?:for parts|parts only|broken|not working|repair only|spares or repair)\b/i.test(title);
-  const mentionsDock = /\b(?:dock|docking station)\b/i.test(title);
-  const mentionsJoycon = /\b(?:joy[ -]?con|joycon|controllers?)\b/i.test(title);
-  const mentionsPower = /\b(?:power supply|power adapter|ac adapter|charger)\b/i.test(title);
-  const explicitlyComplete = /\b(?:complete bundle|complete set|full set|boxed with dock|includes? (?:the )?dock)\b/i.test(title) && mentionsDock;
-  let package_status = "contents_unconfirmed";
-  if (explicitParts) package_status = "parts_or_repair_explicit";
-  else if (explicitConsoleOnly) package_status = "console_only_explicit";
-  else if (explicitlyComplete && mentionsJoycon && mentionsPower) package_status = "complete_contents_signaled";
-  else if (mentionsDock && mentionsJoycon) package_status = "dock_and_joycon_signaled_power_unconfirmed";
-  else if (mentionsJoycon) package_status = "joycon_signaled_dock_unconfirmed";
-  else if (mentionsDock) package_status = "dock_signaled_joycon_unconfirmed";
-  return { package_status, title_signals: { dock: mentionsDock, joycon_or_controller: mentionsJoycon, power_supply: mentionsPower, explicit_console_only: explicitConsoleOnly, explicit_parts_or_repair: explicitParts } };
+  const result = classifyNintendoSwitchOledListing(item);
+  const package_status = result.eligible
+    ? "complete_contents_signaled"
+    : result.reason === "parts_or_repair"
+      ? "parts_or_repair_explicit"
+      : result.reason === "console_only_explicit"
+        ? "console_only_explicit"
+        : result.reason === "accessory_or_non_console"
+          ? "accessory_or_non_console"
+          : "contents_unconfirmed";
+  return {
+    package_status,
+    title_signals: {
+      dock: result.title_signals.dock,
+      joycon_or_controller: result.title_signals.joycon_or_controller,
+      power_supply: result.title_signals.power_supply,
+      explicit_console_only: result.reason === "console_only_explicit",
+      explicit_parts_or_repair: result.reason === "parts_or_repair"
+    }
+  };
 };
 
       return {
@@ -5216,10 +5266,10 @@ const classifyConsolePackage = (item) => {
         switch_package_gate: switchPackageGateDiagnostics,
 
         exact_match_count:
-          exactPool.length,
+          switchPackageTarget ? valuationExactPool.length : exactPool.length,
 
         exact_prices_nok:
-          exactPool.map(x => Number(x.nok)).filter(Number.isFinite),
+          valuationExactPool.map(x => Number(x.nok)).filter(Number.isFinite),
 
         // Test 7.18: bounded listing-by-listing audit. Test 7.19 adds package
         // signals for audit only; matching, filtering, and valuation stay unchanged.
@@ -5293,7 +5343,9 @@ const classifyConsolePackage = (item) => {
           valuationExcluded.length,
 
         same_model_match_count:
-          sameModelPool.length,
+          switchPackageTarget
+            ? finalPool.filter(item => item.match_tier === "same_model").length
+            : sameModelPool.length,
 
         distinct_valuation_count:
           distinctValuationKeys.size,
@@ -6090,12 +6142,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
         // references. Search/exact-pool counts alone must never bypass it.
         enabled: Boolean(ebay?.enabled) &&
           Number.isFinite(ebay?.median_nok) && ebay.median_nok > 0 &&
-          (!ebay?.switch_package_gate?.enabled || (
-            Number(ebay?.sample_size || 0) >= 3 &&
-            Number(ebay?.distinct_valuation_count || 0) >= 3 &&
-            Array.isArray(ebay?.valuation_used_listing_audit) &&
-            ebay.valuation_used_listing_audit.length >= 3
-          )),
+          (!ebay?.switch_package_gate?.enabled || hasSufficientNintendoMarketPool(ebay)),
         value_nok: Number.isFinite(ebay?.median_nok) && ebay.median_nok > 0
           ? Math.round(ebay.median_nok)
           : null,
