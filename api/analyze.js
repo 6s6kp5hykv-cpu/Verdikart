@@ -1,4 +1,4 @@
-// Kistefunn analysebackend v15.5.63-test7.32-ebay-detail-diagnostics
+// Kistefunn analysebackend v15.5.66-test7.35-negation-scope
 // Test 7.25: Separates Switch OLED package completeness from model identity; excludes console-only/parts/unconfirmed package titles from valuation pool. Preview-only; not production-approved.
 // V15.5.49 TEST 7.16: Rejects console bags/cases, screen assemblies, motherboards and repair-service listings from complete-console valuation; preserves explicit complete-console bundles. Preview-only; not production-approved.\n// V15.5.48 TEST 7.15: Avoids rejecting complete guitars because titles mention pickups/bridges/necks/pickguards; treats explicitly requested pickguard color as a hard requirement. Preview-only; not production-approved.
 // V15.5.47 TEST 7.14: Makes accessory/part rejection target-aware and keeps uncertain model variants as lower-confidence candidates unless there is a clear identity conflict. Preview-only; not production-approved.
@@ -54,7 +54,7 @@
 // - Ny markedsmotor er klargjort for FINN + eBay + AI.
 // - FINN aktiveres først når legitim API-tilgang er tilgjengelig.
 
-const BACKEND_VERSION = "v15.5.63-test7.32-ebay-detail-diagnostics";
+const BACKEND_VERSION = "v15.5.66-test7.35-negation-scope";
 
 export function isNintendoSwitchOledTarget(target) {
   const text = typeof target === "string"
@@ -108,47 +108,144 @@ export function filterNintendoSwitchOledListings(listings) {
 
 // Privacy-limited observation only: these values never participate in eligibility.
 export function buildNintendoPackageCandidateDiagnostics(listings, limit = 30) {
-  const allowedAspectKeys = {
-    dock: ["items included", "included items", "included accessories", "accessories included", "package contents", "contents", "what's included", "whats included", "lieferumfang", "umfang", "im lieferumfang enthalten", "inkludierter lieferumfang", "medfølger", "medfolger", "inkludert utstyr", "pakkeinnhold"],
-    joycon_or_controller: ["items included", "included items", "included accessories", "accessories included", "package contents", "contents", "what's included", "whats included", "lieferumfang", "umfang", "im lieferumfang enthalten", "inkludierter lieferumfang", "medfølger", "medfolger", "inkludert utstyr", "pakkeinnhold"],
-    power_supply: ["items included", "included items", "included accessories", "accessories included", "package contents", "contents", "what's included", "whats included", "lieferumfang", "umfang", "im lieferumfang enthalten", "inkludierter lieferumfang", "medfølger", "medfolger", "inkludert utstyr", "pakkeinnhold"]
-  };
+  function normalizeKey(s) { return String(s).normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim(); }
+  const allowedAspectKeys = ["items included", "included items", "included accessories", "accessories included", "package contents", "contents", "what's included", "whats included", "lieferumfang", "umfang", "im lieferumfang enthalten", "inkludierter lieferumfang", "medfølger", "medfolger", "inkludert utstyr", "pakkeinnhold"];
+  const normalizedAllowedAspectKeys = new Set(allowedAspectKeys.map(normalizeKey));
   const equipPatterns = {
     dock: /\b(?:dock|docking station|dockstation|dokkingstasjon)\b/i,
     joycon_or_controller: /\b(?:joy[ -]?con(?:s)?|controller(?:s)?|kontroller(?:e)?|gamepad)\b/i,
     power_supply: /\b(?:charger|power supply|power adapter|ac adapter|netzteil|ladegeraet|stromadapter|lader|nettadapter|strømadapter)\b/i
   };
-  const negative = /\b(?:not included|not supplied|not included|excluded|without|ohne|nicht enthalten|nicht dabei|fehlt|kein(?:e|en)?|ikke inkludert|følger ikke med|folger nicht mit|mangler|uten)\b/i;
-  const positive = /\b(?:included|supplied|with|inklusive|enthalten|dabei|medfølger|medfolger|inkludert|følger med|folger mit)\b/i;
-  function normalizeKey(s) { return String(s).normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim(); }
-  function aspectSignal(aspects, equipment) {
-    if (!aspects || typeof aspects !== "object" || Array.isArray(aspects)) return null;
-    const allowed = allowedAspectKeys[equipment].map(normalizeKey);
-    const text = Object.entries(aspects).filter(([key]) => allowed.includes(normalizeKey(key)))
-      .flatMap(([, values]) => Array.isArray(values) ? values : [values]).filter(v => typeof v === "string").join(" ").slice(0, 1200);
-    if (!text) return null;
-    const equipmentPattern = equipPatterns[equipment];
-    const matching = text.split(/[;,|]/).filter(value => equipmentPattern.test(value));
-    if (!matching.length) return null;
-    if (matching.some(value => negative.test(value))) return false;
-    if (matching.some(value => positive.test(value) || equipmentPattern.test(value))) return true;
-    return null;
+  const negative = /\b(?:not included|not supplied|not provided|not available|excluded|without|ohne|nicht enthalten|nicht dabei|nicht mitgeliefert|fehlt|kein(?:e|en)?|ikke inkludert|følger ikke med|folger nicht mit|mangler|uten)\b/i;
+  const positive = /\b(?:included|supplied|provided|inklusive|enthalten|dabei|mitgeliefert|medfølger|medfolger|inkludert|følger med|folger mit)\b/i;
+  const ambiguousContext = /\b(?:compatible|compatibility|kompatibel|geeignet|passend|tilpasset|works with|fits)\b/i;
+  const genericEquipment = {
+    dock: /\bdock\b/i,
+    joycon_or_controller: /\b(?:controllers?|gamepads?)\b/i,
+    power_supply: /\badapter\b/i
+  };
+  const explicitlySpecificEquipment = {
+    dock: /\b(?:dock|docking station|dockstation|dokkingstasjon)\b/i,
+    joycon_or_controller: /\bjoy[ -]?con(?:s)?\b|\bkontroller(?:e)?\b/i,
+    power_supply: /\b(?:ac|power|strom|nett|lade)\s+adapter\b|\b(?:charger|ladegeraet|netzteil|stromadapter|lader|nettadapter|strømadapter)\b/i
+  };
+  function inspectAspectEvidence(aspects) {
+    const isMap = aspects !== null && typeof aspects === "object" && !Array.isArray(aspects);
+    if (!isMap) return { state: "missing_map", recognizedCount: 0, unknownCount: 0, signals: { dock: null, joycon_or_controller: null, power_supply: null }, evidence: { dock: "no_recognized_field", joycon_or_controller: "no_recognized_field", power_supply: "no_recognized_field" } };
+    const entries = Object.entries(aspects);
+    if (!entries.length) return { state: "empty_map", recognizedCount: 0, unknownCount: 0, signals: { dock: null, joycon_or_controller: null, power_supply: null }, evidence: { dock: "no_recognized_field", joycon_or_controller: "no_recognized_field", power_supply: "no_recognized_field" } };
+    const recognized = entries.filter(([key]) => normalizedAllowedAspectKeys.has(normalizeKey(key)));
+    const state = recognized.length ? "recognized_fields" : "unknown_fields_only";
+    if (!recognized.length) return { state, recognizedCount: 0, unknownCount: Math.min(entries.length, 1000), signals: { dock: null, joycon_or_controller: null, power_supply: null }, evidence: { dock: "no_recognized_field", joycon_or_controller: "no_recognized_field", power_supply: "no_recognized_field" } };
+    const types = ["dock", "joycon_or_controller", "power_supply"];
+    const evidenceSets = Object.fromEntries(types.map(type => [type, new Set()]));
+    function mentionedTypes(text) {
+      return types.filter(type => equipPatterns[type].test(text) || (type === "power_supply" && /\badapter\b/i.test(text)));
+    }
+    function classifySegment(text, forceNegative = false, forceAmbiguous = false) {
+      const result = Object.fromEntries(types.map(type => [type, []]));
+      const mentioned = mentionedTypes(text);
+      const hasNegative = forceNegative || negative.test(text) || /\bno\b/i.test(text);
+      const positiveText = text.replace(negative, " ").replace(/\bno\b/gi, " ");
+      const hasPositive = positive.test(positiveText);
+      for (const type of mentioned) {
+        if (forceAmbiguous || ambiguousContext.test(text) || (genericEquipment[type].test(text) && !explicitlySpecificEquipment[type].test(text))) result[type].push("ambiguous");
+        else if (hasNegative && hasPositive) result[type].push("positive", "negative");
+        else if (hasNegative) result[type].push("negative");
+        else if (hasPositive) result[type].push("positive");
+        else result[type].push("unspecified");
+      }
+      return result;
+    }
+    function addResult(result) {
+      for (const type of types) for (const state of result[type]) evidenceSets[type].add(state);
+    }
+    const values = recognized.flatMap(([, fieldValues]) => Array.isArray(fieldValues) ? fieldValues : [fieldValues])
+      .filter(value => typeof value === "string").slice(0, 100);
+    for (const rawValue of values) {
+      for (const punctuationClause of rawValue.slice(0, 1200).split(/[;,|]/)) {
+        const clause = punctuationClause.trim();
+        if (!clause) continue;
+
+        // A prepositional construction such as "Dock with Joy-Con not included"
+        // does not establish whether the dock itself is included.
+        const withMatch = clause.match(/\s+(?:with|mit|med)\s+/i);
+        if (withMatch && negative.test(clause.slice(withMatch.index + withMatch[0].length))) {
+          addResult(classifySegment(clause.slice(0, withMatch.index), false, true));
+          addResult(classifySegment(clause.slice(withMatch.index + withMatch[0].length), true));
+          continue;
+        }
+
+        // "Dock without Joy-Con" positively names the dock and explicitly
+        // excludes the equipment following the relational negative.
+        const withoutMatch = clause.match(/\s+(without|ohne|uten)\s+/i);
+        if (withoutMatch) {
+          addResult(classifySegment(clause.slice(0, withoutMatch.index)));
+          addResult(classifySegment(clause.slice(withoutMatch.index + withoutMatch[0].length), true));
+          continue;
+        }
+
+        // Split contrastive clauses first; unlike a coordinated list, a
+        // contrastive clause cannot share its final predicate backwards.
+        const contrastParts = clause.split(/\s+(?:but|however|men|aber|jedoch)\s+/i);
+        for (const contrastPart of contrastParts) {
+          const coordinated = contrastPart.split(/\s+(?:and|und|og)\s+/i);
+          const results = coordinated.map(part => classifySegment(part));
+          for (let index = 0; index < results.length - 1; index++) {
+            const laterHasNegative = results.slice(index + 1).some(result => types.some(type => result[type].includes("negative")));
+            if (!laterHasNegative) continue;
+            for (const type of types) {
+              if (results[index][type].includes("unspecified")) {
+                results[index][type] = results[index][type].filter(state => state !== "unspecified");
+                results[index][type].push("negative");
+              }
+            }
+          }
+          for (const result of results) addResult(result);
+        }
+      }
+    }
+    const signals = {};
+    const evidence = {};
+    for (const type of types) {
+      const states = evidenceSets[type];
+      const hasPositive = states.has("positive");
+      const hasNegative = states.has("negative");
+      if (hasPositive && hasNegative) {
+        signals[type] = null;
+        evidence[type] = "conflicting_evidence";
+      } else if (hasNegative) {
+        signals[type] = false;
+        evidence[type] = "negative_match";
+      } else if (states.has("ambiguous")) {
+        signals[type] = null;
+        evidence[type] = "ambiguous_evidence";
+      } else if (hasPositive) {
+        signals[type] = true;
+        evidence[type] = "matched";
+      } else {
+        signals[type] = null;
+        evidence[type] = "no_value_match";
+      }
+    }
+    return { state, recognizedCount: Math.min(recognized.length, 1000), unknownCount: Math.min(entries.length - recognized.length, 1000), signals, evidence };
   }
   const source = Array.isArray(listings) ? listings : [];
   const max = Math.max(0, Math.min(30, Number.isInteger(limit) ? limit : 30));
   return source.slice(0, max).map((item, index) => {
     const classification = classifyNintendoSwitchOledListing(item);
     const aspects = item?._ebay_aspects;
+    const aspectEvidence = inspectAspectEvidence(aspects);
     return {
       candidate_number: index + 1,
       filter_reason: classification.reason,
       title_signals: classification.title_signals,
       detail_aspects_present: Boolean(aspects && typeof aspects === "object" && !Array.isArray(aspects) && Object.keys(aspects).length),
-      aspect_signals: {
-        dock: aspectSignal(aspects, "dock"),
-        joycon_or_controller: aspectSignal(aspects, "joycon_or_controller"),
-        power_supply: aspectSignal(aspects, "power_supply")
-      }
+      aspect_map_state: aspectEvidence.state,
+      recognized_content_field_count: aspectEvidence.recognizedCount,
+      unknown_aspect_field_count: aspectEvidence.unknownCount,
+      aspect_signals: aspectEvidence.signals,
+      aspect_evidence: aspectEvidence.evidence
     };
   });
 }

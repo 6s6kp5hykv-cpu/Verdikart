@@ -60,7 +60,7 @@ try {
   assert.doesNotMatch(JSON.stringify(marketplaceTrace), /synthetic-token|jan\.person@example\.test|untrusted-source/i);
 
   const candidateDiagnostics = buildNintendoPackageCandidateDiagnostics([
-    { title: "Nintendo Switch OLED console with dock, Joy-Con and charger", _ebay_aspects: { "Items Included": ["Dock", "Joy-Con controllers", "AC adapter"], arbitrary_vendor_field: "secret=synthetic-token jan.person@example.test" }, token: "must-not-escape", url: "https://seller.example.test/private" },
+    { title: "Nintendo Switch OLED console with dock, Joy-Con and charger", _ebay_aspects: { "Items Included": ["Dock included", "Joy-Con controllers included", "AC adapter included"], arbitrary_vendor_field: "secret=synthetic-token jan.person@example.test" }, token: "must-not-escape", url: "https://seller.example.test/private" },
     { title: "Nintendo Switch OLED console", _ebay_aspects: {} }
   ]);
   assert.equal(candidateDiagnostics[0].filter_reason, "package_contents_unconfirmed", "diagnostic signals do not change classifier decisions");
@@ -106,7 +106,11 @@ try {
     filter_reason: "package_contents_unconfirmed",
     title_signals: { console: true, dock: true, joycon_or_controller: true, power_supply: true, explicit_complete: false },
     detail_aspects_present: true,
-    confirmed_equipment: { dock: true, joycon_or_controller: null, power_supply: false }
+    aspect_map_state: "unknown",
+    recognized_content_field_count: 0,
+    unknown_aspect_field_count: 0,
+    confirmed_equipment: { dock: true, joycon_or_controller: null, power_supply: false },
+    aspect_evidence: { dock: "unknown", joycon_or_controller: "unknown", power_supply: "unknown" }
   }, "candidate report is a strict field allowlist with tri-state aspect signals");
   assert.deepEqual(report.diagnostic_detail.ebay_search.trace, expectedSafeTrace);
   assert.deepEqual(report.ebay.search_trace, expectedSafeTrace);

@@ -10,7 +10,7 @@ import {
 } from "../api/analyze.js";
 
 const backend = await readFile(new URL("../api/analyze.js", import.meta.url), "utf8");
-assert.match(backend, /v15\.5\.63-test7\.32-ebay-detail-diagnostics/);
+assert.match(backend, /v15\.5\.66-test7\.35-negation-scope/);
 assert.match(backend, /return preserveEbayDetailData\(item,\s*\{/,
   "prepareListing must preserve the private, internal detail fields on its returned candidate");
 assert.match(backend, /selectEbayDetailIds\(\s*ranked,\s*15,\s*ebayDetailDiagnostics/,
@@ -20,14 +20,14 @@ assert.match(backend, /diagnostic_detail:\s*\{[\s\S]*?ebay_item_details:\s*diagn
 
 const detailSource = {
   _ebay_detail_loaded: true,
-  _ebay_aspects: { "items included": ["Dock", "Joy-Con", "AC adapter"] },
-  _ebay_aspect_text: "Items Included: Dock, Joy-Con, AC adapter",
+  _ebay_aspects: { "items included": ["Dock included", "Joy-Con included", "AC adapter included"] },
+  _ebay_aspect_text: "Items Included: Dock included, Joy-Con included, AC adapter included",
   _ebay_description: "private description"
 };
 const prepared = preserveEbayDetailData(detailSource, { title: "Synthetic title", price: { value: 1, currency: "NOK" } });
 assert.equal(prepared._ebay_detail_loaded, true);
 assert.deepEqual(prepared._ebay_aspects, detailSource._ebay_aspects);
-assert.deepEqual(prepared._ebay_aspects, { "items included": ["Dock", "Joy-Con", "AC adapter"] });
+assert.deepEqual(prepared._ebay_aspects, { "items included": ["Dock included", "Joy-Con included", "AC adapter included"] });
 
 const candidate = buildNintendoPackageCandidateDiagnostics([prepared])[0];
 assert.equal(candidate.detail_aspects_present, true, "diagnostic reads aspects from the prepared candidate object");

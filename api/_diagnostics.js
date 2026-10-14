@@ -63,8 +63,16 @@ function sanitizeSwitchPackageGate(value) {
         power_supply: Boolean(title.power_supply), explicit_complete: Boolean(title.explicit_complete)
       },
       detail_aspects_present: candidate.detail_aspects_present === true,
+      aspect_map_state: ["missing_map", "empty_map", "unknown_fields_only", "recognized_fields"].includes(candidate.aspect_map_state) ? candidate.aspect_map_state : "unknown",
+      recognized_content_field_count: count(candidate.recognized_content_field_count),
+      unknown_aspect_field_count: count(candidate.unknown_aspect_field_count),
       confirmed_equipment: {
         dock: tri(aspects.dock), joycon_or_controller: tri(aspects.joycon_or_controller), power_supply: tri(aspects.power_supply)
+      },
+      aspect_evidence: {
+        dock: ["matched", "negative_match", "ambiguous_evidence", "conflicting_evidence", "no_value_match", "no_recognized_field"].includes(candidate.aspect_evidence?.dock) ? candidate.aspect_evidence.dock : "unknown",
+        joycon_or_controller: ["matched", "negative_match", "ambiguous_evidence", "conflicting_evidence", "no_value_match", "no_recognized_field"].includes(candidate.aspect_evidence?.joycon_or_controller) ? candidate.aspect_evidence.joycon_or_controller : "unknown",
+        power_supply: ["matched", "negative_match", "ambiguous_evidence", "conflicting_evidence", "no_value_match", "no_recognized_field"].includes(candidate.aspect_evidence?.power_supply) ? candidate.aspect_evidence.power_supply : "unknown"
       }
     };
   }) : [];
