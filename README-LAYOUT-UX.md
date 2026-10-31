@@ -32,3 +32,8 @@ Source commit: 2bb4a2f8819fe689909ba2599a78d0b24da6161a.
 Preview: https://verdikartmvpiphone-5f21wk2sk-rehtmar.vercel.app/
 Two-column desktop results (single column below 800px), collapsed search form while loading/complete, rotating SVG chest while loading and open lid on completion, edit-search action preserving inputs, collapsible methodology and external references. Original application script blocks byte-identical to v1.1; additional observer only synchronizes UI to existing loading/result classes. No valuation/filter/backend changes. Existing eBay data labels and inclusion flags preserved; screenshot proposal is not an exact pixel template.
 Syntax PASS; Preview READY; live browser loading state checked with one Fender MIM 1995 request. Mobile, error flow and image upload remain pending.
+
+## v1.3 — Kongekisten branding
+Source commit: 59ec1a50230e3625d3ae7cc4b0456c25ddc8b2f8.
+Preview: https://verdikartmvpiphone-byfx69p7f-rehtmar.vercel.app/
+Ornate mahogany/brass Kongekisten artwork in header, enlarged brand name and gold tagline. Closed artwork rotates during loading; open artwork fades in on completion (two images, not an articulated 3D lid animation). Responsive header sizing and reduced-motion support. Asset WebP derivatives under assets/; generated originals retained separately. All existing script blocks unchanged. Desktop header visually checked in live Preview; no new live analysis run. Mobile/header breakpoints and search artwork transition still need visual testing. Backend/B1/production unchanged.
