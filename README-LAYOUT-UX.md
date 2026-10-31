@@ -53,3 +53,8 @@ Moved existing settings/admin buttons from bottom of account overview to right o
 Source commit: b9c5c0947e43fd44a1fbed71b34f40c5febc9486.
 Preview: https://verdikartmvpiphone-mvkpvlht0-rehtmar.vercel.app/
 User-facing Min samling/Samling renamed Mine funn; result save action renamed Lagre i mine funn. Former automatically recorded Mine funn renamed Søkehistorikk, with explanatory copy. Saved items retain existing collection_items persistence, history and sale actions; automatic local history remains separate under kf_finds. No migrations, data moves, auth/analysis changes. Existing saved items remain accessible. Syntax checked; authenticated save/delete not executed.
+
+## v1.7 — saved-find grid and Enter login
+Source commit: 34a34a3dfdf202ec20c52524dc8695a91e40a6b1.
+Preview: https://verdikartmvpiphone-d9hoj96fb-rehtmar.vercel.app/
+Saved findings: 3 columns on desktop, 4 from 1500px, 2 at tablet widths, 1 below 651px; photo beside existing actions; delete remains visible but visually subdued, existing confirmation unchanged. Long condition paragraph hidden in compact cards. Values formatted as NOK. Find-value callout moved to very top of marketplace. Password Enter invokes existing login() without changing auth implementation (IME composition ignored). Labels: Lagrede annonser, Kjøpsønsker, history count in søk. Syntax PASS; live Preview marketplace order checked. Authenticated grid, physical mobile and successful credential/Enter login remain pending user verification. No backend/B1 or production changes.
