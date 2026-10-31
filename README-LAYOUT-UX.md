@@ -37,3 +37,9 @@ Syntax PASS; Preview READY; live browser loading state checked with one Fender M
 Source commit: 59ec1a50230e3625d3ae7cc4b0456c25ddc8b2f8.
 Preview: https://verdikartmvpiphone-byfx69p7f-rehtmar.vercel.app/
 Ornate mahogany/brass Kongekisten artwork in header, enlarged brand name and gold tagline. Closed artwork rotates during loading; open artwork fades in on completion (two images, not an articulated 3D lid animation). Responsive header sizing and reduced-motion support. Asset WebP derivatives under assets/; generated originals retained separately. All existing script blocks unchanged. Desktop header visually checked in live Preview; no new live analysis run. Mobile/header breakpoints and search artwork transition still need visual testing. Backend/B1/production unchanged.
+
+## v1.4 — account settings and admin navigation
+Source commit: caf7d0748f48772612abdae6f0147773e8e03145.
+Preview: https://verdikartmvpiphone-7680a4ydi-rehtmar.vercel.app/
+Separate account subviews: overview, settings, admin. Logout and existing account deletion action moved to settings (deletion inside a disclosure). New profile inputs and password-change control explicitly disabled pending separately authorized backend work. Admin entry appears only after existing admin-diagnostics endpoint confirms access; no new authorization mechanism. Existing initial diagnostic fetch remains unchanged for access confirmation; its large history is visible only in the Diagnostics menu pane. Statistics/usage are labelled planned without fabricated metrics. All pre-existing JS blocks preserved; new presentation observer and navigation helpers only.
+Syntax PASS; Preview opened; logged-out Min side checked. New origin requires user sign-in before settings/admin visual verification. No credentials copied between previews, no password/deletion/logout actions executed. Signed-in navigation, non-admin state and mobile view remain pending.
