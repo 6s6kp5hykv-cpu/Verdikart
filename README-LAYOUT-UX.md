@@ -58,3 +58,8 @@ User-facing Min samling/Samling renamed Mine funn; result save action renamed La
 Source commit: 34a34a3dfdf202ec20c52524dc8695a91e40a6b1.
 Preview: https://verdikartmvpiphone-d9hoj96fb-rehtmar.vercel.app/
 Saved findings: 3 columns on desktop, 4 from 1500px, 2 at tablet widths, 1 below 651px; photo beside existing actions; delete remains visible but visually subdued, existing confirmation unchanged. Long condition paragraph hidden in compact cards. Values formatted as NOK. Find-value callout moved to very top of marketplace. Password Enter invokes existing login() without changing auth implementation (IME composition ignored). Labels: Lagrede annonser, Kjøpsønsker, history count in søk. Syntax PASS; live Preview marketplace order checked. Authenticated grid, physical mobile and successful credential/Enter login remain pending user verification. No backend/B1 or production changes.
+
+## v1.8 — card alignment and marketplace grid
+Source commit: 5712621899ee325783b47c5aa0c562374550846b.
+Preview: https://verdikartmvpiphone-ediw2886z-rehtmar.vercel.app/
+CSS-only: saved-find cards stretch to equal row height, reserve 3 title lines and align price/action groups; full titles retained without clipping. Marketplace listings now use 3 desktop/4 wide/2 tablet/1 mobile columns with photo beside content/actions. Search/login/empty/error messages remain full-width. No JS or data changes. Signed-in grid appearance still requires visual verification on new origin.
