@@ -48,3 +48,8 @@ Syntax PASS; Preview opened; logged-out Min side checked. New origin requires us
 Source commit: 3d3e94f7747beaa2219b7df1e740fa2fb95c9f0d.
 Preview: https://verdikartmvpiphone-dxtko3yji-rehtmar.vercel.app/
 Moved existing settings/admin buttons from bottom of account overview to right of Min side heading; compact buttons, stacked heading/actions below 650px. Existing IDs, authorization visibility and all JS preserved. Prior v1.4 signed-in account overview observed in cloud browser before change. Fresh-preview signed-in placement and mobile verification remain pending.
+
+## v1.6 — saved finds and search history
+Source commit: b9c5c0947e43fd44a1fbed71b34f40c5febc9486.
+Preview: https://verdikartmvpiphone-mvkpvlht0-rehtmar.vercel.app/
+User-facing Min samling/Samling renamed Mine funn; result save action renamed Lagre i mine funn. Former automatically recorded Mine funn renamed Søkehistorikk, with explanatory copy. Saved items retain existing collection_items persistence, history and sale actions; automatic local history remains separate under kf_finds. No migrations, data moves, auth/analysis changes. Existing saved items remain accessible. Syntax checked; authenticated save/delete not executed.
