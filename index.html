@@ -1,4 +1,4 @@
-<!-- Kistefunn v15.5.25-test7 – generic exact-reference prompt + duplicate finds panel cleanup – 2026-10-10 -->
+<!-- Kistefunn layout-ux v1.0 – Testrunner eeb2001 – presentation-only candidate 2026-10-31 -->
 <!doctype html>
 <html lang="no">
 <head>
@@ -193,19 +193,37 @@ hr{border:0;border-top:1px solid var(--line);margin:18px 0}
 .admin-detail-close{border:0;background:#eef2f7;border-radius:8px;padding:6px 9px;font-weight:800;cursor:pointer}
 .admin-detail-pre{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:#172033}
 
-</style>
+
+/* layout-ux v1.0: responsive presentation only */
+body{padding-bottom:calc(112px + env(safe-area-inset-bottom));line-height:1.5}
+header{display:flex;align-items:center;justify-content:space-between;padding:18px max(24px,calc((100% - 1120px)/2));border-radius:0}
+header h1{font-size:30px}header p{font-size:13px;margin-top:2px}
+main{max-width:1120px;padding:28px 24px}
+.market-intro{text-align:center;margin:10px 0 26px}.market-intro h2{font-size:42px;letter-spacing:-1px;margin:0;color:var(--navy)}.market-intro p{color:#526075;font-size:18px;margin:8px 0}.layout-badge{font-size:11px;color:#775b20}
+#marketplace>.market-search-card{background:var(--card);border:1px solid var(--line);padding:28px;border-radius:16px;box-shadow:var(--shadow)}
+.market-filters{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:10px}
+.market-search-label,.market-type-label{font-size:15px}.market-search-row input, .market-filters select{min-height:52px;border-radius:10px}
+.market-login-note{text-align:center;font-size:14px;color:#526075;border-top:1px solid var(--line);padding-top:22px;margin:24px 0 8px}.market-login-note[hidden]{display:none}
+.market-search-button{min-height:50px;border-radius:10px;margin-top:12px}
+input:disabled,select:disabled{opacity:1;background:#f5f3ee;color:#687080;cursor:not-allowed}
+.value-callout{display:flex;align-items:center;justify-content:space-between;gap:20px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px 28px;margin:20px 0;box-shadow:var(--shadow)}
+.value-callout h3{margin:0;color:var(--navy);font-size:21px}.value-callout p{margin:5px 0 0;color:#526075}.value-callout button{flex:none;background:transparent;border:1px solid var(--navy);color:var(--navy);min-height:48px}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #98701c;outline-offset:3px}
+.nav{padding-bottom:calc(6px + env(safe-area-inset-bottom));bottom:0}.nav button{height:62px}.nav-label{font-size:12px;line-height:16px}.nav-icon{font-size:20px}
+@media(min-width:900px){body{padding-bottom:24px}.nav{position:static;display:flex;gap:12px;background:transparent;border:0;box-shadow:none;backdrop-filter:none;padding:0}.nav button{height:48px;padding:8px 12px;color:#e0e6ee;font-size:15px;border-radius:0;background:transparent;border-bottom:2px solid transparent}.nav button.primary{color:var(--gold2);background:transparent;border-bottom-color:var(--gold2)}.nav-label{font-size:15px;line-height:22px}.nav-icon{display:none}}
+@media(max-width:599px){header{padding:16px 20px}header h1{font-size:26px}main{padding:20px 16px}.market-intro{margin:0 0 20px}.market-intro h2{font-size:30px}.market-intro p{font-size:15px}.market-filters{grid-template-columns:1fr;gap:0}#marketplace>.market-search-card{padding:20px}.value-callout{align-items:stretch;flex-direction:column;padding:20px;gap:14px}.value-callout h3{font-size:19px}.value-callout p{font-size:14px}.nav{left:6px;right:6px}.nav-label{font-size:11px}}
 </style>
 </head>
 <body>
-<header><h1>Kistefunn</h1><p>Skann · Identifiser · Følg verdi · Finn kjøpere</p></header>
-<main>
-<div class="nav">
+<header><div class="brand"><h1>Kistefunn</h1><p>Oppdag verdien i det du har</p></div><nav class="nav" aria-label="Hovedmeny">
 <button class="primary" onclick="show('marketplace')"><span class="nav-icon">🏪</span><span class="nav-label">Marked</span></button>
-<button class="secondary" onclick="show('scan')"><span class="nav-icon">📷</span><span class="nav-label">Skann</span></button>
+<button class="secondary" onclick="show('scan')"><span class="nav-icon">📷</span><span class="nav-label">Finn verdi</span></button>
 <button class="secondary" onclick="show('collection')"><span class="nav-icon">📦</span><span class="nav-label">Samling</span></button>
 <button class="secondary" onclick="show('wanted')"><span class="nav-icon">🔎</span><span class="nav-label">Ønsker</span></button>
-<button class="secondary" onclick="show('account')"><span class="nav-icon">👤</span><span class="nav-label">Meg</span></button>
-</div>
+<button class="secondary" onclick="show('account')"><span class="nav-icon">👤</span><span class="nav-label">Min side</span></button>
+</nav></header>
+<main>
+
 
 <section id="account" class="hidden">
 <div class="card" id="loggedOutCard"><h2>👤 Min side</h2><p class="muted">Logg inn for å lagre samlingen og kjøpsønskene dine på kontoen din.</p>
@@ -296,19 +314,17 @@ hr{border:0;border-top:1px solid var(--line);margin:18px 0}
 
 <section id="wanted" class="hidden">
 <div id="wantedLoginCard" class="card hidden"><h2>🔎 Jeg ønsker å kjøpe</h2><p>Logg inn for å lagre dine personlige kjøpsønsker.</p><button class="primary" style="width:100%" onclick="show('account')">👤 Gå til Min side</button></div>
-<div id="wantedContent" class="hidden"><div class="card"><h2>🔎 Jeg ønsker å kjøpe</h2><label>Hva leter du etter?<input id="wantName" placeholder="F.eks. Sony Walkman WM-3"></label><label style="margin-top:12px">Makspris<input id="wantPrice" type="number" placeholder="2500"></label><label style="margin-top:12px">Kommentar<input id="wantNote" placeholder="Helst komplett og fungerende"></label><button class="primary" style="margin-top:14px;width:100%" onclick="saveWant()">🔔 Lagre kjøpsønske</button></div><div id="wants"></div></div>
+<div id="wantedContent" class="hidden"><div class="card"><h2>🔎 Jeg ønsker å kjøpe</h2><label>Hva leter du etter?<input id="wantName" placeholder="Søk etter en gjenstand …"></label><label style="margin-top:12px">Makspris<input id="wantPrice" type="number" placeholder="2500"></label><label style="margin-top:12px">Kommentar<input id="wantNote" placeholder="Helst komplett og fungerende"></label><button class="primary" style="margin-top:14px;width:100%" onclick="saveWant()">🔔 Lagre kjøpsønske</button></div><div id="wants"></div></div>
 </section>
 
 <section id="marketplace">
-<div class="card market-search-card" style="border:2px solid #c89b3c">
-<div class="market-kicker">Kistefunn · Marked</div>
-<h2 class="market-title">🏪 Markedsplass</h2>
-<p class="muted market-subtitle">Finn skatter andre Kistefunn-brukere har lagt ut – eller se hvem som leter etter noe du har.</p>
-<label class="market-search-label">Søk etter en gjenstand
-<div class="market-search-row"><input id="marketplaceSearch" type="search" placeholder="F.eks. Sony Walkman WM-3" onkeydown="if(event.key==='Enter'){searchMarketplace()}"><span class="market-search-icon">🔎</span></div>
+<div class="market-intro"><h2>Markedsplassen</h2><p>Finn skatter – eller noen som leter etter det du har.</p><span class="layout-badge">Layoutkandidat v1.0</span></div>
+<div class="card market-search-card">
+<label class="market-search-label">Hva leter du etter?
+<div class="market-search-row"><input id="marketplaceSearch" type="search" placeholder="Søk etter en gjenstand …" onkeydown="if(event.key==='Enter'){searchMarketplace()}"><span class="market-search-icon">🔎</span></div>
 </label>
-<label class="market-type-label">Hva vil du se?
-<select id="marketplaceType"><option value="all">Alle oppføringer</option><option value="sale">📦 Til salgs</option><option value="wanted">🔎 Ønsker å kjøpe</option></select>
+<div class="market-filters"><label class="market-type-label">Vis
+<select id="marketplaceType"><option value="all">Alle annonser</option><option value="sale">📦 Til salgs</option><option value="wanted">🔎 Ønsker å kjøpe</option></select>
 </label>
 <label class="market-type-label">Sorter etter
 <select id="marketplaceSort" onchange="applyMarketplaceSort()">
@@ -318,8 +334,10 @@ hr{border:0;border-top:1px solid var(--line);margin:18px 0}
 <option value="newest">🆕 Nyeste først</option>
 </select>
 </label>
-<button class="primary market-search-button" onclick="searchMarketplace()">Finn oppføringer</button>
+</div><p id="market-login-note" class="market-login-note">Logg inn for å søke og se annonser</p>
+<button id="market-search-action" class="primary market-search-button" onclick="currentUser ? searchMarketplace() : show('account')">Logg inn / Opprett konto</button>
 </div>
+<aside class="value-callout"><div><h3>Hva er tingen din verdt?</h3><p>Identifiser en gjenstand med bilde eller tekst.</p></div><button class="secondary" onclick="show('scan')">Finn verdi <span aria-hidden="true">→</span></button></aside>
 <div id="marketplaceResults"><div class="card market-empty"><div class="market-empty-icon">🗝️</div><div class="market-empty-title">Hva er du på jakt etter?</div><p class="muted">Søk etter en gjenstand for å finne offentlige oppføringer på Kistefunn.</p></div></div>
 </section>
 </main>
@@ -461,7 +479,7 @@ async function loadAdminDiagnostics(){
   }
 }
 
-function updateAuthUI(){const out=document.getElementById('loggedOutCard'),inCard=document.getElementById('loggedInCard'),email=document.getElementById('accountEmail'),adminPanel=document.getElementById('adminPanel');if(currentUser){out.classList.add('hidden');inCard.classList.remove('hidden');email.textContent=currentUser.email||'';adminPanel?.classList.remove('hidden');loadAdminDiagnostics()}else{out.classList.remove('hidden');inCard.classList.add('hidden');email.textContent='';adminPanel?.classList.add('hidden')}updatePrivateSections();updateProfileCounts()}
+function updateAuthUI(){updateMarketplaceLayout();const out=document.getElementById('loggedOutCard'),inCard=document.getElementById('loggedInCard'),email=document.getElementById('accountEmail'),adminPanel=document.getElementById('adminPanel');if(currentUser){out.classList.add('hidden');inCard.classList.remove('hidden');email.textContent=currentUser.email||'';adminPanel?.classList.remove('hidden');loadAdminDiagnostics()}else{out.classList.remove('hidden');inCard.classList.add('hidden');email.textContent='';adminPanel?.classList.add('hidden')}updatePrivateSections();updateProfileCounts()}
 function updatePrivateSections(){const cl=document.getElementById('collectionLoginCard'),cc=document.getElementById('collectionContent'),wl=document.getElementById('wantedLoginCard'),wc=document.getElementById('wantedContent');if(currentUser){cl.classList.add('hidden');cc.classList.remove('hidden');wl.classList.add('hidden');wc.classList.remove('hidden')}else{cl.classList.remove('hidden');cc.classList.add('hidden');wl.classList.remove('hidden');wc.classList.add('hidden')}}
 async function signup(){const email=document.getElementById('authEmail').value.trim(),password=document.getElementById('authPassword').value;if(!email||!password)return setAuthMessage('Skriv inn e-post og passord.');if(password.length<6)return setAuthMessage('Passordet må være minst 6 tegn.');setAuthMessage('Oppretter konto …');try{const {data,error}=await supabaseClient.auth.signUp({email,password,options:{emailRedirectTo:window.location.origin}});if(error)throw error;setAuthMessage(data.session?'Kontoen er opprettet og du er logget inn.':'Kontoen er opprettet. Sjekk e-posten din og bekreft e-postadressen før du logger inn.')}catch(err){console.error(err);setAuthMessage(err.message||'Kunne ikke opprette konto.')}}
 async function login(){const email=document.getElementById('authEmail').value.trim(),password=document.getElementById('authPassword').value;if(!email||!password)return setAuthMessage('Skriv inn e-post og passord.');setAuthMessage('Logger inn …');try{const {error}=await supabaseClient.auth.signInWithPassword({email,password});if(error)throw error;setAuthMessage('Du er logget inn.')}catch(err){console.error(err);setAuthMessage(err.message||'Kunne ikke logge inn.')}}
@@ -687,7 +705,8 @@ function renderFinds(){
   if(!finds.length){c.innerHTML='<p class="muted">Du har ingen funn ennå. Skann en gjenstand for å legge den til her.</p>';return}
   c.innerHTML=finds.map(f=>'<div class="card find-card">'+(f.img?'<img class="find-thumb" src="'+esc(f.img)+'" alt="">':'<div class="find-thumb"></div>')+'<div style="flex:1"><b>'+esc(f.name)+'</b><div class="marketplace-price">'+(Number(f.value)?Number(f.value).toLocaleString('no-NO')+' kr':'Verdi ikke fastslått')+'</div><div class="muted">'+esc(f.confidence||'')+'</div></div></div>').join('');
 }
-function renderMarketplaceLogin(){document.getElementById('marketplaceResults').innerHTML='<div class="card"><h3>👤 Logg inn for å bruke markedsplassen</h3><p class="muted">Du må være logget inn for å søke og se offentlige markedsplassoppføringer.</p><button class="primary" style="width:100%" onclick="show(\'account\')">👤 Gå til Min side</button></div>'}
+function updateMarketplaceLayout(){const loggedIn=!!currentUser;document.getElementById('market-search-action').textContent=loggedIn?'Søk i markedet':'Logg inn / Opprett konto';document.getElementById('market-login-note').hidden=loggedIn;['marketplaceSearch','marketplaceType','marketplaceSort'].forEach(id=>document.getElementById(id).disabled=!loggedIn)}
+function renderMarketplaceLogin(){updateMarketplaceLayout();document.getElementById('marketplaceResults').innerHTML=''}
 async function searchMarketplace(){const c=document.getElementById('marketplaceResults');if(!currentUser)return renderMarketplaceLogin();const term=document.getElementById('marketplaceSearch').value.trim(),type=document.getElementById('marketplaceType').value;c.innerHTML='<div class="card">🔎 Søker i markedsplassen …</div>';try{let q=supabaseClient.from('marketplace_listings').select('*').order('created_at',{ascending:false}).limit(50);if(type!=='all')q=q.eq('listing_type',type);if(term){const safe=term.replace(/[%(),]/g,' ').trim();if(safe)q=q.or('title.ilike.%'+safe+'%,description.ilike.%'+safe+'%')}const {data,error}=await q;if(error)throw error;renderMarketplaceResults(data||[])}catch(err){console.error(err);c.innerHTML='<div class="card"><p>Kunne ikke hente markedsplassen.</p><div class="muted">'+esc(err.message||'')+'</div></div>'}}
 
 function applyMarketplaceSort(){
