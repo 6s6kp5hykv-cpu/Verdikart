@@ -63,3 +63,11 @@ Saved findings: 3 columns on desktop, 4 from 1500px, 2 at tablet widths, 1 below
 Source commit: 5712621899ee325783b47c5aa0c562374550846b.
 Preview: https://verdikartmvpiphone-ediw2886z-rehtmar.vercel.app/
 CSS-only: saved-find cards stretch to equal row height, reserve 3 title lines and align price/action groups; full titles retained without clipping. Marketplace listings now use 3 desktop/4 wide/2 tablet/1 mobile columns with photo beside content/actions. Search/login/empty/error messages remain full-width. No JS or data changes. Signed-in grid appearance still requires visual verification on new origin.
+
+
+## v1.9 – kompakte kjøpsønsker
+
+Ønsker viser nå 3 kort per rad på PC, 4 på brede skjermer, 2 på nettbrett og 1 på mobil. Titler har jevn plass og handlingsknappen ligger nederst. Tomtilstand er uendret. Kun presentasjon er endret; lagring og markedsplasshandlinger er uendret. JavaScript syntakskontroll bestått. Innlogget visning med brukerdata må kontrolleres manuelt.
+
+Preview: https://verdikartmvpiphone-nathxxrym-rehtmar.vercel.app/
+Kildecommit: ec02b45a1e1765b4d3a22a06f29946c8258a51b9
