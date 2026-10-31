@@ -85,3 +85,12 @@ Validering: alle inline-skript syntakskontrollert; renderer kontrollert med mang
 
 Preview: https://verdikartmvpiphone-wq2zll23y-rehtmar.vercel.app/
 Kildecommit: fe31ea91d40e8c257a16e36cb8962d72afbd193b
+
+
+## v1.11 – favoritter på andres annonser
+
+Favorittknappen vises bare på andre brukeres markedsplassoppføringer, både salg og kjøpsønsker. Egne oppføringer beholder fjern-handlingen. Aktiv favorittknapp har nå korrekt tekst «Fjern fra favoritter». Ingen lagrede favoritter er slettet.
+
+Syntaks og rendering for egne/andres salg og kjøpsønsker kontrollert og bestått. Innlogget visuell kontroll på ny origin gjenstår.
+Preview: https://verdikartmvpiphone-8sgcorwxo-rehtmar.vercel.app/
+Kildecommit: d53636b17660d4a6157da77a6f25b0b6c0795df6
