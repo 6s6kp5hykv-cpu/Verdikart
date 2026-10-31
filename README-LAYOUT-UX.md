@@ -43,3 +43,8 @@ Source commit: caf7d0748f48772612abdae6f0147773e8e03145.
 Preview: https://verdikartmvpiphone-7680a4ydi-rehtmar.vercel.app/
 Separate account subviews: overview, settings, admin. Logout and existing account deletion action moved to settings (deletion inside a disclosure). New profile inputs and password-change control explicitly disabled pending separately authorized backend work. Admin entry appears only after existing admin-diagnostics endpoint confirms access; no new authorization mechanism. Existing initial diagnostic fetch remains unchanged for access confirmation; its large history is visible only in the Diagnostics menu pane. Statistics/usage are labelled planned without fabricated metrics. All pre-existing JS blocks preserved; new presentation observer and navigation helpers only.
 Syntax PASS; Preview opened; logged-out Min side checked. New origin requires user sign-in before settings/admin visual verification. No credentials copied between previews, no password/deletion/logout actions executed. Signed-in navigation, non-admin state and mobile view remain pending.
+
+## v1.5 — account title shortcuts
+Source commit: 3d3e94f7747beaa2219b7df1e740fa2fb95c9f0d.
+Preview: https://verdikartmvpiphone-dxtko3yji-rehtmar.vercel.app/
+Moved existing settings/admin buttons from bottom of account overview to right of Min side heading; compact buttons, stacked heading/actions below 650px. Existing IDs, authorization visibility and all JS preserved. Prior v1.4 signed-in account overview observed in cloud browser before change. Fresh-preview signed-in placement and mobile verification remain pending.
