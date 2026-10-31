@@ -1,4 +1,4 @@
-<!-- Kistefunn layout-ux v1.4 – Testrunner eeb2001 – presentation-only candidate 2026-10-31 -->
+<!-- Kistefunn layout-ux v1.5 – Testrunner eeb2001 – presentation-only candidate 2026-10-31 -->
 <!doctype html>
 <html lang="no">
 <head>
@@ -194,7 +194,7 @@ hr{border:0;border-top:1px solid var(--line);margin:18px 0}
 .admin-detail-pre{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:#172033}
 
 
-/* layout-ux v1.4: responsive presentation only */
+/* layout-ux v1.5: responsive presentation only */
 body{padding-bottom:calc(112px + env(safe-area-inset-bottom));line-height:1.5}
 header{display:flex;align-items:center;justify-content:space-between;padding:18px max(24px,calc((100% - 1120px)/2));border-radius:0}
 header h1{font-size:30px}header p{font-size:13px;margin-top:2px}
@@ -213,7 +213,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 @media(min-width:900px){body{padding-bottom:24px}.nav{position:static;display:flex;gap:12px;background:transparent;border:0;box-shadow:none;backdrop-filter:none;padding:0}.nav button{height:48px;padding:8px 12px;color:#e0e6ee;font-size:15px;border-radius:0;background:transparent;border-bottom:2px solid transparent}.nav button.primary{color:var(--gold2);background:transparent;border-bottom-color:var(--gold2)}.nav-label{font-size:15px;line-height:22px}.nav-icon{display:none}}
 @media(max-width:599px){header{padding:16px 20px}header h1{font-size:26px}main{padding:20px 16px}.market-intro{margin:0 0 20px}.market-intro h2{font-size:30px}.market-intro p{font-size:15px}.market-filters{grid-template-columns:1fr;gap:0}#marketplace>.market-search-card{padding:20px}.value-callout{align-items:stretch;flex-direction:column;padding:20px;gap:14px}.value-callout h3{font-size:19px}.value-callout p{font-size:14px}.nav{left:6px;right:6px}.nav-label{font-size:11px}}
 
-/* layout-ux v1.4: simplified find-value form; existing handlers preserved */
+/* layout-ux v1.5: simplified find-value form; existing handlers preserved */
 .scan-form{max-width:900px;margin:0 auto 24px;padding:28px;border:1px solid var(--line);border-radius:16px}
 .scan-intro h2{font-size:38px}.scan-field-heading{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.scan-field-heading h3{margin:0;font-size:20px}.scan-field-heading>span{font-size:13px}
 .scan-upload{text-align:center;border:1px dashed #bac3cf;border-radius:12px;padding:22px 16px;color:var(--navy)}.scan-upload p{margin:6px 0 14px}.scan-upload .scan-actions{display:flex;justify-content:center;gap:12px;margin:0}.scan-form .scan-action{background:transparent;border:1px solid var(--navy);border-radius:9px;min-width:136px;min-height:44px!important;padding:9px 18px;font-size:15px!important;color:var(--navy)}
@@ -222,7 +222,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 .scan-description{border-top:1px solid var(--line);padding-top:22px}.scan-description>label{font-size:20px;font-weight:700}.scan-optional{font-size:13px;margin:3px 0 10px}.scan-description textarea{min-height:100px;margin:0;border-radius:9px;resize:vertical;font-size:16px}.scan-description-help{font-size:13px;margin:5px 0 20px}.scan-form .analyze-button{width:100%;min-height:50px;background:var(--navy);color:white;border-radius:9px}.scan-form .analyze-button:disabled{opacity:1;background:#526075;color:#fff}.scan-status{text-align:center;font-size:13px;margin:9px 0 0}.scan-reset{display:block;margin:14px auto 0;font-size:13px;padding:8px 12px}.scan-reset.hidden{display:none}
 @media(max-width:599px){.scan-form{padding:20px}.scan-intro h2{font-size:28px}.scan-description>label{font-size:18px}.scan-upload{padding:18px 10px}.scan-form .scan-action{min-width:0;flex:1;padding:9px 10px}.scan-tips .scan-guide{grid-template-columns:1fr}}
 
-/* layout-ux v1.4: result layout and presentation states only */
+/* layout-ux v1.5: result layout and presentation states only */
 .scan-query-bar{max-width:1120px;margin:0 auto 20px;display:flex;align-items:center;justify-content:space-between;gap:16px;background:var(--card);border:1px solid var(--line);padding:12px 18px;border-radius:12px}.scan-query-bar.hidden{display:none}.scan-query-bar span{overflow-wrap:anywhere}.scan-query-bar button{flex:none;font-size:14px;padding:9px 14px;border:1px solid var(--navy);background:transparent}
 #scan.layout-searching>.scan-intro,#scan.layout-complete>.scan-intro,#scan.layout-complete>.scan-form{display:none}
 #scan.layout-searching>.scan-form{background:transparent;border:0;box-shadow:none;padding:0;max-width:100%}#scan.layout-searching>.scan-form>:not(#loading){display:none}
@@ -233,7 +233,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 @media(max-width:799px){.result-columns{grid-template-columns:1fr}.result-columns>.card{padding:20px}.result-complete h2{font-size:24px}.result-overview .price{font-size:34px}}
 @media(prefers-reduced-motion:reduce){.treasure-chest,.chest-lid{animation:none!important;transition:none!important}}
 
-/* layout-ux v1.4: Kongekisten branding */
+/* layout-ux v1.5: Kongekisten branding */
 header{gap:24px;padding-top:20px;padding-bottom:20px}.brand{display:flex;align-items:center;gap:16px;flex-shrink:0}.brand-chest{width:112px;height:88px;object-fit:contain;filter:drop-shadow(0 4px 5px rgba(0,0,0,.2))}header h1{font-size:42px;letter-spacing:-1.2px;line-height:1.12}header h1:before{content:none}header p{font-size:15px;color:#e5c46a;margin-top:7px}
 .royal-chest{width:180px;height:140px;object-fit:contain;filter:drop-shadow(0 8px 12px rgba(87,56,15,.14))}
 .result-complete .royal-chest{animation:royal-reveal .8s ease-out}@keyframes royal-reveal{from{opacity:0;transform:translateY(8px) scale(.94)}to{opacity:1;transform:none}}
@@ -242,11 +242,15 @@ header{gap:24px;padding-top:20px;padding-bottom:20px}.brand{display:flex;align-i
 @media(max-width:420px){header{padding:16px}.brand-chest{width:70px;height:62px}header h1{font-size:30px}header p{font-size:12px}.royal-chest{width:150px;height:120px}}
 @media(prefers-reduced-motion:reduce){.royal-chest{animation:none!important}}
 
-/* layout-ux v1.4: account and admin presentation */
+/* layout-ux v1.5: account and admin presentation */
 #loggedInCard{padding:28px}.account-subview{display:none}#loggedInCard[data-account-view="settings"]>.account-overview,#loggedInCard[data-account-view="admin"]>.account-overview{display:none}#loggedInCard[data-account-view="settings"]>.account-settings,#loggedInCard[data-account-view="admin"]>.account-admin{display:block}
 .account-links{display:grid;gap:12px;margin-top:24px}.account-link{display:flex;flex-direction:column;gap:5px;text-align:left;background:#faf7f0;border:1px solid var(--line);padding:20px;border-radius:12px;color:var(--navy)}.account-link span{font-size:14px;font-weight:400;color:#526075}.account-link.hidden{display:none}.back-link{background:transparent;padding:0;color:#526075;font-size:14px;margin-bottom:14px}.account-subview h2{font-size:30px;margin:0}.settings-section{border-top:1px solid var(--line);padding:22px 0}.settings-section h3{margin:0 0 12px}.settings-preview{font-size:13px;color:#795916;background:#fbf2dd;padding:10px 12px;border-radius:8px}.settings-fields{display:grid;grid-template-columns:1fr 1fr;gap:16px}.wide-field{grid-column:1/-1}.settings-fields label{font-size:14px}.settings-action{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-top:22px}.settings-action p,.small-copy{font-size:13px}.account-danger{border:1px solid #e5bcbc;padding:18px;border-radius:10px;margin-top:18px}.account-danger summary{cursor:pointer;font-weight:700;color:#a12626}
 .admin-workspace{display:grid;grid-template-columns:210px minmax(0,1fr);gap:28px;margin-top:24px}.admin-menu{display:flex;flex-direction:column;gap:7px}.admin-menu button{text-align:left;background:transparent;color:var(--navy);font-size:15px;padding:13px 16px}.admin-menu button.active{background:var(--navy);color:white}.admin-content{min-width:0}.admin-content h3{margin-top:0}.admin-area-cards{display:grid;gap:12px}.admin-content .admin-panel{margin:0;background:transparent;border:0;padding:0}.admin-content .admin-history{height:min(440px,55vh)}.admin-page-heading h2{margin-top:10px}
 @media(max-width:650px){#loggedInCard{padding:20px}.settings-fields{grid-template-columns:1fr}.wide-field{grid-column:auto}.admin-workspace{grid-template-columns:1fr;gap:20px}.admin-menu{display:grid;grid-template-columns:1fr 1fr}.admin-menu button{font-size:13px;padding:12px}.settings-action{align-items:flex-start;flex-direction:column}.account-subview h2{font-size:26px}}
+
+/* layout-ux v1.5: account shortcuts beside page title */
+.account-overview-heading{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:16px}.account-overview-heading h2{margin:0;white-space:nowrap}.account-overview-heading .account-links{display:flex;flex-wrap:wrap;gap:10px;margin:0;justify-content:flex-end}.account-overview-heading .account-link{padding:10px 14px;border-radius:9px;font-size:14px}.account-overview-heading .account-link span{display:none}
+@media(max-width:650px){.account-overview-heading{align-items:flex-start;flex-direction:column;gap:14px}.account-overview-heading .account-links{justify-content:flex-start}.account-overview-heading .account-link{padding:10px 12px;font-size:13px}}
 </style>
 </head>
 <body>
@@ -266,7 +270,7 @@ header{gap:24px;padding-top:20px;padding-bottom:20px}.brand{display:flex;align-i
 <label style="margin-top:12px">Passord<input id="authPassword" type="password" autocomplete="current-password" placeholder="Minst 6 tegn"></label>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px"><button class="primary" onclick="login()">🔑 Logg inn</button><button class="secondary" onclick="signup()">✉️ Opprett konto</button></div>
 <div id="authMessage" class="auth-message hidden"></div></div>
-<div class="card hidden" id="loggedInCard" data-account-view="overview"><div class="account-overview"><h2>👤 Min side</h2><p class="muted">Du er logget inn som:</p><div id="accountEmail" class="account-email"></div>
+<div class="card hidden" id="loggedInCard" data-account-view="overview"><div class="account-overview"><div class="account-overview-heading"><h2>👤 Min side</h2><div class="account-links"><button class="account-link" onclick="openAccountView('settings')"><strong>Kontoinnstillinger</strong><span>Profil, kontaktinformasjon og sikkerhet →</span></button><button id="adminEntry" class="account-link hidden" onclick="openAccountView('admin')"><strong>Administrasjon</strong><span>Diagnostikk, statistikk og forbruk →</span></button></div></div><p class="muted">Du er logget inn som:</p><div id="accountEmail" class="account-email"></div>
 <div class="auth-message">☁️ Samlingen og kjøpsønskene dine lagres på kontoen din.</div>
 
 <div class="profile-grid">
@@ -278,7 +282,7 @@ header{gap:24px;padding-top:20px;padding-bottom:20px}.brand{display:flex;align-i
 <div id="favoritesPanel" class="card profile-section hidden"><h3>❤️ Mine favoritter</h3><div id="favoritesList"></div></div>
 <div id="findsPanel" class="card profile-section hidden"><h3>💎 Mine funn</h3><div class="note" style="margin-top:0">Her finner du gjenstander du har <strong>undersøkt med Kistefunn</strong>. Vil du følge verdien over tid, åpner du gjenstanden og lagrer den i <strong>Min samling</strong>.</div><div id="findsList" style="margin-top:12px"></div></div>
 
-<div class="account-links"><button class="account-link" onclick="openAccountView('settings')"><strong>Kontoinnstillinger</strong><span>Profil, kontaktinformasjon og sikkerhet →</span></button><button id="adminEntry" class="account-link hidden" onclick="openAccountView('admin')"><strong>Administrasjon</strong><span>Diagnostikk, statistikk og forbruk →</span></button></div></div>
+</div>
 <div class="account-settings account-subview"><button class="back-link" onclick="openAccountView('overview')">← Min side</button><h2>Kontoinnstillinger</h2><p class="muted">Administrer kontoen og kontaktinformasjonen din.</p>
 <div class="settings-section"><h3>Personopplysninger</h3><p class="settings-preview">Forhåndsvisning – nye profilfelt kan ikke lagres ennå.</p><div class="settings-fields"><label>Navn<input disabled placeholder="Ikke lagt til"></label><label>Telefon<input disabled type="tel" placeholder="Ikke lagt til"></label><label class="wide-field">Adresse<input disabled placeholder="Ikke lagt til"></label><label>Postnummer<input disabled placeholder="Ikke lagt til"></label><label>Poststed<input disabled placeholder="Ikke lagt til"></label></div><p class="muted small-copy">Disse opplysningene publiseres ikke fra denne visningen.</p></div>
 <div class="settings-section"><h3>Innlogging og sikkerhet</h3><label>E-post<input id="settingsEmail" type="email" readonly></label><div class="settings-action"><div><strong>Passord</strong><p class="muted">Passordbytte er ikke tilgjengelig i denne layoutkandidaten.</p></div><button class="secondary" disabled>Endre passord</button></div></div>
@@ -364,7 +368,7 @@ header{gap:24px;padding-top:20px;padding-bottom:20px}.brand{display:flex;align-i
 </section>
 
 <section id="marketplace">
-<div class="market-intro"><h2>Markedsplassen</h2><p>Finn skatter – eller noen som leter etter det du har.</p><span class="layout-badge">Layoutkandidat v1.4</span></div>
+<div class="market-intro"><h2>Markedsplassen</h2><p>Finn skatter – eller noen som leter etter det du har.</p><span class="layout-badge">Layoutkandidat v1.5</span></div>
 <div class="card market-search-card">
 <label class="market-search-label">Hva leter du etter?
 <div class="market-search-row"><input id="marketplaceSearch" type="search" placeholder="Søk etter en gjenstand …" onkeydown="if(event.key==='Enter'){searchMarketplace()}"><span class="market-search-icon">🔎</span></div>
