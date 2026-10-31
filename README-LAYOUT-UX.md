@@ -71,3 +71,17 @@ CSS-only: saved-find cards stretch to equal row height, reserve 3 title lines an
 
 Preview: https://verdikartmvpiphone-nathxxrym-rehtmar.vercel.app/
 Kildecommit: ec02b45a1e1765b4d3a22a06f29946c8258a51b9
+
+
+## v1.10 – UI-oppfølging etter innlogget PC-kontroll
+
+- Kjøpsønsker uten positiv makspris viser «Pris ikke oppgitt», som i markedet.
+- Skjemaet åpnes med «Legg til kjøpsønske» og lukkes etter vellykket lagring.
+- Historikk med én måling viser en kompakt forklaring; flere målinger beholder grafen.
+- Diagnostikk har én overskrift og større tekst i hendelseslisten.
+- Informasjonsvinduet fokuserer Lukk, holder Tab-fokus i vinduet og støtter Escape. Fokus returneres til åpningsknappen.
+
+Validering: alle inline-skript syntakskontrollert; renderer kontrollert med manglende/5000 kr pris og historikk med én/to målinger. Innlogget kontroll av v1.9 dokumenterte grunnlaget; innlogget v1.10 må kontrolleres på ny Preview-origin. Ingen backend-, auth-, B1- eller produksjonsendringer.
+
+Preview: https://verdikartmvpiphone-wq2zll23y-rehtmar.vercel.app/
+Kildecommit: fe31ea91d40e8c257a16e36cb8962d72afbd193b
