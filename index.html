@@ -1,4 +1,4 @@
-<!-- Kistefunn layout-ux v1.1 – Testrunner eeb2001 – presentation-only candidate 2026-10-31 -->
+<!-- Kistefunn layout-ux v1.2 – Testrunner eeb2001 – presentation-only candidate 2026-10-31 -->
 <!doctype html>
 <html lang="no">
 <head>
@@ -194,7 +194,7 @@ hr{border:0;border-top:1px solid var(--line);margin:18px 0}
 .admin-detail-pre{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:#172033}
 
 
-/* layout-ux v1.1: responsive presentation only */
+/* layout-ux v1.2: responsive presentation only */
 body{padding-bottom:calc(112px + env(safe-area-inset-bottom));line-height:1.5}
 header{display:flex;align-items:center;justify-content:space-between;padding:18px max(24px,calc((100% - 1120px)/2));border-radius:0}
 header h1{font-size:30px}header p{font-size:13px;margin-top:2px}
@@ -213,7 +213,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 @media(min-width:900px){body{padding-bottom:24px}.nav{position:static;display:flex;gap:12px;background:transparent;border:0;box-shadow:none;backdrop-filter:none;padding:0}.nav button{height:48px;padding:8px 12px;color:#e0e6ee;font-size:15px;border-radius:0;background:transparent;border-bottom:2px solid transparent}.nav button.primary{color:var(--gold2);background:transparent;border-bottom-color:var(--gold2)}.nav-label{font-size:15px;line-height:22px}.nav-icon{display:none}}
 @media(max-width:599px){header{padding:16px 20px}header h1{font-size:26px}main{padding:20px 16px}.market-intro{margin:0 0 20px}.market-intro h2{font-size:30px}.market-intro p{font-size:15px}.market-filters{grid-template-columns:1fr;gap:0}#marketplace>.market-search-card{padding:20px}.value-callout{align-items:stretch;flex-direction:column;padding:20px;gap:14px}.value-callout h3{font-size:19px}.value-callout p{font-size:14px}.nav{left:6px;right:6px}.nav-label{font-size:11px}}
 
-/* layout-ux v1.1: simplified find-value form; existing handlers preserved */
+/* layout-ux v1.2: simplified find-value form; existing handlers preserved */
 .scan-form{max-width:900px;margin:0 auto 24px;padding:28px;border:1px solid var(--line);border-radius:16px}
 .scan-intro h2{font-size:38px}.scan-field-heading{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.scan-field-heading h3{margin:0;font-size:20px}.scan-field-heading>span{font-size:13px}
 .scan-upload{text-align:center;border:1px dashed #bac3cf;border-radius:12px;padding:22px 16px;color:var(--navy)}.scan-upload p{margin:6px 0 14px}.scan-upload .scan-actions{display:flex;justify-content:center;gap:12px;margin:0}.scan-form .scan-action{background:transparent;border:1px solid var(--navy);border-radius:9px;min-width:136px;min-height:44px!important;padding:9px 18px;font-size:15px!important;color:var(--navy)}
@@ -221,6 +221,17 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 .scan-tips{font-size:14px;margin:14px 0 22px}.scan-tips summary{cursor:pointer;padding:6px 0;color:var(--navy)}.scan-tips summary:focus-visible{outline:3px solid var(--gold);outline-offset:3px}
 .scan-description{border-top:1px solid var(--line);padding-top:22px}.scan-description>label{font-size:20px;font-weight:700}.scan-optional{font-size:13px;margin:3px 0 10px}.scan-description textarea{min-height:100px;margin:0;border-radius:9px;resize:vertical;font-size:16px}.scan-description-help{font-size:13px;margin:5px 0 20px}.scan-form .analyze-button{width:100%;min-height:50px;background:var(--navy);color:white;border-radius:9px}.scan-form .analyze-button:disabled{opacity:1;background:#526075;color:#fff}.scan-status{text-align:center;font-size:13px;margin:9px 0 0}.scan-reset{display:block;margin:14px auto 0;font-size:13px;padding:8px 12px}.scan-reset.hidden{display:none}
 @media(max-width:599px){.scan-form{padding:20px}.scan-intro h2{font-size:28px}.scan-description>label{font-size:18px}.scan-upload{padding:18px 10px}.scan-form .scan-action{min-width:0;flex:1;padding:9px 10px}.scan-tips .scan-guide{grid-template-columns:1fr}}
+
+/* layout-ux v1.2: result layout and presentation states only */
+.scan-query-bar{max-width:1120px;margin:0 auto 20px;display:flex;align-items:center;justify-content:space-between;gap:16px;background:var(--card);border:1px solid var(--line);padding:12px 18px;border-radius:12px}.scan-query-bar.hidden{display:none}.scan-query-bar span{overflow-wrap:anywhere}.scan-query-bar button{flex:none;font-size:14px;padding:9px 14px;border:1px solid var(--navy);background:transparent}
+#scan.layout-searching>.scan-intro,#scan.layout-complete>.scan-intro,#scan.layout-complete>.scan-form{display:none}
+#scan.layout-searching>.scan-form{background:transparent;border:0;box-shadow:none;padding:0;max-width:100%}#scan.layout-searching>.scan-form>:not(#loading){display:none}
+#scan #loading{padding:40px 16px;text-align:center;background:transparent;color:var(--navy)}#loading h3{font-size:21px}#loading p{color:var(--muted)}
+.treasure-chest{width:96px;height:80px;display:block;margin:0 auto 8px;overflow:visible}.chest-lid{transform-origin:60px 43px;transition:transform .65s ease}.result-complete .chest-lid{transform:translateY(-12px) rotate(-24deg)}.result-complete{text-align:center;margin:22px 0}.result-complete h2{font-size:28px;margin:0}.result-complete .treasure-chest{animation:chest-arrive .5s ease-out}
+#loading:not(.hidden) .treasure-chest{animation:chest-spin 3s linear infinite}@keyframes chest-spin{to{transform:rotateY(360deg)}}@keyframes chest-arrive{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+.result-columns{display:grid;grid-template-columns:minmax(0, .9fr) minmax(0,1.1fr);gap:20px;align-items:start}.result-columns>.card{min-width:0;padding:24px;border:1px solid var(--line);border-radius:14px}.result-overview .scan-result-badge{display:none}.result-overview .result-title{font-size:24px}.result-overview .scan-result-head .muted{display:none}.result-overview #rdesc{font-size:14px;color:#526075}.estimate-label{color:#795916;font-weight:700;margin-top:20px}.result-overview .price{font-size:40px;margin:0 0 18px}.confidence-callout{padding:14px;border:1px solid #dfc890;border-radius:10px;background:#fff7e4;color:#674b16;font-weight:650}.result-save{width:100%;margin-top:8px}.result-overview>.muted{font-size:12px}.result-evidence>h2{margin:0 0 14px;font-size:24px}.result-evidence .ebay-result{border:0;padding:0;background:transparent}.result-evidence .ebay-listing{padding:14px 0;overflow-wrap:anywhere}.result-evidence .ebay-title{font-size:16px}.result-evidence .ebay-listing-title{font-size:15px}.result-evidence .ebay-note{font-size:12px}.result-method{border:1px solid var(--line);margin-top:8px}.result-method summary{cursor:pointer;font-weight:700;padding:4px}.result-method .note{font-size:13px}.result-evidence details{margin-top:16px}.result-evidence details summary{cursor:pointer;font-size:14px;font-weight:650}.result-evidence .web-reference-disclosure{border-top:1px solid var(--line);padding-top:14px}
+@media(max-width:799px){.result-columns{grid-template-columns:1fr}.result-columns>.card{padding:20px}.result-complete h2{font-size:24px}.result-overview .price{font-size:34px}}
+@media(prefers-reduced-motion:reduce){.treasure-chest,.chest-lid{animation:none!important;transition:none!important}}
 </style>
 </head>
 <body>
@@ -263,7 +274,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 </section>
 
 <section id="scan" class="hidden">
-<div class="market-intro scan-intro"><h2>Finn verdien på en gjenstand</h2><p>Legg til bilder, skriv en beskrivelse – eller bruk begge.</p></div>
+<div id="scan-query-bar" class="scan-query-bar hidden"><span id="scan-query-label"></span><button type="button" class="secondary" onclick="editLayoutSearch()">Endre søk</button></div><div class="market-intro scan-intro"><h2>Finn verdien på en gjenstand</h2><p>Legg til bilder, skriv en beskrivelse – eller bruk begge.</p></div>
 <div class="card scan-form">
   <div class="scan-field-heading"><h3>Bilder</h3><span class="muted">Valgfritt</span></div>
   <div class="scan-upload">
@@ -292,28 +303,27 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
   <button id="analyzeButton" class="primary analyze-button" disabled>Finn verdi</button>
   <p id="scanReadyText" class="muted scan-status" role="status">Legg til minst ett bilde eller en beskrivelse.</p>
   <button id="resetScanButton" type="button" class="secondary hidden scan-reset" onclick="resetScan()">Fjern bilder og start på nytt</button>
-  <div id="loading" class="loading hidden" role="status">Kistefunn analyserer gjenstanden …</div>
+  <div id="loading" class="loading hidden" role="status"><svg class="treasure-chest" viewBox="0 0 120 100" aria-hidden="true"><g class="chest-lid"><path d="M20 43V30Q20 14 38 14H82Q100 14 100 30V43Z" fill="#ac7923" stroke="#e5c46a" stroke-width="3"/><path d="M39 15V42M81 15V42" stroke="#e5c46a" stroke-width="6"/></g><path d="M20 44H100V88H20Z" fill="#77501b" stroke="#e5c46a" stroke-width="3"/><path d="M38 44V88M82 44V88" stroke="#c89b3c" stroke-width="6"/><path d="M53 42H67V63H53Z" fill="#e5c46a"/><circle cx="60" cy="53" r="3" fill="#493316"/></svg><h3>Leter etter gjenstanden og sammenlignbare priser …</h3><p>Dette kan ta litt tid.</p></div>
 </div>
 
-<div id="result" class="hidden"><div class="card">
+<div id="result" class="hidden"><div class="result-complete"><svg class="treasure-chest" viewBox="0 0 120 100" aria-hidden="true"><g class="chest-lid"><path d="M20 43V30Q20 14 38 14H82Q100 14 100 30V43Z" fill="#ac7923" stroke="#e5c46a" stroke-width="3"/><path d="M39 15V42M81 15V42" stroke="#e5c46a" stroke-width="6"/></g><path d="M20 44H100V88H20Z" fill="#77501b" stroke="#e5c46a" stroke-width="3"/><path d="M38 44V88M82 44V88" stroke="#c89b3c" stroke-width="6"/><path d="M53 42H67V63H53Z" fill="#e5c46a"/><circle cx="60" cy="53" r="3" fill="#493316"/></svg><h2>Vurderingen er klar</h2></div><div class="result-columns"><div class="card result-overview">
   <div class="scan-result-head"><div><div class="muted">FUNNET</div><div class="result-title" id="rname"></div></div><span class="scan-result-badge">💎 AI-vurdering</span></div>
   <img id="preview" class="preview hidden" alt="Bilde brukt i analysen">
   <p id="rdesc"></p>
   <button class="info-button" id="itemInfoButton" type="button">ℹ️ Se all informasjon om gjenstanden</button>
-  <div class="price" id="rprice"></div>
+  <div class="estimate-label">Estimert verdi</div><div class="price" id="rprice"></div>
   <div id="priceRange" class="price-range hidden"><div><span class="price-label">Nedre estimat</span><strong id="rlow"></strong></div><div><span class="price-label">Øvre estimat</span><strong id="rhigh"></strong></div></div>
-  <p class="muted" id="rconfidence"></p><div id="ebayResult" class="ebay-result hidden"></div>
+  <p class="confidence-callout" id="rconfidence"></p><button class="primary result-save" type="button" onclick="saveCurrent()">Lagre i samlingen</button><p class="muted">Estimatet er veiledende.</p></div><div class="card result-evidence"><h2>Prisgrunnlag</h2><div id="ebayResult" class="ebay-result hidden"></div>
   <div id="webReferenceResult" class="ebay-result hidden"></div>
   <div id="buyOpportunitiesResult" class="bargain-result hidden"></div>
   <div id="buyPriceWarningsResult" class="bargain-result hidden"></div>
-  <div class="card market-grounding"><h3 style="margin:0">📊 Markedsgrunnlag</h3>
+  </div></div><details class="card result-method"><summary>Hvordan er verdien beregnet?</summary><div class="market-grounding"><h3 style="margin:12px 0">Markedsgrunnlag</h3>
   <div class="grounding-row"><div class="grounding-title">🔎 Identifikasjon</div><div class="grounding-value" id="marketConfidence">Basert på bilde og informasjonen du har oppgitt.</div></div>
   <div class="grounding-row"><div class="grounding-title">💰 Verdiestimat</div><div class="grounding-value">Verdien er et estimat basert på identifikasjonen og tilgjengelig markedsinformasjon.</div></div>
   <div class="grounding-row"><div class="grounding-title">🛒 Markedsdata</div><div class="grounding-value" id="marketDataSummary">Sammenlignbare annonser vises når Kistefunn finner relevante treff.</div></div></div>
   <div class="note">ℹ️ Verdien er et foreløpig AI-estimat. eBay-data er aktive annonsepriser, og eksterne markedsreferanser kan være forhandlerpriser. Ingen av dem er nødvendigvis faktisk salgspris.</div>
   <div class="note" style="margin-top:14px">💎 Dette er et funn. Trykk <strong>Lagre i samlingen</strong> hvis du vil følge verdien over tid.</div>
-  <button class="primary" style="margin-top:10px;width:100%" onclick="saveCurrent()">💾 Lagre i samlingen</button>
-</div></div>
+  </details></div>
 </section>
 <section id="collection" class="hidden">
 <div id="collectionLoginCard" class="card hidden"><h2>📦 Min samling</h2><p>Logg inn for å se og lagre din personlige samling.</p><button class="primary" style="width:100%" onclick="show('account')">👤 Gå til Min side</button></div>
@@ -328,7 +338,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 </section>
 
 <section id="marketplace">
-<div class="market-intro"><h2>Markedsplassen</h2><p>Finn skatter – eller noen som leter etter det du har.</p><span class="layout-badge">Layoutkandidat v1.1</span></div>
+<div class="market-intro"><h2>Markedsplassen</h2><p>Finn skatter – eller noen som leter etter det du har.</p><span class="layout-badge">Layoutkandidat v1.2</span></div>
 <div class="card market-search-card">
 <label class="market-search-label">Hva leter du etter?
 <div class="market-search-row"><input id="marketplaceSearch" type="search" placeholder="Søk etter en gjenstand …" onkeydown="if(event.key==='Enter'){searchMarketplace()}"><span class="market-search-icon">🔎</span></div>
@@ -738,5 +748,10 @@ async function removeMarketplaceListing(id){if(!currentUser)return;if(!confirm('
 async function start(){updateAuthUI();const {data,error}=await supabaseClient.auth.getSession();if(error){console.error(error);return}await handleAuthSession(data.session);show('marketplace')}start();
 </script>
 <div id="itemInfoModal" class="info-modal hidden" role="dialog" aria-modal="true" aria-labelledby="itemInfoTitle"><div class="info-sheet"><div class="info-head"><div><div class="muted">Kistefunn</div><h2 id="itemInfoTitle" style="margin:3px 0 0">Informasjon om gjenstanden</h2></div><button class="info-close" id="closeItemInfo" type="button" onclick="document.getElementById('itemInfoModal').classList.add('hidden')">Lukk</button></div><div id="itemInfoContent"></div></div></div>
+<script>
+function editLayoutSearch(){const scan=document.getElementById('scan');scan.classList.remove('layout-complete','layout-searching');document.getElementById('scan-query-bar').classList.add('hidden');document.querySelector('.scan-form').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'})}
+function syncResultLayout(){const scan=document.getElementById('scan'),busy=!document.getElementById('loading').classList.contains('hidden'),done=!document.getElementById('result').classList.contains('hidden');scan.classList.toggle('layout-searching',busy);scan.classList.toggle('layout-complete',!busy&&done);document.getElementById('scan-query-bar').classList.toggle('hidden',!busy&&!done);document.getElementById('scan-query-label').textContent=document.getElementById('itemDescription').value.trim()||'Søk med bilder';if(!busy&&done){const web=document.getElementById('webReferenceResult');if(!web.closest('details')){const d=document.createElement('details');d.className='web-reference-disclosure';const summary=document.createElement('summary');summary.textContent='Eksterne markedsreferanser';web.before(d);d.append(summary,web)}}}
+const layoutStateObserver=new MutationObserver(syncResultLayout);['loading','result'].forEach(id=>layoutStateObserver.observe(document.getElementById(id),{attributes:true,attributeFilter:['class']}));syncResultLayout();
+</script>
 </body>
 </html>
