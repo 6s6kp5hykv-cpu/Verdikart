@@ -1,4 +1,4 @@
-<!-- Kistefunn layout-ux v1.0 – Testrunner eeb2001 – presentation-only candidate 2026-10-31 -->
+<!-- Kistefunn layout-ux v1.1 – Testrunner eeb2001 – presentation-only candidate 2026-10-31 -->
 <!doctype html>
 <html lang="no">
 <head>
@@ -194,7 +194,7 @@ hr{border:0;border-top:1px solid var(--line);margin:18px 0}
 .admin-detail-pre{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:#172033}
 
 
-/* layout-ux v1.0: responsive presentation only */
+/* layout-ux v1.1: responsive presentation only */
 body{padding-bottom:calc(112px + env(safe-area-inset-bottom));line-height:1.5}
 header{display:flex;align-items:center;justify-content:space-between;padding:18px max(24px,calc((100% - 1120px)/2));border-radius:0}
 header h1{font-size:30px}header p{font-size:13px;margin-top:2px}
@@ -212,6 +212,15 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 .nav{padding-bottom:calc(6px + env(safe-area-inset-bottom));bottom:0}.nav button{height:62px}.nav-label{font-size:12px;line-height:16px}.nav-icon{font-size:20px}
 @media(min-width:900px){body{padding-bottom:24px}.nav{position:static;display:flex;gap:12px;background:transparent;border:0;box-shadow:none;backdrop-filter:none;padding:0}.nav button{height:48px;padding:8px 12px;color:#e0e6ee;font-size:15px;border-radius:0;background:transparent;border-bottom:2px solid transparent}.nav button.primary{color:var(--gold2);background:transparent;border-bottom-color:var(--gold2)}.nav-label{font-size:15px;line-height:22px}.nav-icon{display:none}}
 @media(max-width:599px){header{padding:16px 20px}header h1{font-size:26px}main{padding:20px 16px}.market-intro{margin:0 0 20px}.market-intro h2{font-size:30px}.market-intro p{font-size:15px}.market-filters{grid-template-columns:1fr;gap:0}#marketplace>.market-search-card{padding:20px}.value-callout{align-items:stretch;flex-direction:column;padding:20px;gap:14px}.value-callout h3{font-size:19px}.value-callout p{font-size:14px}.nav{left:6px;right:6px}.nav-label{font-size:11px}}
+
+/* layout-ux v1.1: simplified find-value form; existing handlers preserved */
+.scan-form{max-width:900px;margin:0 auto 24px;padding:28px;border:1px solid var(--line);border-radius:16px}
+.scan-intro h2{font-size:38px}.scan-field-heading{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.scan-field-heading h3{margin:0;font-size:20px}.scan-field-heading>span{font-size:13px}
+.scan-upload{text-align:center;border:1px dashed #bac3cf;border-radius:12px;padding:22px 16px;color:var(--navy)}.scan-upload p{margin:6px 0 14px}.scan-upload .scan-actions{display:flex;justify-content:center;gap:12px;margin:0}.scan-form .scan-action{background:transparent;border:1px solid var(--navy);border-radius:9px;min-width:136px;min-height:44px!important;padding:9px 18px;font-size:15px!important;color:var(--navy)}
+.scan-form .scan-thumbs:not(:empty){margin:20px 0 12px}.scan-form .scan-count{margin:8px 0;font-size:12px}.scan-form:has(#selectedImages:empty) .scan-count{display:none}
+.scan-tips{font-size:14px;margin:14px 0 22px}.scan-tips summary{cursor:pointer;padding:6px 0;color:var(--navy)}.scan-tips summary:focus-visible{outline:3px solid var(--gold);outline-offset:3px}
+.scan-description{border-top:1px solid var(--line);padding-top:22px}.scan-description>label{font-size:20px;font-weight:700}.scan-optional{font-size:13px;margin:3px 0 10px}.scan-description textarea{min-height:100px;margin:0;border-radius:9px;resize:vertical;font-size:16px}.scan-description-help{font-size:13px;margin:5px 0 20px}.scan-form .analyze-button{width:100%;min-height:50px;background:var(--navy);color:white;border-radius:9px}.scan-form .analyze-button:disabled{opacity:1;background:#526075;color:#fff}.scan-status{text-align:center;font-size:13px;margin:9px 0 0}.scan-reset{display:block;margin:14px auto 0;font-size:13px;padding:8px 12px}.scan-reset.hidden{display:none}
+@media(max-width:599px){.scan-form{padding:20px}.scan-intro h2{font-size:28px}.scan-description>label{font-size:18px}.scan-upload{padding:18px 10px}.scan-form .scan-action{min-width:0;flex:1;padding:9px 10px}.scan-tips .scan-guide{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -254,35 +263,36 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 </section>
 
 <section id="scan" class="hidden">
-<div class="scan-hero">
-  <div class="scan-kicker">Kistefunn · Skann</div>
-  <h2>Hva har du funnet?</h2>
-  <p>Ta bilde av gjenstanden, eller skriv merke og modell for å søke uten bilde. Kistefunn prøver å identifisere den og finne et realistisk verdiestimat.</p>
-  <div class="scan-actions">
-    <label class="primary scan-action" style="margin:0;text-align:center;cursor:pointer;display:flex;align-items:center;justify-content:center">📷 Ta bilde<input id="cameraInput" type="file" accept="image/*" capture="environment" hidden></label>
-    <label class="secondary scan-action" style="margin:0;text-align:center;cursor:pointer;display:flex;align-items:center;justify-content:center">🖼️ Velg bilder<input id="photo" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden></label>
+<div class="market-intro scan-intro"><h2>Finn verdien på en gjenstand</h2><p>Legg til bilder, skriv en beskrivelse – eller bruk begge.</p></div>
+<div class="card scan-form">
+  <div class="scan-field-heading"><h3>Bilder</h3><span class="muted">Valgfritt</span></div>
+  <div class="scan-upload">
+    <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 5l2-2h4l2 2h4a2 2 0 012 2v12a2 2 0 01-2 2H4a2 2 0 01-2-2V7a2 2 0 012-2z"/><circle cx="12" cy="12" r="4"/></svg>
+    <p>Legg til bilder av gjenstanden</p>
+    <div class="scan-actions">
+      <button type="button" class="secondary scan-action" onclick="document.getElementById('cameraInput').click()">Ta bilde</button>
+      <button type="button" class="secondary scan-action" onclick="document.getElementById('photo').click()">Velg bilder</button>
+    </div>
+    <input id="cameraInput" type="file" accept="image/*" capture="environment" hidden>
+    <input id="photo" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden>
   </div>
-</div>
-
-<div class="card">
-  <div class="scan-count"><strong>📸 Bildene dine</strong><span id="scanImageCount">Ingen bilder valgt</span></div>
   <div id="selectedImages" class="scan-thumbs"></div>
-  <button id="resetScanButton" type="button" class="danger hidden" style="margin-top:12px;width:100%" onclick="resetScan()">🗑️ Fjern bilder og start på nytt</button>
-  <div class="scan-guide">
-    <div><b>📐 Oversikt</b>Ta ett bilde av hele gjenstanden.</div>
-    <div><b>🔎 Detaljer</b>Ta bilde av merke, tekst og serienummer.</div>
-    <div><b>🛠️ Tilstand</b>Vis skader, slitasje og viktige detaljer.</div>
+  <div class="scan-count"><span id="scanImageCount">Ingen bilder valgt</span></div>
+  <details class="scan-tips"><summary>Tips til gode bilder</summary><div class="scan-guide">
+    <div><b>Oversikt</b>Ta ett bilde av hele gjenstanden.</div>
+    <div><b>Detaljer</b>Ta bilde av merke, tekst og serienummer.</div>
+    <div><b>Tilstand</b>Vis skader, slitasje og viktige detaljer.</div>
+  </div></details>
+  <div class="scan-description">
+    <label for="itemDescription">Hva vet du om gjenstanden?</label>
+    <p class="muted scan-optional">Valgfritt hvis du har lagt til bilder</p>
+    <textarea id="itemDescription" placeholder="F.eks. Fender Stratocaster, 1995, brukt." aria-describedby="scan-description-help"></textarea>
+    <p id="scan-description-help" class="muted scan-description-help">Merke, modell og tilstand kan gi et mer presist estimat.</p>
   </div>
-  <div class="scan-ready"><span class="scan-dot"></span><span id="scanReadyText">Legg til et bilde eller skriv en beskrivelse for å starte.</span></div>
-</div>
-
-<div class="card">
-  <label>📝 Hva vet du om gjenstanden? <span class="muted">(skriv her for tekstsøk uten bilde)</span>
-    <textarea id="itemDescription" placeholder="F.eks. Squier Classic Vibe 50s Stratocaster MN. Farge er valgfri. Du kan også skrive alder, materiale eller serienummer."></textarea>
-  </label>
-  <div class="helper">💡 <strong>Tips:</strong> Du kan søke med bare tekst. Farge er valgfri. Bilder kan gjøre identifikasjonen mer presis, men er ikke påkrevd når du beskriver gjenstanden.</div>
-  <button id="analyzeButton" class="primary analyze-button" disabled>🔍 Identifiser og søk i markedet</button>
-  <div id="loading" class="loading hidden">🔍 Kistefunn analyserer gjenstanden …</div>
+  <button id="analyzeButton" class="primary analyze-button" disabled>Finn verdi</button>
+  <p id="scanReadyText" class="muted scan-status" role="status">Legg til minst ett bilde eller en beskrivelse.</p>
+  <button id="resetScanButton" type="button" class="secondary hidden scan-reset" onclick="resetScan()">Fjern bilder og start på nytt</button>
+  <div id="loading" class="loading hidden" role="status">Kistefunn analyserer gjenstanden …</div>
 </div>
 
 <div id="result" class="hidden"><div class="card">
@@ -318,7 +328,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 </section>
 
 <section id="marketplace">
-<div class="market-intro"><h2>Markedsplassen</h2><p>Finn skatter – eller noen som leter etter det du har.</p><span class="layout-badge">Layoutkandidat v1.0</span></div>
+<div class="market-intro"><h2>Markedsplassen</h2><p>Finn skatter – eller noen som leter etter det du har.</p><span class="layout-badge">Layoutkandidat v1.1</span></div>
 <div class="card market-search-card">
 <label class="market-search-label">Hva leter du etter?
 <div class="market-search-row"><input id="marketplaceSearch" type="search" placeholder="Søk etter en gjenstand …" onkeydown="if(event.key==='Enter'){searchMarketplace()}"><span class="market-search-icon">🔎</span></div>
