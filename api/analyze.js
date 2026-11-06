@@ -1,4 +1,4 @@
-// Kistefunn analysebackend v15.5.60-test7.27-valuation-consistency-diagnostics
+// Kistefunn analysebackend v15.5.61-i1.1-rights-gate (integration branch only, no deployment)
 // Test 7.25: Separates Switch OLED package completeness from model identity; excludes console-only/parts/unconfirmed package titles from valuation pool. Preview-only; not production-approved.
 // V15.5.49 TEST 7.16: Rejects console bags/cases, screen assemblies, motherboards and repair-service listings from complete-console valuation; preserves explicit complete-console bundles. Preview-only; not production-approved.\n// V15.5.48 TEST 7.15: Avoids rejecting complete guitars because titles mention pickups/bridges/necks/pickguards; treats explicitly requested pickguard color as a hard requirement. Preview-only; not production-approved.
 // V15.5.47 TEST 7.14: Makes accessory/part rejection target-aware and keeps uncertain model variants as lower-confidence candidates unless there is a clear identity conflict. Preview-only; not production-approved.
@@ -54,11 +54,12 @@
 // - Ny markedsmotor er klargjort for FINN + eBay + AI.
 // - FINN aktiveres først når legitim API-tilgang er tilgjengelig.
 
-const BACKEND_VERSION = "v15.5.60-test7.27-valuation-consistency-diagnostics";
+const BACKEND_VERSION = "v15.5.61-i1.1-rights-gate";
 
 import { identifyWithOpenAI } from "./lib/openai.js";
 import { isCompatibleGuitarBridgeVariant } from "../lib/matching.js";
 import { logDiagnostic } from "./_diagnostics.js";
+import { evaluateRights, requireRights, rightsSummary } from "../lib/b1-rights-gate.mjs";
 
 async function writeBackendDiagnostic(options) {
   try {
@@ -436,6 +437,9 @@ export default async function handler(req, res) {
     let ebayDiagnosticError = null;
 
     async function getEbayToken() {
+      // I1.1: A cached token must NEVER bypass the rights gate.
+      requireRights('ebay_browse', 'market_retrieval');
+      requireRights('ebay_browse', 'market_valuation');
       if (ebayTokenCache) {
         return ebayTokenCache;
       }
@@ -2899,6 +2903,8 @@ export default async function handler(req, res) {
     }
 
     async function searchEbaySingle(query, marketplace) {
+      requireRights('ebay_browse', 'market_retrieval');
+      requireRights('ebay_browse', 'market_valuation');
       const token =
         await getEbayToken();
 
@@ -3060,6 +3066,8 @@ export default async function handler(req, res) {
     }
 
     async function enrichEbayItemUncached(item, marketplace) {
+      requireRights('ebay_browse', 'market_retrieval');
+      requireRights('ebay_browse', 'market_valuation');
       const itemId = String(item?.itemId || "").trim();
 
       if (!itemId) return item;
@@ -5512,15 +5520,22 @@ const classifyConsolePackage = (item) => {
        6. KJØR eBAY
        --------------------------------------------------------- */
 
+    // I1.1: Provider and purpose rights must both be approved on the server.
+    // These decisions are never based on request body, query parameters or UI.
+    const ebayRightsReady = evaluateRights('ebay_browse', 'market_retrieval').allowed &&
+      evaluateRights('ebay_browse', 'market_valuation').allowed;
+    const webRightsReady = evaluateRights('external_web', 'market_retrieval').allowed &&
+      evaluateRights('external_web', 'market_valuation').allowed;
     let ebay = {
       enabled: false,
       reason:
-        "eBay-søk ikke utført",
+        ebayRightsReady ? "eBay-søk ikke utført" : "eBay-markedsdata sperret til bruksrettigheter er avklart.",
       queries: [],
-      successful_queries: []
+      successful_queries: [],
+      diagnostic: ebayRightsReady ? null : {stage: "rights_gate", code: "DATA_RIGHTS_BLOCKED"}
     };
 
-    try {
+    if (ebayRightsReady) try {
       const ebayTotalStartedAt = performance.now();
       ebay =
         await searchEbay(parsed);
@@ -5599,6 +5614,9 @@ const classifyConsolePackage = (item) => {
      * brukes som prisgrunnlag.
      */
     async function searchExactReferenceWeb(referenceCode, brand, modelName) {
+      // I1.1: External website prices are not yet rights-cleared.
+      requireRights('external_web', 'market_retrieval');
+      requireRights('external_web', 'market_valuation');
       /*
        * V13.9 – ROBUST WEB-REFERANSE-SØK
        * --------------------------------
@@ -6031,9 +6049,9 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
 
     const webReferenceStartedAt = performance.now();
     const webReferenceSearch =
-      webTargetModelCode && !stableExactMarketForWebSkip
+      webRightsReady && webTargetModelCode && !stableExactMarketForWebSkip
         ? await searchExactReferenceWeb(webTargetModelCode, itemInfo.brand, itemInfo.model || parsed.name)
-        : { enabled: false, status: "not_needed", reason: stableExactMarketForWebSkip ? "eBay har minst 3 stabile eksakte referanser." : "Ingen spesifikk modellreferanse.", exact_match_count: 0, distinct_count: 0, value_nok: null, low_nok: null, high_nok: null, references: [] };
+        : { enabled: false, status: webRightsReady ? "not_needed" : "rights_blocked", reason: !webRightsReady ? "Eksterne prisreferanser sperret til bruksrettigheter er avklart." : stableExactMarketForWebSkip ? "eBay har minst 3 stabile eksakte referanser." : "Ingen spesifikk modellreferanse.", exact_match_count: 0, distinct_count: 0, value_nok: null, low_nok: null, high_nok: null, references: [] };
     timings.web_reference_openai_ms = Math.round(
       performance.now() - webReferenceStartedAt
     );
@@ -6068,7 +6086,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
         // TEST 7.26: If the Switch OLED package gate ran, eBay is a valid
         // valuation source only when the post-gate final sample has enough
         // references. Search/exact-pool counts alone must never bypass it.
-        enabled: Boolean(ebay?.enabled) &&
+        enabled: ebayRightsReady && Boolean(ebay?.enabled) &&
           Number.isFinite(ebay?.median_nok) && ebay.median_nok > 0 &&
           (!ebay?.switch_package_gate?.enabled || (
             Number(ebay?.sample_size || 0) >= 3 &&
@@ -6093,7 +6111,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
       web_reference: {
         // V15.5.18 TEST: null/undefined must not become numeric zero.
         // A web reference is enabled as a valuation source only with a real positive value.
-        enabled: Boolean(webReferenceSearch?.enabled) &&
+        enabled: webRightsReady && Boolean(webReferenceSearch?.enabled) &&
           webReferenceSearch?.value_nok != null &&
           Number.isFinite(Number(webReferenceSearch.value_nok)) &&
           Number(webReferenceSearch.value_nok) > 0,
@@ -6779,6 +6797,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
 
     return res.status(200).json({
       version: BACKEND_VERSION,
+      rights_status: rightsSummary(),
       timings,
       diagnostic_detail: diagnosticDetail,
       name:
