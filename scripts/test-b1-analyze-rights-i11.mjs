@@ -5,13 +5,14 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {evaluateRights, requireRights, rightsSummary} from '../lib/b1-rights-gate.mjs';
 import {describeB1Integration} from '../lib/b1-integration-bridge.mjs';
+import {requestB1V5ForS1} from '../lib/b1-v5-client.mjs';
 
 const source = readFileSync(new URL('../api/analyze.js', import.meta.url), 'utf8');
 const translated = source.replace(/^import[^\n]*\n/gm, '')
  .replace('export default async function handler', 'async function handler');
 const compile = new Function(
  'identifyWithOpenAI','logDiagnostic','isCompatibleGuitarBridgeVariant',
- 'evaluateRights','requireRights','rightsSummary','describeB1Integration','fetch','process','performance',
+ 'evaluateRights','requireRights','rightsSummary','describeB1Integration','requestB1V5ForS1','fetch','process','performance',
  'setTimeout','clearTimeout','Buffer',
  translated + '\nreturn handler;'
 );
@@ -28,7 +29,7 @@ async function runMock(body, env={}) {
  });
  const handler=compile(
    identifyWithOpenAI, async()=>null, ()=>true,
-   evaluateRights,requireRights,rightsSummary,describeB1Integration,fetch,{env},
+   evaluateRights,requireRights,rightsSummary,describeB1Integration,requestB1V5ForS1,fetch,{env},
    {now:()=>Date.now()}, ()=>0, ()=>{}, null
  );
  const output={status:null,body:null};
@@ -41,7 +42,7 @@ async function runMock(body, env={}) {
 test('I1.1 analysis success is clearly AI-only without eBay', async()=>{
  const r=await runMock({description:'Synthetic Demo'});
  assert.equal(r.status,200);
- assert.equal(r.body.version,'v15.5.62-i1.2-b1-bridge');
+ assert.equal(r.body.version,'v15.5.63-i1.3-b1-v5-transport');
  assert.equal(r.body.market_data_status,'ai_estimate_only');
  assert.equal(r.body.estimated_value_nok,1500);
  assert.equal(r.body.ebay.enabled,false);
@@ -74,7 +75,7 @@ test('I1.1 missing image and text remains a validated 400', async()=>{
  assert.equal(r.status,400);
 });
 test('I1.1 complete analysis source is syntactically valid',()=>{
- assert.match(source,/const BACKEND_VERSION = "v15\.5\.62-i1\.2-b1-bridge"/);
+ assert.match(source,/const BACKEND_VERSION = "v15\.5\.63-i1\.3-b1-v5-transport"/);
  assert.doesNotThrow(()=>compile);
 });
 test('I1.1 frontend clearly indicates unverified AI-only valuation',()=>{
