@@ -79,6 +79,6 @@ test('I1.1 complete analysis source is syntactically valid',()=>{
 });
 test('I1.1 frontend clearly indicates unverified AI-only valuation',()=>{
  const html=readFileSync(new URL('../index.html', import.meta.url),'utf8');
- assert.match(html,/layout v1\.12/);
+ assert.match(html,/layout v1\.13/);
  assert.match(html,/Beløpet er et AI-estimat, ikke en bekreftet markedsverdi/);
 });
