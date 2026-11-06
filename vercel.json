@@ -1,3 +1,8 @@
 {
-  "git": { "deploymentEnabled": { "layout-ux": false } }
+  "git": {
+    "deploymentEnabled": {
+      "layout-ux": false,
+      "integration/b1-kistefunn": false
+    }
+  }
 }
