@@ -1,7 +1,8 @@
+// I1.1: Test 7.27 invariants remain, backend version advanced after rights gate.
 import fs from "node:fs";
 import assert from "node:assert/strict";
 const source = fs.readFileSync(new URL("../api/analyze.js", import.meta.url), "utf8");
-assert.match(source, /v15\.5\.60-test7\.27-valuation-consistency-diagnostics/);
+assert.match(source, /v15\.5\.61-i1\.1-rights-gate/);
 assert.match(source, /valuation_consistency:/);
 assert.match(source, /audit_sample_size_matches: sampleSize === auditCount/);
 assert.match(source, /no_approved_valuation_pool/);
