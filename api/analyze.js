@@ -1,4 +1,4 @@
-// Kistefunn analysebackend v15.5.61-i1.1-rights-gate (integration branch only, no deployment)
+// Kistefunn analysebackend v15.5.62-i1.2-b1-bridge (integration branch only, no deployment)
 // Test 7.25: Separates Switch OLED package completeness from model identity; excludes console-only/parts/unconfirmed package titles from valuation pool. Preview-only; not production-approved.
 // V15.5.49 TEST 7.16: Rejects console bags/cases, screen assemblies, motherboards and repair-service listings from complete-console valuation; preserves explicit complete-console bundles. Preview-only; not production-approved.\n// V15.5.48 TEST 7.15: Avoids rejecting complete guitars because titles mention pickups/bridges/necks/pickguards; treats explicitly requested pickguard color as a hard requirement. Preview-only; not production-approved.
 // V15.5.47 TEST 7.14: Makes accessory/part rejection target-aware and keeps uncertain model variants as lower-confidence candidates unless there is a clear identity conflict. Preview-only; not production-approved.
@@ -54,12 +54,13 @@
 // - Ny markedsmotor er klargjort for FINN + eBay + AI.
 // - FINN aktiveres først når legitim API-tilgang er tilgjengelig.
 
-const BACKEND_VERSION = "v15.5.61-i1.1-rights-gate";
+const BACKEND_VERSION = "v15.5.62-i1.2-b1-bridge";
 
 import { identifyWithOpenAI } from "./lib/openai.js";
 import { isCompatibleGuitarBridgeVariant } from "../lib/matching.js";
 import { logDiagnostic } from "./_diagnostics.js";
 import { evaluateRights, requireRights, rightsSummary } from "../lib/b1-rights-gate.mjs";
+import { describeB1Integration } from "../lib/b1-integration-bridge.mjs";
 
 async function writeBackendDiagnostic(options) {
   try {
@@ -5526,6 +5527,10 @@ const classifyConsolePackage = (item) => {
       evaluateRights('ebay_browse', 'market_valuation').allowed;
     const webRightsReady = evaluateRights('external_web', 'market_retrieval').allowed &&
       evaluateRights('external_web', 'market_valuation').allowed;
+    // I1.2: The real S1 query generator now feeds B1's bounded planning bridge.
+    // NO transfer, B1 Capture POST, eBay request, training or valuation occurs here.
+    // B1 v4 only offers an audited one-shot capture and is not a general market provider.
+    const b1Integration = describeB1Integration(buildStrictQueries(parsed));
     let ebay = {
       enabled: false,
       reason:
@@ -6798,6 +6803,7 @@ Returner KUN data i det angitte JSON-skjemaet. Hvis du ikke finner en sikker eks
     return res.status(200).json({
       version: BACKEND_VERSION,
       rights_status: rightsSummary(),
+      b1_integration: b1Integration,
       timings,
       diagnostic_detail: diagnosticDetail,
       name:
