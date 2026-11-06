@@ -5,13 +5,14 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {evaluateRights, requireRights, rightsSummary} from '../lib/b1-rights-gate.mjs';
 import {describeB1Integration} from '../lib/b1-integration-bridge.mjs';
+import {requestB1V5ForS1} from '../lib/b1-v5-client.mjs';
 
 const source=readFileSync(new URL('../api/analyze.js',import.meta.url),'utf8');
 const transformed=source.replace(/^import[^\n]*\n/gm,'')
   .replace('export default async function handler','async function handler');
 const factory=new Function(
  'identifyWithOpenAI','logDiagnostic','isCompatibleGuitarBridgeVariant',
- 'evaluateRights','requireRights','rightsSummary','describeB1Integration',
+ 'evaluateRights','requireRights','rightsSummary','describeB1Integration','requestB1V5ForS1',
  'fetch','process','performance','setTimeout','clearTimeout','Buffer',
  transformed+'\nreturn handler;'
 );
@@ -28,19 +29,19 @@ async function analyze(description='Fender MIM 1995',extra={},env={}) {
   },duration_ms:1,openai_diagnostics:{}
  });
  const handler=factory(ai,async()=>null,()=>true,
-   evaluateRights,requireRights,rightsSummary,describeB1Integration,
+   evaluateRights,requireRights,rightsSummary,describeB1Integration,requestB1V5ForS1,
    reject,{env},{now:()=>Date.now()},()=>0,()=>{},null);
  const out={status:null,body:null};
  const res={status(code){out.status=code;return this},json(value){out.body=value;return this}};
  await handler({method:'POST',body:{description,...extra}},res);
  return {...out,networkCalls:calls};
 }
-test('I1.2 backend version advanced sequentially',()=>assert.match(source,/v15\.5\.62-i1\.2-b1-bridge/));
+test('I1.2 backend version advanced sequentially',()=>assert.match(source,/v15\.5\.63-i1\.3-b1-v5-transport/));
 test('I1.2 actual handler makes valid S1-to-B1 plan',async()=>{
  const r=await analyze();
  assert.equal(r.status,200);
  assert.equal(r.networkCalls,0);
- assert.equal(r.body.version,'v15.5.62-i1.2-b1-bridge');
+ assert.equal(r.body.version,'v15.5.63-i1.3-b1-v5-transport');
  assert.equal(r.body.b1_integration.version,'kistefunn-b1-bridge-i1.2');
  assert.equal(r.body.b1_integration.status,'contract_connected_not_executed');
  assert.ok(r.body.b1_integration.planned_query_count>=1);
