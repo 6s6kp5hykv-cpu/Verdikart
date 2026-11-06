@@ -1,0 +1,29 @@
+name: Kistefunn B1 integration offline tests
+on:
+  push:
+    branches:
+      - integration/b1-kistefunn
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: JS syntax
+        run: |
+          node --version
+          node --check api/analyze.js
+          node --check lib/b1-v5-client.mjs
+          node --check lib/b1-integration-bridge.mjs
+          node --check lib/b1-rights-gate.mjs
+      - name: Offline adapter and analyzer regressions
+        run: |
+          node --test scripts/test-market-data-port-i1.mjs scripts/test-b1-rights-gate-i11.mjs scripts/test-b1-analyze-rights-i11.mjs scripts/test-b1-integration-i12.mjs scripts/test-b1-integrated-handler-i12.mjs scripts/test-b1-v5-client-i13.mjs
+          node scripts/test-test7.27-valuation-consistency.mjs
